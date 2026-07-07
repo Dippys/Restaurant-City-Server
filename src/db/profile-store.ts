@@ -114,6 +114,24 @@ const profileInclude = {
   visits: { orderBy: { lastVisitedAt: 'desc' as const } },
 };
 
+const FLOOR_TILE_COUNT = 20 * 40;
+const STARTER_FLOOR_INDEXES = [0, 1] as const;
+const EMPLOYEE_MAX_WORK_TIME_MS = 4 * 60 * 60 * 1000;
+const GARDEN_WETNESS_PER_WATER_SECONDS = 3 * 60 * 60;
+const GARDEN_MAX_WETNESS_SECONDS = 9 * 60 * 60;
+const GARDEN_PLOTS_BY_LEVEL = [
+  0, 0, 0, 0, 0, 0,
+  1, 1, 1, 1, 1, 1, 1,
+  2, 2, 2, 2, 2,
+  3, 3, 3, 3,
+  4, 4,
+  5, 5,
+  6, 6,
+  7, 7,
+  8, 8,
+  9,
+] as const;
+
 export function playerNetworkUid(): string {
   return PLAYER_NETWORK_UID;
 }
@@ -175,6 +193,10 @@ export async function ensureStarterFriends(): Promise<void> {
       continue;
     }
 
+    if (await repairStarterFriendProfile(friend, existing)) {
+      continue;
+    }
+
     if (existing.ownedItems.length === 0) {
       await prisma.ownedItem.createMany({
         data: seedOwnedItems(friend.networkUid, friend.ownedItems).map((item) => ({
@@ -182,8 +204,37 @@ export async function ensureStarterFriends(): Promise<void> {
           userProfileId: profileKey(friend.networkUid),
         })),
       });
+      await ensureStarterFloors(friend.networkUid);
+      continue;
+    }
+
+    if (await repairProfileState(friend.networkUid, existing, true)) {
+      continue;
     }
   }
+}
+
+async function repairStarterFriendProfile(seed: FriendProfileSeed, profile: StoredProfile): Promise<boolean> {
+  const data: { playCount?: number; gender?: number } = {};
+
+  if (profile.playCount < 1) {
+    data.playCount = seed.playCount;
+  }
+
+  if (profile.gender !== seed.gender) {
+    data.gender = seed.gender;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return false;
+  }
+
+  await prisma.userProfile.update({
+    where: { id: profileKey(seed.networkUid) },
+    data,
+  });
+
+  return true;
 }
 
 export async function savePlayerProfile(profile: SavedProfileData, audit: SaveAuditData): Promise<number> {
@@ -284,7 +335,7 @@ export async function savePlayerProfile(profile: SavedProfileData, audit: SaveAu
         update: {
           network: employee.id.network,
           playfishUid: employee.id.playfishUid,
-          happiness: employee.happiness,
+          happiness: employeeWorkTime(employee),
           task: employee.task,
           notify: employee.notify,
         },
@@ -294,7 +345,7 @@ export async function savePlayerProfile(profile: SavedProfileData, audit: SaveAu
           network: employee.id.network,
           networkUid: employeeNetworkUid,
           playfishUid: employee.id.playfishUid,
-          happiness: employee.happiness,
+          happiness: employeeWorkTime(employee),
           task: employee.task,
           notify: employee.notify,
         },
@@ -345,6 +396,8 @@ export async function savePlayerProfile(profile: SavedProfileData, audit: SaveAu
         },
       });
     }
+
+    await repairProfileStateInTransaction(tx, profile.id.networkUid, profileId, true);
   });
 
   return audit.saveVersion;
@@ -394,6 +447,10 @@ async function ensureProfile(networkUid: string, options: EnsureProfileOptions =
       });
     }
 
+    if (await repairProfileState(safeNetworkUid, existing, Boolean(options.seedStarterItems))) {
+      return ensureProfile(safeNetworkUid, options);
+    }
+
     return existing;
   }
 
@@ -419,6 +476,9 @@ async function ensureProfile(networkUid: string, options: EnsureProfileOptions =
       musicPlay: 0,
       ownedItems: {
         create: options.seedStarterItems ? seedOwnedItems(safeNetworkUid, starterSeeds()) : [],
+      },
+      floors: {
+        create: options.seedStarterItems ? seedStarterFloors(safeNetworkUid) : [],
       },
     },
   });
@@ -465,6 +525,155 @@ function seedOwnedItems(networkUid: string, seeds: readonly OwnedItemSeed[]) {
   });
 }
 
+function seedStarterFloors(networkUid: string) {
+  return STARTER_FLOOR_INDEXES.map((floorIndex) => ({
+    id: floorKey(networkUid, floorIndex),
+    floorIndex,
+    tilesJson: JSON.stringify(defaultFloorTiles()),
+  }));
+}
+
+async function ensureStarterFloors(networkUid: string): Promise<void> {
+  const profileId = profileKey(networkUid);
+  for (const floor of seedStarterFloors(networkUid)) {
+    await prisma.restaurantFloor.upsert({
+      where: { userProfileId_floorIndex: { userProfileId: profileId, floorIndex: floor.floorIndex } },
+      update: {},
+      create: {
+        ...floor,
+        userProfileId: profileId,
+      },
+    });
+  }
+}
+
+async function repairProfileState(networkUid: string, profile: StoredProfile, seedStarterItems: boolean): Promise<boolean> {
+  let repaired = false;
+  await prisma.$transaction(async (tx) => {
+    repaired = await repairProfileStateInTransaction(tx, networkUid, profileKey(networkUid), seedStarterItems, profile);
+  });
+  return repaired;
+}
+
+async function repairProfileStateInTransaction(
+  tx: any,
+  networkUid: string,
+  profileId: string,
+  seedStarterItems: boolean,
+  loadedProfile?: StoredProfile,
+): Promise<boolean> {
+  const ownedItems = loadedProfile?.ownedItems ?? await tx.ownedItem.findMany({ where: { userProfileId: profileId } });
+  const floors = loadedProfile?.floors ?? await tx.restaurantFloor.findMany({ where: { userProfileId: profileId } });
+  const gardenPlots = loadedProfile?.gardenPlots ?? await tx.gardenPlot.findMany({ where: { userProfileId: profileId } });
+  const profileLevel = loadedProfile?.userLevel
+    ?? (await tx.userProfile.findUnique({ where: { id: profileId }, select: { userLevel: true } }))?.userLevel
+    ?? 1;
+  let repaired = false;
+  let nextServerId = ownedItems.reduce((min: number, item: OwnedItem) => Math.min(min, item.serverId), 0) - 1;
+
+  if (seedStarterItems) {
+    if (!ownedItems.some((item: OwnedItem) => itemType(item.globalItemId) === 2)) {
+      nextServerId = await addStarterOwnedItems(tx, networkUid, profileId, STARTER_BUILDING_ITEMS, nextServerId);
+      repaired = true;
+    }
+
+    if (!ownedItems.some((item: OwnedItem) => itemType(item.globalItemId) === 3)) {
+      nextServerId = await addStarterOwnedItems(tx, networkUid, profileId, STARTER_RESTAURANT_ITEMS, nextServerId);
+      repaired = true;
+    }
+  }
+
+  for (const floorIndex of STARTER_FLOOR_INDEXES) {
+    const existingFloor = floors.find((floor: RestaurantFloor) => floor.floorIndex === floorIndex);
+    const tilesJson = JSON.stringify(defaultFloorTiles());
+
+    if (!existingFloor) {
+      await tx.restaurantFloor.create({
+        data: {
+          id: floorKey(networkUid, floorIndex),
+          userProfileId: profileId,
+          floorIndex,
+          tilesJson,
+        },
+      });
+      repaired = true;
+    } else if (!hasValidFloorTiles(existingFloor.tilesJson)) {
+      await tx.restaurantFloor.update({
+        where: { userProfileId_floorIndex: { userProfileId: profileId, floorIndex } },
+        data: { tilesJson },
+      });
+      repaired = true;
+    }
+  }
+
+  const unlockedPlotCount = gardenPlotCountForLevel(profileLevel);
+  for (let plotId = 0; plotId < unlockedPlotCount; plotId++) {
+    if (gardenPlots.some((plot: GardenPlot) => plot.plotId === plotId)) {
+      continue;
+    }
+
+    await tx.gardenPlot.create({
+      data: {
+        id: gardenPlotKey(networkUid, plotId),
+        userProfileId: profileId,
+        plotId,
+        ingredientId: 0,
+        plantWetTime: 0,
+        timeToDry: 0,
+      },
+    });
+    repaired = true;
+  }
+
+  return repaired;
+}
+
+async function addStarterOwnedItems(
+  tx: any,
+  networkUid: string,
+  profileId: string,
+  seeds: readonly OwnedItemSeed[],
+  nextServerId: number,
+): Promise<number> {
+  for (const seed of seeds) {
+    await tx.ownedItem.create({
+      data: {
+        id: ownedItemKey(networkUid, nextServerId),
+        userProfileId: profileId,
+        serverId: nextServerId,
+        globalItemId: seed.id,
+        positionX: seed.x,
+        positionY: seed.y,
+        data: seed.data ?? 0,
+        roomIndex: seed.roomIndex ?? 0,
+        employeeNetwork: 0,
+        employeeNetworkUid: '',
+        employeePlayfishUid: 0,
+      },
+    });
+    nextServerId -= 1;
+  }
+
+  return nextServerId;
+}
+
+function defaultFloorTiles(): number[] {
+  return Array.from({ length: FLOOR_TILE_COUNT }, () => 0);
+}
+
+function hasValidFloorTiles(value: string): boolean {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) && parsed.length === FLOOR_TILE_COUNT;
+  } catch {
+    return false;
+  }
+}
+
+function itemType(globalItemId: number): number {
+  return Math.floor(globalItemId / 1000000);
+}
+
 function shouldSeedStarterItems(profile: StoredProfile, seedStarterItems: boolean): boolean {
   return (
     seedStarterItems &&
@@ -492,6 +701,22 @@ function boundedIntOrFallback(value: number, fallback: number, min: number, max:
   }
 
   return value;
+}
+
+function gardenPlotCountForLevel(level: number): number {
+  if (!Number.isInteger(level) || level <= 0) {
+    return 0;
+  }
+
+  if (level >= GARDEN_PLOTS_BY_LEVEL.length) {
+    return 9;
+  }
+
+  return GARDEN_PLOTS_BY_LEVEL[level] ?? 0;
+}
+
+function employeeWorkTime(employee: EmployeeData): number {
+  return boundedIntOrFallback(employee.happiness, EMPLOYEE_MAX_WORK_TIME_MS, 0, EMPLOYEE_MAX_WORK_TIME_MS);
 }
 
 async function changeInventoryItem(
@@ -561,8 +786,6 @@ async function applyGardenChange(
   networkUid: string,
   change: GardenChangeData,
 ): Promise<void> {
-  const now = Math.floor(Date.now() / 1000);
-
   if (change.action === 'harvest') {
     const existing = await tx.gardenPlot.findUnique({
       where: { userProfileId_plotId: { userProfileId: profileId, plotId: change.plotId } },
@@ -575,10 +798,15 @@ async function applyGardenChange(
   }
 
   if (change.action === 'water') {
-    await tx.gardenPlot.updateMany({
-      where: { userProfileId: profileId, plotId: change.plotId },
-      data: { plantWetTime: now },
+    const existing = await tx.gardenPlot.findUnique({
+      where: { userProfileId_plotId: { userProfileId: profileId, plotId: change.plotId } },
     });
+    if (existing) {
+      await tx.gardenPlot.update({
+        where: { userProfileId_plotId: { userProfileId: profileId, plotId: change.plotId } },
+        data: { timeToDry: nextWaterLevel(existing.timeToDry, existing.updatedAt) },
+      });
+    }
     return;
   }
 
@@ -587,19 +815,25 @@ async function applyGardenChange(
     where: { userProfileId_plotId: { userProfileId: profileId, plotId: change.plotId } },
     update: {
       ingredientId,
-      plantWetTime: now,
-      timeToDry: 86400,
+      plantWetTime: 0,
+      timeToDry: GARDEN_WETNESS_PER_WATER_SECONDS,
     },
     create: {
       id: gardenPlotKey(networkUid, change.plotId),
       userProfileId: profileId,
       plotId: change.plotId,
       ingredientId,
-      plantWetTime: now,
-      timeToDry: 86400,
+      plantWetTime: 0,
+      timeToDry: GARDEN_WETNESS_PER_WATER_SECONDS,
     },
   });
   await changeIngredient(tx, profileId, networkUid, { globalItemId: ingredientId, delta: -1 });
+}
+
+function nextWaterLevel(currentWetness: number, wateredAt: Date): number {
+  const elapsed = Math.max(0, Math.floor((Date.now() - wateredAt.getTime()) / 1000));
+  const remainingWetness = Math.max(0, Math.min(currentWetness, GARDEN_MAX_WETNESS_SECONDS) - elapsed);
+  return Math.min(GARDEN_MAX_WETNESS_SECONDS, remainingWetness + GARDEN_WETNESS_PER_WATER_SECONDS);
 }
 
 function defaultVisitIngredient(seed: string): number {
@@ -620,6 +854,7 @@ async function createSeedProfile(seed: FriendProfileSeed): Promise<void> {
       restaurantName: seed.restaurantName,
       gender: seed.gender,
       credits: seed.credits,
+      playCount: seed.playCount,
       userLevel: seed.userLevel,
       gourmetPoint: seed.gourmetPoint,
       trashPoint: seed.trashPoint,

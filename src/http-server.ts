@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
+import * as zlib from 'node:zlib';
 import type { ServerConfig } from './config';
 import {
   addAdminOwnedItem,
@@ -15,6 +16,7 @@ import {
   updateAdminUser,
 } from './db/admin-store';
 import { ensureLoginAccount } from './db/profile-store';
+import { latestStoredImage } from './db/rpc-store';
 import { RequestLog } from './request-log';
 import { StaticFileIndex } from './static-files';
 import type { CapturedRequest } from './types';
@@ -147,6 +149,11 @@ async function handleRequest(
     return;
   }
 
+  if (pathname.startsWith('/__api/profile-image/') && req.method === 'GET') {
+    await handleProfileImage(pathname, res);
+    return;
+  }
+
   if (pathname.startsWith('/__api/db')) {
     await handleDatabaseApi(req.method || 'GET', pathname, body, res);
     return;
@@ -230,6 +237,33 @@ function sendStaticFile(
     res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('read error');
   }
+}
+
+async function handleProfileImage(pathname: string, res: ServerResponse): Promise<void> {
+  const parts = pathname.split('/').filter(Boolean);
+  const networkUid = decodeURIComponent(parts[2] || '');
+  const imageType = Number.parseInt((parts[3] || '').replace(/\.png$/i, ''), 10);
+
+  if (!networkUid || !Number.isInteger(imageType)) {
+    sendJson(res, { ok: false, error: 'invalid image path' }, 400);
+    return;
+  }
+
+  const image = await latestStoredImage(networkUid, imageType);
+  if (!image) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.end('not found');
+    return;
+  }
+
+  const png = encodeArgbPng(image.data, image.width, image.height);
+  res.writeHead(200, {
+    'Content-Type': 'image/png',
+    'Content-Length': png.length,
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store',
+  });
+  res.end(png);
 }
 
 function createEntry(id: number, req: IncomingMessage, url: URL, pathname: string, body: Buffer): CapturedRequest {
@@ -332,6 +366,78 @@ function sendJson(res: ServerResponse, value: unknown, status = 200): void {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(value));
 }
+
+function encodeArgbPng(argb: Buffer, width: number, height: number): Buffer {
+  const pixelCount = width * height;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || argb.length < pixelCount * 4) {
+    throw new Error('invalid stored image dimensions');
+  }
+
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  let source = 0;
+  let target = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    raw[target] = 0;
+    target += 1;
+    for (let x = 0; x < width; x += 1) {
+      const alpha = argb[source] ?? 0xff;
+      const red = argb[source + 1] ?? 0;
+      const green = argb[source + 2] ?? 0;
+      const blue = argb[source + 3] ?? 0;
+      raw[target] = red;
+      raw[target + 1] = green;
+      raw[target + 2] = blue;
+      raw[target + 3] = alpha;
+      source += 4;
+      target += 4;
+    }
+  }
+
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', pngHeader(width, height)),
+    pngChunk('IDAT', zlib.deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function pngHeader(width: number, height: number): Buffer {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  header[10] = 0;
+  header[11] = 0;
+  header[12] = 0;
+  return header;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const typeBytes = Buffer.from(type, 'ascii');
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBytes, data])), 0);
+  return Buffer.concat([length, typeBytes, data, crc]);
+}
+
+function crc32(data: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+const CRC32_TABLE = Array.from({ length: 256 }, (_value, index) => {
+  let crc = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = (crc & 1) ? (0xedb88320 ^ (crc >>> 1)) : (crc >>> 1);
+  }
+  return crc >>> 0;
+});
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {

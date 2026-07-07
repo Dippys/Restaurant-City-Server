@@ -58,6 +58,9 @@ type RpcResponder = (
 
 const STATUS_OK = 0;
 const SAVE_STATUS_OK = 0;
+const EMPLOYEE_MAX_WORK_TIME_MS = 4 * 60 * 60 * 1000;
+const GARDEN_GROW_TIME_SECONDS = 48 * 60 * 60;
+const GARDEN_MAX_WETNESS_SECONDS = 9 * 60 * 60;
 
 function writeIngredientMarketItem(ingredientId: number, price: number): Buffer {
   return Buffer.concat([writeVarint(ingredientId), writeVarint(price)]);
@@ -101,19 +104,28 @@ function writeFloor(floor: StoredProfile['floors'][number]): Buffer {
 function writeEmployee(employee: StoredProfile['employees'][number]): Buffer {
   return Buffer.concat([
     writeNetworkUid(employee.network, employee.networkUid, employee.playfishUid),
-    writeVarint(employee.happiness),
+    writeVarint(boundedWorkTime(employee.happiness)),
     writeU8(employee.task),
     writeBool(employee.notify),
     writeArray([]),
   ]);
 }
 
+function boundedWorkTime(value: number): number {
+  return boundedInt(value, 0, EMPLOYEE_MAX_WORK_TIME_MS, EMPLOYEE_MAX_WORK_TIME_MS);
+}
+
 function writePlot(plot: StoredProfile['gardenPlots'][number]): Buffer {
+  const elapsedSincePlanted = elapsedSeconds(plot.createdAt);
+  const elapsedSinceWatered = elapsedSeconds(plot.updatedAt);
+  const baseGrowth = boundedInt(plot.plantWetTime, 0, GARDEN_GROW_TIME_SECONDS, 0);
+  const baseWetness = boundedInt(plot.timeToDry, 0, GARDEN_MAX_WETNESS_SECONDS, 0);
+
   return Buffer.concat([
     writeU8(plot.plotId),
     writeVarint(plot.ingredientId),
-    writeVarint(plot.plantWetTime),
-    writeVarint(plot.timeToDry),
+    writeVarint(Math.min(GARDEN_GROW_TIME_SECONDS, baseGrowth + elapsedSincePlanted)),
+    writeVarint(Math.max(0, baseWetness - elapsedSinceWatered)),
   ]);
 }
 
@@ -152,7 +164,7 @@ function writeProfile(profile: StoredProfile, includeFullState: boolean): Buffer
     writeVarint(profile.demandPoint),
     writeVarint(profile.musicPlay),
     writeBool(profile.isInStreet),
-    writeVarint(profile.lastSave || Math.floor(Date.now() / 1000)),
+    writeVarint(elapsedSinceLastSave(profile.lastSave)),
     writeDate(profile.lastSurveyTime),
     writeBool(Boolean(profile.awards)),
     ...(profile.awards ? [writeByteArray(Buffer.from(profile.awards))] : []),
@@ -192,6 +204,15 @@ function boundedInt(value: number, min: number, max: number, fallback: number): 
   return value;
 }
 
+function elapsedSinceLastSave(lastSaveUnixSeconds: number): number {
+  if (!Number.isInteger(lastSaveUnixSeconds) || lastSaveUnixSeconds <= 0) {
+    return 0;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  return Math.max(0, now - lastSaveUnixSeconds);
+}
+
 async function getUserProfile(_request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
   const profile = await getPlayerProfile(account);
   const marketItems = await ingredientMarketItems();
@@ -216,10 +237,6 @@ async function getUsers(request: ParsedRequest | ParsedSubRequest, account: Acti
   const requestedIds = readRequestedUserIds(requestBody(request));
   const users = await getProfiles(requestedIds.map(String), account.networkUid);
   return writeArray(users.map((profile) => writeProfile(profile, true)));
-}
-
-function readBookmarkCount(): Buffer {
-  throw new Error('sync readBookmarkCount is not used');
 }
 
 async function readBookmarkCountForAccount(_request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
@@ -388,8 +405,8 @@ async function recordGameEventResponder(request: ParsedRequest | ParsedSubReques
   return Buffer.alloc(0);
 }
 
-async function pollEventsResponder(_request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
-  const result = await pollEvents(account);
+async function pollEventsResponder(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
+  const result = await pollEvents(account, readPollRequest(requestBody(request)));
   return Buffer.concat([
     writeVarint(result.minPollInterval),
     writeVarint(result.requestTimeout),
@@ -561,6 +578,21 @@ function readGameEvent(body: Buffer) {
   return { eventType, eventText };
 }
 
+function readPollRequest(body: Buffer) {
+  try {
+    let pos = 0;
+    let synchronous = false;
+    [synchronous, pos] = readBool(body, pos);
+    let requestTimeout = 0;
+    [requestTimeout, pos] = readVarint(body, pos);
+    let ackEventIds: number[] = [];
+    [ackEventIds] = readNumberArray(body, pos);
+    return { synchronous, requestTimeout, ackEventIds };
+  } catch {
+    return { synchronous: false, requestTimeout: 30000, ackEventIds: [] };
+  }
+}
+
 function readNumberArray(body: Buffer, pos: number): [number[], number] {
   let count = 0;
   [count, pos] = readVarint(body, pos);
@@ -597,6 +629,11 @@ function readJsonNumberArray(value: string): number[] {
 function todayVisited(profile: StoredProfile): StoredProfile['visits'] {
   const today = new Date().toISOString().slice(0, 10);
   return profile.visits.filter((visit) => visit.visitsTodayDate === today && visit.visitsTodayCount > 0);
+}
+
+function elapsedSeconds(value: Date): number {
+  const elapsed = Math.floor((Date.now() - value.getTime()) / 1000);
+  return Number.isFinite(elapsed) && elapsed > 0 ? elapsed : 0;
 }
 
 function readRequestedUserIds(body: Buffer): number[] {

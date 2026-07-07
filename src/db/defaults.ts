@@ -23,6 +23,7 @@ export interface FriendProfileSeed {
   readonly restaurantName: string;
   readonly gender: number;
   readonly credits: number;
+  readonly playCount: number;
   readonly userLevel: number;
   readonly gourmetPoint: number;
   readonly trashPoint: number;
@@ -35,18 +36,35 @@ export const STARTER_BUILDING_ITEMS: readonly OwnedItemSeed[] = [
   { id: 2060000, x: 0, y: 0 },
   { id: 2020001, x: 0, y: 0 },
   { id: 2010012, x: 0, y: 0 },
+  { id: 2070000, x: 0, y: -100 },
+  { id: 2000014, x: 60, y: -23 },
   { id: 2000014, x: -60, y: -23 },
   { id: 2050008, x: 0, y: 0 },
+  { id: 2040002, x: 70, y: 0 },
+  { id: 2040002, x: -70, y: 0 },
   { id: 2040017, x: 30, y: 0 },
+  { id: 2040011, x: 120, y: 0 },
 ];
 
 export const STARTER_RESTAURANT_ITEMS: readonly OwnedItemSeed[] = [
   { id: 3070000, x: 6, y: 2, data: 3 },
   { id: 3010000, x: 0, y: 4 },
   { id: 3000011, x: 0, y: 2 },
+  { id: 3000011, x: 0, y: 6 },
   { id: 3040001, x: 2, y: 3 },
+  { id: 3040001, x: 2, y: 5 },
+  { id: 3040001, x: 5, y: 5 },
   { id: 3030010, x: 3, y: 3 },
+  { id: 3030010, x: 3, y: 5 },
+  { id: 3030010, x: 6, y: 5 },
+  { id: 3060016, x: 0, y: 1 },
+  { id: 3060016, x: 1, y: 0 },
+  { id: 3200000, x: 2, y: 0, data: 1 },
+  { id: 3300000, x: 1, y: 7 },
   { id: 3100000, x: 4, y: 0, data: 1 },
+  { id: 3020003, x: 1, y: 1 },
+  { id: 3020003, x: 7, y: 1 },
+  { id: 3020003, x: 7, y: 7 },
 ];
 
 export const STARTER_FRIENDS: readonly FriendProfileSeed[] = [
@@ -56,8 +74,9 @@ export const STARTER_FRIENDS: readonly FriendProfileSeed[] = [
     firstName: 'Mia',
     fullName: 'Mia Stone',
     restaurantName: 'Mia Cafe',
-    gender: 1,
+    gender: 2,
     credits: 1200,
+    playCount: 3,
     userLevel: 2,
     gourmetPoint: 350,
     trashPoint: 0,
@@ -76,8 +95,9 @@ export const STARTER_FRIENDS: readonly FriendProfileSeed[] = [
     firstName: 'Jordan',
     fullName: 'Jordan Reed',
     restaurantName: 'Jordan Grill',
-    gender: 0,
+    gender: 1,
     credits: 6500,
+    playCount: 5,
     userLevel: 7,
     gourmetPoint: 5200,
     trashPoint: 1,
@@ -100,8 +120,9 @@ export const STARTER_FRIENDS: readonly FriendProfileSeed[] = [
     firstName: 'Sofia',
     fullName: 'Sofia Lane',
     restaurantName: 'Sofia Sushi',
-    gender: 1,
+    gender: 2,
     credits: 18000,
+    playCount: 9,
     userLevel: 14,
     gourmetPoint: 22000,
     trashPoint: 0,
@@ -132,8 +153,9 @@ export const STARTER_FRIENDS: readonly FriendProfileSeed[] = [
     firstName: 'Omar',
     fullName: 'Omar Hart',
     restaurantName: 'Omar Palace',
-    gender: 0,
+    gender: 1,
     credits: 75000,
+    playCount: 14,
     userLevel: 24,
     gourmetPoint: 95000,
     trashPoint: 0,

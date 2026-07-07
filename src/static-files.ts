@@ -45,6 +45,10 @@ export class StaticFileIndex {
     this.addDirectory(next, this.config.rcRoot);
     this.addDirectory(next, this.config.binXmlRoot);
 
+    if (this.config.useOriginalAssetSwfs) {
+      this.addOriginalAssetSwfs(next, this.config.originalAssetRoot);
+    }
+
     if (fs.existsSync(this.config.rebuiltSwf)) {
       next.set('game.swf', this.config.rebuiltSwf);
     }
@@ -78,6 +82,26 @@ export class StaticFileIndex {
       try {
         if (fs.statSync(fullPath).isFile()) {
           target.set(normaliseAssetName(fullPath), fullPath);
+        }
+      } catch {
+        // Ignore files that disappear during reindex.
+      }
+    }
+  }
+
+  private addOriginalAssetSwfs(target: Map<string, string>, dir: string): void {
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry);
+      try {
+        if (entry.toLowerCase() !== 'game.swf' && path.extname(entry).toLowerCase() === '.swf' && fs.statSync(fullPath).isFile()) {
+          target.set(normaliseAssetName(entry), fullPath);
         }
       } catch {
         // Ignore files that disappear during reindex.

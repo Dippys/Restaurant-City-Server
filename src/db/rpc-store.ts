@@ -8,6 +8,11 @@ const STATUS_OK = 0;
 const STATUS_NOT_ENOUGH_CASH = 1;
 const STARTING_CASH_BALANCE = 250;
 const DEFAULT_CASH_COST = 1;
+const GARDEN_WETNESS_PER_WATER_SECONDS = 3 * 60 * 60;
+const GARDEN_MAX_WETNESS_SECONDS = 9 * 60 * 60;
+const MAX_VISIT_ACTIVITY_GP = 15;
+const VISIT_ACTIVITY_PAYOUTS: ReadonlyArray<readonly [number, number]> = [[1, 500], [2, 100], [5, 50]];
+const MIN_VISIT_ACTIVITY_PAYOUT = 15;
 
 export interface StatusBalance {
   readonly status: number;
@@ -21,6 +26,19 @@ export interface InventoryGift {
 }
 
 export type StoredMail = Mail;
+
+export interface PollRequest {
+  readonly synchronous: boolean;
+  readonly requestTimeout: number;
+  readonly ackEventIds: readonly number[];
+}
+
+export interface StoredImagePayload {
+  readonly imageType: number;
+  readonly width: number;
+  readonly height: number;
+  readonly data: Buffer;
+}
 
 export async function ensureEconomyCatalog(): Promise<void> {
   await prisma.$transaction([
@@ -251,7 +269,39 @@ export async function storeImage(account: ActiveAccount, imageType: number, data
       height,
     },
   });
+
+  const imageUrl = `/__api/profile-image/${encodeURIComponent(account.networkUid)}/${imageType}.png`;
+  if (imageType === 2) {
+    await prisma.userProfile.update({
+      where: { id: profileKey(account.networkUid) },
+      data: { largeImageUrl: imageUrl },
+    });
+  } else {
+    await prisma.userProfile.update({
+      where: { id: profileKey(account.networkUid) },
+      data: { imageUrl },
+    });
+  }
+
   return STATUS_OK;
+}
+
+export async function latestStoredImage(networkUid: string, imageType: number): Promise<StoredImagePayload | null> {
+  const image = await prisma.storedImage.findFirst({
+    where: { userProfileId: profileKey(networkUid), imageType },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!image) {
+    return null;
+  }
+
+  return {
+    imageType: image.imageType,
+    width: image.width,
+    height: image.height,
+    data: Buffer.from(image.data),
+  };
 }
 
 export async function rankRestaurant(account: ActiveAccount, target: NetworkUidData, rating: number): Promise<number> {
@@ -391,16 +441,91 @@ export async function replyQuiz(account: ActiveAccount, quizId: number, answer: 
   return profile.credits;
 }
 
-export async function waterFriendGarden(account: ActiveAccount, friend: NetworkUidData, plotOwner: NetworkUidData, plotId: number): Promise<number> {
-  await ensureAccountProfile(account);
-  await prisma.gameEvent.create({
-    data: {
-      userProfileId: profileKey(account.networkUid),
-      eventType: 43,
-      eventText: JSON.stringify({ friend, plotOwner, plotId }),
-      createdAtUnix: nowSeconds(),
-    },
+export async function waterFriendGarden(account: ActiveAccount, visitor: NetworkUidData, plotOwner: NetworkUidData, plotId: number): Promise<number> {
+  const player = await ensureAccountProfile(account);
+  const ownerNetworkUid = targetNetworkUid(plotOwner, targetNetworkUid(visitor, PLAYER_NETWORK_UID));
+  const owner = await ensureProfileByUid(ownerNetworkUid);
+  const now = nowSeconds();
+  const today = new Date(now * 1000).toISOString().slice(0, 10);
+
+  await prisma.$transaction(async (tx) => {
+    const plot = await tx.gardenPlot.findUnique({
+      where: { userProfileId_plotId: { userProfileId: owner.id, plotId } },
+    });
+
+    if (plot && plot.ingredientId > 0) {
+      await tx.gardenPlot.update({
+        where: { userProfileId_plotId: { userProfileId: owner.id, plotId } },
+        data: { timeToDry: nextWaterLevel(plot.timeToDry, plot.updatedAt) },
+      });
+    }
+
+    if (owner.networkUid !== account.networkUid) {
+      const existingVisit = await tx.friendVisit.findUnique({
+        where: { userProfileId_friendNetworkUid: { userProfileId: player.id, friendNetworkUid: owner.networkUid } },
+      });
+      const alreadyVisitedToday = existingVisit?.visitsTodayDate === today && existingVisit.visitsTodayCount > 0;
+      const completedToday = await tx.friendVisit.count({
+        where: { userProfileId: player.id, visitsTodayDate: today, visitsTodayCount: { gt: 0 } },
+      });
+      const reward = alreadyVisitedToday ? 0 : visitReward(completedToday);
+
+      await tx.friendVisit.upsert({
+        where: { userProfileId_friendNetworkUid: { userProfileId: player.id, friendNetworkUid: owner.networkUid } },
+        update: {
+          friendNetwork: plotOwner.network || FACEBOOK_NETWORK,
+          friendPlayfishUid: plotOwner.playfishUid,
+          lastVisitedAt: now,
+          visitsTodayDate: today,
+          visitsTodayCount: alreadyVisitedToday ? { increment: 1 } : 1,
+        },
+        create: {
+          id: `${player.id}:visit:${owner.networkUid}`,
+          userProfileId: player.id,
+          friendNetwork: plotOwner.network || FACEBOOK_NETWORK,
+          friendNetworkUid: owner.networkUid,
+          friendPlayfishUid: plotOwner.playfishUid,
+          firstVisitedAt: now,
+          lastVisitedAt: now,
+          giftIngredientId: defaultIngredient(owner.networkUid),
+          visitsTodayDate: today,
+          visitsTodayCount: 1,
+        },
+      });
+
+      if (reward > 0) {
+        await tx.userProfile.update({
+          where: { id: player.id },
+          data: {
+            credits: { increment: reward },
+            gourmetPoint: { increment: Math.min(reward, MAX_VISIT_ACTIVITY_GP) },
+          },
+        });
+        await tx.friendVisitCredit.upsert({
+          where: { userProfileId_friendNetworkUid: { userProfileId: player.id, friendNetworkUid: owner.networkUid } },
+          update: { creditedAt: now },
+          create: {
+            id: `${player.id}:visit-credit:${owner.networkUid}`,
+            userProfileId: player.id,
+            friendNetwork: plotOwner.network || FACEBOOK_NETWORK,
+            friendNetworkUid: owner.networkUid,
+            friendPlayfishUid: plotOwner.playfishUid,
+            creditedAt: now,
+          },
+        });
+      }
+    }
+
+    await tx.gameEvent.create({
+      data: {
+        userProfileId: player.id,
+        eventType: 43,
+        eventText: JSON.stringify({ visitor, plotOwner, plotId, ownerNetworkUid }),
+        createdAtUnix: now,
+      },
+    });
   });
+
   return STATUS_OK;
 }
 
@@ -433,8 +558,13 @@ export async function recordGameEvent(account: ActiveAccount, eventType: number,
   });
 }
 
-export async function pollEvents(_account: ActiveAccount): Promise<{ minPollInterval: number; requestTimeout: number }> {
-  return { minPollInterval: 30000, requestTimeout: 30000 };
+export async function pollEvents(account: ActiveAccount, request: PollRequest): Promise<{ minPollInterval: number; requestTimeout: number }> {
+  await ensureAccountProfile(account);
+  const requestTimeout = boundedInt(request.requestTimeout, 5000, 120000, 30000);
+  return {
+    minPollInterval: request.synchronous ? 30000 : 0,
+    requestTimeout,
+  };
 }
 
 export async function timeToken(account: ActiveAccount): Promise<Buffer> {
@@ -521,6 +651,34 @@ function itemIdFromToken(token: string, fallback: number): number {
   const match = String(token).match(/\d+/);
   const value = match ? Number.parseInt(match[0] ?? '', 10) : NaN;
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function targetNetworkUid(value: NetworkUidData, fallback: string): string {
+  return value.networkUid || String(value.playfishUid || fallback);
+}
+
+function nextWaterLevel(currentWetness: number, wateredAt: Date): number {
+  const elapsed = Math.max(0, Math.floor((Date.now() - wateredAt.getTime()) / 1000));
+  const remainingWetness = Math.max(0, Math.min(currentWetness, GARDEN_MAX_WETNESS_SECONDS) - elapsed);
+  return Math.min(GARDEN_MAX_WETNESS_SECONDS, remainingWetness + GARDEN_WETNESS_PER_WATER_SECONDS);
+}
+
+function visitReward(completedActivitiesToday: number): number {
+  for (const [threshold, reward] of VISIT_ACTIVITY_PAYOUTS) {
+    if (completedActivitiesToday < threshold) {
+      return reward;
+    }
+  }
+
+  return MIN_VISIT_ACTIVITY_PAYOUT;
+}
+
+function boundedInt(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    return fallback;
+  }
+
+  return value;
 }
 
 function defaultIngredient(seed: string): number {
