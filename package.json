@@ -6,13 +6,21 @@
   "type": "commonjs",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit",
-    "start": "npm run build && node dist/server.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "check": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "start": "npm run db:push && npm run build && node dist/server.js",
     "start:built": "node dist/server.js"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
-    "typescript": "^5.7.2"
+    "prisma": "^7.8.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "better-sqlite3": "^12.11.1"
   }
 }

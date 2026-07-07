@@ -1,0 +1,307 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model UserProfile {
+  id               String      @id
+  network          Int         @default(2)
+  networkUid       String      @unique
+  playfishUid      Int         @default(0)
+  firstName        String
+  fullName         String
+  restaurantName   String
+  imageUrl         String      @default("")
+  largeImageUrl    String      @default("")
+  gender           Int         @default(0)
+  credits          Int         @default(50000)
+  playCount        Int         @default(0)
+  userLevel        Int         @default(2)
+  gourmetPoint     Int         @default(10000)
+  nbVote           Int         @default(0)
+  totalMark        Int         @default(0)
+  trashPoint       Int         @default(0)
+  demandPoint      Int         @default(0)
+  musicPlay        Int         @default(1)
+  cashBalance      Int         @default(250)
+  bookmarkCount    Int         @default(0)
+  isInStreet       Boolean     @default(false)
+  activeFloorIndex Int         @default(0)
+  saveVersion      Int         @default(1)
+  lastSave         Int         @default(0)
+  lastSurveyTime   Int         @default(0)
+  consecutionCount Int         @default(0)
+  awards           Bytes?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  ownedItems       OwnedItem[]
+  inventoryItems   InventoryItem[]
+  ingredients      IngredientInventory[]
+  gardenPlots      GardenPlot[]
+  floors           RestaurantFloor[]
+  employees        Employee[]
+  mailsSent        Mail[]      @relation("SentMails")
+  mailsReceived    Mail[]      @relation("ReceivedMails")
+  visits           FriendVisit[]
+  visitCredits     FriendVisitCredit[]
+  rankingsGiven    RestaurantRank[] @relation("RankingsGiven")
+  rankingsReceived RestaurantRank[] @relation("RankingsReceived")
+  gameEvents       GameEvent[]
+  storedImages     StoredImage[]
+  notificationsSent Notification[] @relation("NotificationsSent")
+  notificationsReceived Notification[] @relation("NotificationsReceived")
+  cashTransactions CashTransaction[]
+}
+
+model OwnedItem {
+  id                 String      @id
+  userProfileId      String
+  serverId           Int
+  globalItemId       Int
+  positionX          Int
+  positionY          Int
+  data               Int         @default(0)
+  roomIndex          Int         @default(0)
+  employeeNetwork    Int         @default(0)
+  employeeNetworkUid String      @default("")
+  employeePlayfishUid Int        @default(0)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  userProfile        UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, serverId])
+  @@index([userProfileId])
+}
+
+model InventoryItem {
+  id            String      @id
+  userProfileId String
+  globalItemId  Int
+  number        Int         @default(0)
+  isSelected    Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, globalItemId])
+  @@index([userProfileId])
+}
+
+model IngredientInventory {
+  id            String      @id
+  userProfileId String
+  globalItemId  Int
+  number        Int         @default(0)
+  isLocked      Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, globalItemId])
+  @@index([userProfileId])
+}
+
+model GardenPlot {
+  id            String      @id
+  userProfileId String
+  plotId        Int
+  ingredientId  Int
+  plantWetTime  Int         @default(0)
+  timeToDry     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, plotId])
+  @@index([userProfileId])
+}
+
+model RestaurantFloor {
+  id            String      @id
+  userProfileId String
+  floorIndex    Int
+  tilesJson     String      @default("[]")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, floorIndex])
+  @@index([userProfileId])
+}
+
+model Employee {
+  id                 String      @id
+  userProfileId      String
+  network            Int         @default(0)
+  networkUid         String      @default("")
+  playfishUid        Int         @default(0)
+  happiness          Int         @default(100)
+  task               Int         @default(0)
+  notify             Boolean     @default(false)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  userProfile        UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, networkUid])
+  @@index([userProfileId])
+}
+
+model Mail {
+  id                  Int         @id @default(autoincrement())
+  senderProfileId     String
+  recipientProfileId  String
+  senderNetwork       Int         @default(2)
+  senderNetworkUid    String
+  senderPlayfishUid   Int         @default(0)
+  recipientNetwork    Int         @default(2)
+  recipientNetworkUid String
+  recipientPlayfishUid Int        @default(0)
+  globalItemIdsJson   String      @default("[]")
+  itemId              Int         @default(0)
+  message             String      @default("")
+  read                Boolean     @default(false)
+  deleted             Boolean     @default(false)
+  sendDate            Int
+  deleteTime          Int         @default(0)
+  type                Int         @default(1)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  sender              UserProfile @relation("SentMails", fields: [senderProfileId], references: [id], onDelete: Cascade)
+  recipient           UserProfile @relation("ReceivedMails", fields: [recipientProfileId], references: [id], onDelete: Cascade)
+
+  @@index([recipientProfileId, deleted, sendDate])
+  @@index([senderProfileId])
+}
+
+model FriendVisit {
+  id            String      @id
+  userProfileId String
+  friendNetwork Int         @default(2)
+  friendNetworkUid String
+  friendPlayfishUid Int     @default(0)
+  firstVisitedAt Int
+  lastVisitedAt  Int
+  giftIngredientId Int      @default(4000000)
+  visitsTodayDate String    @default("")
+  visitsTodayCount Int      @default(0)
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, friendNetworkUid])
+  @@index([userProfileId])
+}
+
+model FriendVisitCredit {
+  id            String      @id
+  userProfileId String
+  friendNetwork Int         @default(2)
+  friendNetworkUid String
+  friendPlayfishUid Int     @default(0)
+  creditedAt    Int
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, friendNetworkUid])
+  @@index([userProfileId])
+}
+
+model RestaurantRank {
+  id                  String      @id
+  fromProfileId       String
+  targetProfileId     String?
+  targetNetwork       Int         @default(2)
+  targetNetworkUid    String
+  targetPlayfishUid   Int         @default(0)
+  rating              Int
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  fromProfile         UserProfile @relation("RankingsGiven", fields: [fromProfileId], references: [id], onDelete: Cascade)
+  targetProfile       UserProfile? @relation("RankingsReceived", fields: [targetProfileId], references: [id], onDelete: SetNull)
+
+  @@unique([fromProfileId, targetNetworkUid])
+  @@index([targetNetworkUid])
+}
+
+model GameEvent {
+  id            Int         @id @default(autoincrement())
+  userProfileId String
+  eventType     Int
+  eventText     String
+  createdAtUnix Int
+  createdAt     DateTime    @default(now())
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@index([userProfileId, createdAt])
+}
+
+model StoredImage {
+  id            Int         @id @default(autoincrement())
+  userProfileId String
+  imageType     Int
+  width         Int
+  height        Int
+  data          Bytes
+  createdAt     DateTime    @default(now())
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@index([userProfileId, createdAt])
+}
+
+model Notification {
+  id                  Int         @id @default(autoincrement())
+  senderProfileId     String
+  recipientProfileId  String?
+  recipientNetwork    Int         @default(2)
+  recipientNetworkUid String
+  recipientPlayfishUid Int        @default(0)
+  createdAtUnix       Int
+  createdAt           DateTime    @default(now())
+  sender              UserProfile @relation("NotificationsSent", fields: [senderProfileId], references: [id], onDelete: Cascade)
+  recipient           UserProfile? @relation("NotificationsReceived", fields: [recipientProfileId], references: [id], onDelete: SetNull)
+
+  @@index([recipientNetworkUid, createdAt])
+}
+
+model CashTransaction {
+  id            Int         @id @default(autoincrement())
+  userProfileId String
+  kind          String
+  token         String
+  amount        Int
+  balanceAfter  Int
+  createdAtUnix Int
+  createdAt     DateTime    @default(now())
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@index([userProfileId, createdAt])
+}
+
+model Pricepoint {
+  id              Int      @id @default(autoincrement())
+  productType     Int
+  payoutParameter Int
+  paymentProvider Int
+  price           Int
+  currency        String
+  currencyScale   Int
+  clientData      String   @default("")
+  token           String   @unique
+  enabled         Boolean  @default(true)
+}
+
+model PurchasableItem {
+  id       Int     @id @default(autoincrement())
+  skuId    Int
+  price    Int
+  currency String
+  token    String  @unique
+  enabled  Boolean @default(true)
+}
+
+model IngredientMarketItem {
+  id           Int     @id @default(autoincrement())
+  ingredientId Int     @unique
+  price        Int
+  enabled      Boolean @default(true)
+}

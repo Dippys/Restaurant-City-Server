@@ -2,6 +2,7 @@ import type { RpcSummary } from '../types';
 import { parseRequest, writeU8, writeVarint } from './codec';
 import { CALL_TYPES } from './calls';
 import { responders } from './responders';
+import type { ActiveAccount } from '../session';
 
 export { CALL_TYPES };
 
@@ -10,7 +11,7 @@ export interface RpcBuildResult {
   readonly summary: RpcSummary;
 }
 
-export function buildResponse(buf: Buffer): RpcBuildResult {
+export async function buildResponse(buf: Buffer, account: ActiveAccount): Promise<RpcBuildResult> {
   const req = parseRequest(buf);
   const summary: RpcSummary = { call: req.name, session: req.session, subs: [] };
 
@@ -24,7 +25,7 @@ export function buildResponse(buf: Buffer): RpcBuildResult {
 
     for (const sub of req.subs) {
       const responder = responders[sub.msgType];
-      const body = responder ? responder(sub) : null;
+      const body = responder ? await responder(sub, account) : null;
 
       if (body !== null) {
         parts.push(writeU8(sub.msgType), writeVarint(body.length), body);
@@ -39,7 +40,7 @@ export function buildResponse(buf: Buffer): RpcBuildResult {
   }
 
   const responder = req.msgType === undefined ? undefined : responders[req.msgType];
-  const body = responder ? responder(req) : null;
+  const body = responder ? await responder(req, account) : null;
 
   if (req.msgType !== undefined && body !== null) {
     summary.answered = 'ok';

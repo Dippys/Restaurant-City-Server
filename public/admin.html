@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Restaurant City - Database</title>
+<style>
+  :root {
+    --bg:#111316;
+    --panel:#181d22;
+    --panel2:#20272e;
+    --line:#303943;
+    --text:#e8eef4;
+    --muted:#93a0ad;
+    --accent:#58a9ff;
+    --green:#5fc78b;
+    --red:#e07272;
+    --amber:#e2b85d;
+    --violet:#b59af0;
+    --mono:'Cascadia Code','Consolas','SF Mono',Menlo,monospace;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  header {
+    height:50px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:0 16px;
+    background:var(--panel);
+    border-bottom:1px solid var(--line);
+    position:sticky;
+    top:0;
+    z-index:3;
+  }
+  h1 { margin:0; font-size:15px; }
+  nav { margin-left:auto; display:flex; gap:8px; }
+  a, button {
+    color:var(--text);
+    background:var(--panel2);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:7px 10px;
+    font:12px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    text-decoration:none;
+    cursor:pointer;
+  }
+  button:hover, a:hover { border-color:var(--accent); }
+  button.danger:hover { border-color:var(--red); color:#fff; }
+  main {
+    display:grid;
+    grid-template-columns:minmax(260px, 330px) 1fr;
+    min-height:calc(100vh - 50px);
+  }
+  aside {
+    border-right:1px solid var(--line);
+    background:#14181d;
+    padding:12px;
+    min-width:0;
+  }
+  section {
+    padding:14px;
+    min-width:0;
+  }
+  .toolbar { display:flex; gap:8px; margin-bottom:10px; }
+  .toolbar input { flex:1; }
+  .users {
+    display:grid;
+    gap:6px;
+  }
+  .user-row {
+    width:100%;
+    text-align:left;
+    display:grid;
+    gap:2px;
+    padding:9px 10px;
+  }
+  .user-row.active { border-color:var(--accent); background:#1e2b36; }
+  .user-row strong { font-size:13px; }
+  .user-row span { color:var(--muted); font:11px var(--mono); display:block; }
+  .grid {
+    display:grid;
+    grid-template-columns:repeat(4, minmax(140px, 1fr));
+    gap:10px;
+  }
+  .band {
+    border-bottom:1px solid var(--line);
+    padding-bottom:14px;
+    margin-bottom:14px;
+  }
+  h2 {
+    margin:0 0 10px;
+    font-size:15px;
+  }
+  h3 {
+    margin:0 0 8px;
+    font-size:13px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:.04em;
+  }
+  label {
+    display:grid;
+    gap:5px;
+    color:var(--muted);
+    font-size:11px;
+  }
+  input, select {
+    width:100%;
+    min-width:0;
+    background:var(--panel2);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:6px;
+    padding:8px 9px;
+    font:13px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  input:focus, select:focus {
+    outline:1px solid var(--accent);
+    border-color:var(--accent);
+  }
+  .actions {
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:10px;
+  }
+  .msg {
+    min-height:22px;
+    color:var(--muted);
+    font-size:12px;
+  }
+  .msg.ok { color:var(--green); }
+  .msg.err { color:var(--red); }
+  table {
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+  }
+  th, td {
+    border-bottom:1px solid var(--line);
+    padding:7px;
+    vertical-align:middle;
+  }
+  th {
+    color:var(--muted);
+    font-size:11px;
+    text-align:left;
+    font-weight:600;
+  }
+  td input, td select { padding:6px 7px; }
+  .server-id {
+    color:var(--muted);
+    font:11px var(--mono);
+  }
+  .empty {
+    color:var(--muted);
+    padding:24px 0;
+  }
+  .stats {
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin:4px 0 12px;
+  }
+  .pill {
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:4px 8px;
+    color:var(--muted);
+    background:#171c21;
+    font:11px var(--mono);
+  }
+  @media (max-width:980px) {
+    main { grid-template-columns:1fr; }
+    aside { border-right:0; border-bottom:1px solid var(--line); }
+    .grid { grid-template-columns:repeat(2, minmax(140px, 1fr)); }
+  }
+  @media (max-width:560px) {
+    header { height:auto; min-height:50px; flex-wrap:wrap; padding:8px 12px; }
+    nav { width:100%; margin-left:0; }
+    .grid { grid-template-columns:1fr; }
+    th:nth-child(1), td:nth-child(1) { display:none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Database</h1>
+  <span class="msg" id="topMsg"></span>
+  <nav>
+    <a href="/game">Game</a>
+    <a href="/__dash">Dashboard</a>
+  </nav>
+</header>
+<main>
+  <aside>
+    <div class="toolbar">
+      <input id="filter" placeholder="Filter users" />
+      <button id="refresh">Refresh</button>
+    </div>
+    <div class="users" id="users"></div>
+    <div class="actions">
+      <button id="newUser">New User</button>
+      <button class="danger" id="resetDb">Reset DB</button>
+    </div>
+  </aside>
+  <section>
+    <div class="band">
+      <h2 id="formTitle">New User</h2>
+      <div class="stats" id="stats"></div>
+      <form id="profileForm">
+        <div class="grid">
+          <label>User ID
+            <input id="networkUid" name="networkUid" inputmode="numeric" pattern="[0-9]{1,18}" maxlength="18" required />
+          </label>
+          <label>First name
+            <input id="firstName" name="firstName" maxlength="32" required />
+          </label>
+          <label>Full name
+            <input id="fullName" name="fullName" maxlength="64" required />
+          </label>
+          <label>Restaurant
+            <input id="restaurantName" name="restaurantName" maxlength="48" required />
+          </label>
+          <label>Gender
+            <select id="gender" name="gender">
+              <option value="0">Female</option>
+              <option value="1">Male</option>
+            </select>
+          </label>
+          <label>Level
+            <select id="userLevel" name="userLevel"></select>
+          </label>
+          <label>Credits
+            <input id="credits" name="credits" type="number" min="0" max="999999999" step="1" required />
+          </label>
+          <label>Gourmet points
+            <input id="gourmetPoint" name="gourmetPoint" type="number" min="0" max="999999999" step="1" required />
+          </label>
+          <label>Trash points
+            <input id="trashPoint" name="trashPoint" type="number" min="0" max="999999999" step="1" required />
+          </label>
+          <label>Demand points
+            <input id="demandPoint" name="demandPoint" type="number" min="0" max="999999999" step="1" required />
+          </label>
+          <label>Music play
+            <input id="musicPlay" name="musicPlay" type="number" min="0" max="999999999" step="1" required />
+          </label>
+          <label>Active floor
+            <select id="activeFloorIndex" name="activeFloorIndex"></select>
+          </label>
+          <label>Location
+            <select id="isInStreet" name="isInStreet">
+              <option value="false">Restaurant</option>
+              <option value="true">Street</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions">
+          <button type="submit" id="saveProfile">Save User</button>
+          <button type="button" class="danger" id="deleteUser">Delete User</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="band">
+      <h3>Add Item</h3>
+      <form id="itemForm">
+        <div class="grid">
+          <label>Item
+            <select id="newItemId" required></select>
+          </label>
+          <label>X
+            <input id="newItemX" type="number" min="-1000" max="1000" step="1" value="0" required />
+          </label>
+          <label>Y
+            <input id="newItemY" type="number" min="-1000" max="1000" step="1" value="0" required />
+          </label>
+          <label>Data
+            <input id="newItemData" type="number" min="0" max="255" step="1" value="0" required />
+          </label>
+          <label>Room
+            <select id="newItemRoom"></select>
+          </label>
+        </div>
+        <div class="actions">
+          <button type="submit">Add Item</button>
+        </div>
+      </form>
+    </div>
+
+    <div>
+      <h3>Owned Items</h3>
+      <div id="items"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const state = { users: [], catalog: [], selected: null };
+const usersEl = document.getElementById('users');
+const itemsEl = document.getElementById('items');
+const msgEl = document.getElementById('topMsg');
+const statsEl = document.getElementById('stats');
+const profileForm = document.getElementById('profileForm');
+
+for (let i = 1; i <= 99; i += 1) {
+  document.getElementById('userLevel').append(new Option(String(i), String(i)));
+}
+for (let i = 0; i <= 8; i += 1) {
+  document.getElementById('activeFloorIndex').append(new Option(String(i), String(i)));
+  document.getElementById('newItemRoom').append(new Option(String(i), String(i)));
+}
+
+function setMsg(text, type = '') {
+  msgEl.textContent = text;
+  msgEl.className = `msg ${type}`;
+  if (text) setTimeout(() => { msgEl.textContent = ''; msgEl.className = 'msg'; }, 3500);
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+async function load() {
+  const [catalog, users] = await Promise.all([
+    api('/__api/db/catalog'),
+    api('/__api/db/users'),
+  ]);
+  state.catalog = catalog.items;
+  state.users = users.users;
+  fillCatalogSelects();
+  renderUsers();
+  if (state.selected) {
+    const selected = state.users.find((user) => user.networkUid === state.selected.networkUid);
+    selectUser(selected || null);
+  } else if (state.users.length) {
+    selectUser(state.users[0]);
+  } else {
+    newUser();
+  }
+}
+
+function fillCatalogSelects() {
+  for (const select of [document.getElementById('newItemId'), ...document.querySelectorAll('.item-id')]) {
+    fillCatalogSelect(select);
+  }
+}
+
+function fillCatalogSelect(select, value) {
+  select.textContent = '';
+  const groups = [...new Set(state.catalog.map((item) => item.category))];
+  for (const group of groups) {
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = group;
+    for (const item of state.catalog.filter((entry) => entry.category === group)) {
+      optgroup.append(new Option(`${item.label} (${item.id})`, String(item.id)));
+    }
+    select.append(optgroup);
+  }
+  if (value !== undefined) select.value = String(value);
+}
+
+function renderUsers() {
+  const filter = document.getElementById('filter').value.trim().toLowerCase();
+  usersEl.textContent = '';
+  const shown = state.users.filter((user) => (
+    !filter ||
+    user.networkUid.includes(filter) ||
+    user.restaurantName.toLowerCase().includes(filter) ||
+    user.firstName.toLowerCase().includes(filter)
+  ));
+
+  if (!shown.length) {
+    const div = document.createElement('div');
+    div.className = 'empty';
+    div.textContent = 'No users';
+    usersEl.append(div);
+    return;
+  }
+
+  for (const user of shown) {
+    const button = document.createElement('button');
+    button.className = `user-row ${state.selected?.networkUid === user.networkUid ? 'active' : ''}`;
+    button.innerHTML = `<strong>${escapeHtml(user.restaurantName)}</strong><span>ID ${escapeHtml(user.networkUid)} - level ${user.userLevel} - ${user.ownedItems.length} items</span>`;
+    button.onclick = () => selectUser(user);
+    usersEl.append(button);
+  }
+}
+
+function selectUser(user) {
+  state.selected = user;
+  if (!user) {
+    newUser();
+    return;
+  }
+  document.getElementById('formTitle').textContent = user.networkUid === '0' ? 'Player User' : `User ${user.networkUid}`;
+  document.getElementById('networkUid').value = user.networkUid;
+  document.getElementById('networkUid').disabled = true;
+  document.getElementById('firstName').value = user.firstName;
+  document.getElementById('fullName').value = user.fullName;
+  document.getElementById('restaurantName').value = user.restaurantName;
+  document.getElementById('gender').value = String(user.gender);
+  document.getElementById('userLevel').value = String(user.userLevel);
+  document.getElementById('credits').value = String(user.credits);
+  document.getElementById('gourmetPoint').value = String(user.gourmetPoint);
+  document.getElementById('trashPoint').value = String(user.trashPoint);
+  document.getElementById('demandPoint').value = String(user.demandPoint);
+  document.getElementById('musicPlay').value = String(user.musicPlay);
+  document.getElementById('activeFloorIndex').value = String(user.activeFloorIndex);
+  document.getElementById('isInStreet').value = String(user.isInStreet);
+  document.getElementById('deleteUser').disabled = false;
+  statsEl.innerHTML = `
+    <span class="pill">save ${user.saveVersion}</span>
+    <span class="pill">${user.ownedItems.length} items</span>
+    <span class="pill">${user.credits} credits</span>
+  `;
+  renderItems(user);
+  renderUsers();
+}
+
+function newUser() {
+  state.selected = null;
+  document.getElementById('formTitle').textContent = 'New User';
+  document.getElementById('networkUid').disabled = false;
+  profileForm.reset();
+  document.getElementById('networkUid').value = '';
+  document.getElementById('firstName').value = 'Player';
+  document.getElementById('fullName').value = 'Player One';
+  document.getElementById('restaurantName').value = 'My Restaurant';
+  document.getElementById('userLevel').value = '1';
+  document.getElementById('credits').value = '0';
+  document.getElementById('gourmetPoint').value = '0';
+  document.getElementById('trashPoint').value = '0';
+  document.getElementById('demandPoint').value = '0';
+  document.getElementById('musicPlay').value = '0';
+  document.getElementById('activeFloorIndex').value = '0';
+  document.getElementById('deleteUser').disabled = true;
+  statsEl.innerHTML = '<span class="pill">new</span>';
+  itemsEl.innerHTML = '<div class="empty">Save the user before adding items.</div>';
+  renderUsers();
+}
+
+function profilePayload() {
+  return {
+    networkUid: document.getElementById('networkUid').value,
+    firstName: document.getElementById('firstName').value,
+    fullName: document.getElementById('fullName').value,
+    restaurantName: document.getElementById('restaurantName').value,
+    gender: Number(document.getElementById('gender').value),
+    credits: Number(document.getElementById('credits').value),
+    userLevel: Number(document.getElementById('userLevel').value),
+    gourmetPoint: Number(document.getElementById('gourmetPoint').value),
+    trashPoint: Number(document.getElementById('trashPoint').value),
+    demandPoint: Number(document.getElementById('demandPoint').value),
+    musicPlay: Number(document.getElementById('musicPlay').value),
+    activeFloorIndex: Number(document.getElementById('activeFloorIndex').value),
+    isInStreet: document.getElementById('isInStreet').value === 'true',
+  };
+}
+
+profileForm.onsubmit = async (event) => {
+  event.preventDefault();
+  try {
+    const payload = profilePayload();
+    if (state.selected) {
+      await api(`/__api/db/users/${encodeURIComponent(state.selected.networkUid)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await api('/__api/db/users', { method: 'POST', body: JSON.stringify(payload) });
+    }
+    setMsg('Saved', 'ok');
+    await load();
+  } catch (error) {
+    setMsg(error.message, 'err');
+  }
+};
+
+document.getElementById('deleteUser').onclick = async () => {
+  if (!state.selected) return;
+  if (!confirm(`Delete user ${state.selected.networkUid}?`)) return;
+  try {
+    await api(`/__api/db/users/${encodeURIComponent(state.selected.networkUid)}`, { method: 'DELETE' });
+    setMsg('Deleted', 'ok');
+    state.selected = null;
+    await load();
+  } catch (error) {
+    setMsg(error.message, 'err');
+  }
+};
+
+document.getElementById('itemForm').onsubmit = async (event) => {
+  event.preventDefault();
+  if (!state.selected) return;
+  try {
+    await api(`/__api/db/users/${encodeURIComponent(state.selected.networkUid)}/items`, {
+      method: 'POST',
+      body: JSON.stringify({
+        globalItemId: Number(document.getElementById('newItemId').value),
+        positionX: Number(document.getElementById('newItemX').value),
+        positionY: Number(document.getElementById('newItemY').value),
+        data: Number(document.getElementById('newItemData').value),
+        roomIndex: Number(document.getElementById('newItemRoom').value),
+      }),
+    });
+    setMsg('Item added', 'ok');
+    await load();
+  } catch (error) {
+    setMsg(error.message, 'err');
+  }
+};
+
+function renderItems(user) {
+  if (!user.ownedItems.length) {
+    itemsEl.innerHTML = '<div class="empty">No owned items</div>';
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.innerHTML = '<thead><tr><th style="width:92px">Server</th><th>Item</th><th style="width:86px">X</th><th style="width:86px">Y</th><th style="width:86px">Data</th><th style="width:86px">Room</th><th style="width:142px"></th></tr></thead>';
+  const tbody = document.createElement('tbody');
+
+  for (const item of user.ownedItems) {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td class="server-id">${item.serverId}</td>
+      <td><select class="item-id"></select></td>
+      <td><input class="item-x" type="number" min="-1000" max="1000" step="1" value="${item.positionX}"></td>
+      <td><input class="item-y" type="number" min="-1000" max="1000" step="1" value="${item.positionY}"></td>
+      <td><input class="item-data" type="number" min="0" max="255" step="1" value="${item.data}"></td>
+      <td><select class="item-room"></select></td>
+      <td><button class="save-item">Save</button> <button class="danger delete-item">Delete</button></td>
+    `;
+    fillCatalogSelect(row.querySelector('.item-id'), item.globalItemId);
+    const roomSelect = row.querySelector('.item-room');
+    for (let i = 0; i <= 8; i += 1) roomSelect.append(new Option(String(i), String(i)));
+    roomSelect.value = String(item.roomIndex);
+    row.querySelector('.save-item').onclick = () => saveItem(user, item.serverId, row);
+    row.querySelector('.delete-item').onclick = () => deleteItem(user, item.serverId);
+    tbody.append(row);
+  }
+  table.append(tbody);
+  itemsEl.textContent = '';
+  itemsEl.append(table);
+}
+
+async function saveItem(user, serverId, row) {
+  try {
+    await api(`/__api/db/users/${encodeURIComponent(user.networkUid)}/items/${serverId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        globalItemId: Number(row.querySelector('.item-id').value),
+        positionX: Number(row.querySelector('.item-x').value),
+        positionY: Number(row.querySelector('.item-y').value),
+        data: Number(row.querySelector('.item-data').value),
+        roomIndex: Number(row.querySelector('.item-room').value),
+      }),
+    });
+    setMsg('Item saved', 'ok');
+    await load();
+  } catch (error) {
+    setMsg(error.message, 'err');
+  }
+}
+
+async function deleteItem(user, serverId) {
+  try {
+    await api(`/__api/db/users/${encodeURIComponent(user.networkUid)}/items/${serverId}`, { method: 'DELETE' });
+    setMsg('Item deleted', 'ok');
+    await load();
+  } catch (error) {
+    setMsg(error.message, 'err');
+  }
+}
+
+document.getElementById('newUser').onclick = newUser;
+document.getElementById('refresh').onclick = () => load().catch((error) => setMsg(error.message, 'err'));
+document.getElementById('filter').oninput = renderUsers;
+document.getElementById('resetDb').onclick = async () => {
+  if (!confirm('Reset the local database?')) return;
+  try {
+    await api('/__api/db/reset', { method: 'POST', body: '{}' });
+    setMsg('Database reset', 'ok');
+    state.selected = null;
+    await load();
+  } catch (error) {
+    setMsg(error.message, 'err');
+  }
+};
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"]/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[char]));
+}
+
+load().catch((error) => setMsg(error.message, 'err'));
+</script>
+</body>
+</html>

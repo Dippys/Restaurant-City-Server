@@ -61,6 +61,73 @@ export function readString(buf: Buffer, pos: number): [string, number] {
   return [value, pos];
 }
 
+export function readU8(buf: Buffer, pos: number): [number, number] {
+  if (pos >= buf.length) {
+    throw new Error('unexpected EOF while reading uint8');
+  }
+
+  return [buf[pos] ?? 0, pos + 1];
+}
+
+export function readBool(buf: Buffer, pos: number): [boolean, number] {
+  const [value, nextPos] = readU8(buf, pos);
+  return [value !== 0, nextPos];
+}
+
+export function readIntvar32(buf: Buffer, pos: number): [number, number] {
+  const [encoded, nextPos] = readVarint(buf, pos);
+  const value = (encoded & 1) !== 0 ? ~(encoded >>> 1) : encoded >>> 1;
+  return [value, nextPos];
+}
+
+export function readByteArray(buf: Buffer, pos: number): [Buffer, number] {
+  let length = 0;
+  [length, pos] = readVarint(buf, pos);
+
+  if (pos + length > buf.length) {
+    throw new Error('unexpected EOF while reading byte array');
+  }
+
+  return [buf.subarray(pos, pos + length), pos + length];
+}
+
+export function readArray<T>(buf: Buffer, pos: number, readItem: (itemPos: number) => [T, number]): [T[], number] {
+  let count = 0;
+  [count, pos] = readVarint(buf, pos);
+
+  const items: T[] = [];
+  for (let i = 0; i < count; i += 1) {
+    let item: T;
+    [item, pos] = readItem(pos);
+    items.push(item);
+  }
+
+  return [items, pos];
+}
+
+export interface NetworkUidValue {
+  readonly network: number;
+  readonly networkUid: string;
+  readonly playfishUid: number;
+}
+
+export function readNetworkUid(buf: Buffer, pos: number): [NetworkUidValue, number] {
+  let network = 0;
+  [network, pos] = readVarint(buf, pos);
+
+  if (network === 0) {
+    return [{ network, networkUid: '', playfishUid: 0 }, pos];
+  }
+
+  let networkUid = '';
+  [networkUid, pos] = readString(buf, pos);
+
+  let playfishUid = 0;
+  [playfishUid, pos] = readVarint(buf, pos);
+
+  return [{ network, networkUid, playfishUid }, pos];
+}
+
 export function writeVarint(value: number): Buffer {
   let n = value >>> 0;
   const groups: number[] = [];
@@ -85,6 +152,11 @@ export function writeIntvar32(value: number): Buffer {
 export function writeString(value: string): Buffer {
   const utf8 = Buffer.from(value, 'utf8');
   return Buffer.concat([writeVarint([...value].length), utf8]);
+}
+
+export function writeByteArray(value: Buffer | Uint8Array): Buffer {
+  const bytes = Buffer.from(value);
+  return Buffer.concat([writeVarint(bytes.length), bytes]);
 }
 
 export function writeBool(value: boolean): Buffer {

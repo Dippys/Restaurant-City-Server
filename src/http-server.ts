@@ -3,10 +3,23 @@ import * as http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
 import type { ServerConfig } from './config';
+import {
+  addAdminOwnedItem,
+  createAdminUser,
+  deleteAdminOwnedItem,
+  deleteAdminUser,
+  itemCatalog,
+  listAdminUsers,
+  resetAdminDatabase,
+  updateAdminOwnedItem,
+  updateAdminUser,
+} from './db/admin-store';
+import { ensureLoginAccount } from './db/profile-store';
 import { RequestLog } from './request-log';
 import { StaticFileIndex } from './static-files';
 import type { CapturedRequest } from './types';
 import { buildResponse } from './rpc';
+import { accountFromRequest, accountFromUsername, defaultAccount, loginCookie, logoutCookie } from './session';
 
 const CROSSDOMAIN = [
   '<?xml version="1.0"?>',
@@ -17,11 +30,6 @@ const CROSSDOMAIN = [
   '</cross-domain-policy>',
   '',
 ].join('\n');
-
-const TRANSPARENT_PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-  'base64',
-);
 
 export interface RestaurantCityServer {
   readonly httpServer: http.Server;
@@ -66,6 +74,20 @@ async function handleRequest(
     return;
   }
 
+  if (pathname === '/game' || pathname === '/play') {
+    const html = fs.readFileSync(path.join(config.serverRoot, 'public', 'game.html'));
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
+  if (pathname === '/admin' || pathname === '/database') {
+    const html = fs.readFileSync(path.join(config.serverRoot, 'public', 'admin.html'));
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
   if (pathname === '/__events') {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -96,6 +118,40 @@ async function handleRequest(
     return;
   }
 
+  if (pathname === '/__api/session' && req.method === 'GET') {
+    const account = accountFromRequest(req);
+    sendJson(res, {
+      ok: true,
+      loggedIn: Boolean(account),
+      account,
+    });
+    return;
+  }
+
+  if (pathname === '/__api/login' && req.method === 'POST') {
+    try {
+      const input = parseJsonBody<{ username?: string }>(body);
+      const account = accountFromUsername(input.username || '');
+      const profile = await ensureLoginAccount(account);
+      res.setHeader('Set-Cookie', loginCookie(account.username));
+      sendJson(res, { ok: true, account, profile });
+    } catch (error) {
+      sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+    return;
+  }
+
+  if (pathname === '/__api/logout' && req.method === 'POST') {
+    res.setHeader('Set-Cookie', logoutCookie());
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (pathname.startsWith('/__api/db')) {
+    await handleDatabaseApi(req.method || 'GET', pathname, body, res);
+    return;
+  }
+
   if (pathname === '/crossdomain.xml') {
     entry.status = 200;
     entry.matched = '(crossdomain policy)';
@@ -106,13 +162,7 @@ async function handleRequest(
   }
 
   if (isRpcPath(pathname)) {
-    handleRpc(res, body, entry);
-    requestLog.record(entry);
-    return;
-  }
-
-  if (/^\/news\d+\.png$/i.test(pathname)) {
-    sendGeneratedPng(res, entry, '(generated newsletter placeholder)');
+    await handleRpc(req, res, body, entry);
     requestLog.record(entry);
     return;
   }
@@ -130,12 +180,13 @@ async function handleRequest(
   requestLog.record(entry);
 }
 
-function handleRpc(res: ServerResponse, body: Buffer, entry: CapturedRequest): void {
+async function handleRpc(req: IncomingMessage, res: ServerResponse, body: Buffer, entry: CapturedRequest): Promise<void> {
   entry.kind = 'rpc';
+  const account = accountFromRequest(req) ?? defaultAccount();
 
   let response: Buffer;
   try {
-    const result = buildResponse(body);
+    const result = await buildResponse(body, account);
     response = result.response;
     entry.rpc = result.summary;
   } catch (error) {
@@ -153,20 +204,6 @@ function handleRpc(res: ServerResponse, body: Buffer, entry: CapturedRequest): v
     'Access-Control-Allow-Origin': '*',
   });
   res.end(response);
-}
-
-function sendGeneratedPng(res: ServerResponse, entry: CapturedRequest, displayPath: string): void {
-  entry.status = 200;
-  entry.matched = displayPath;
-  entry.respLen = TRANSPARENT_PNG.length;
-
-  res.writeHead(200, {
-    'Content-Type': 'image/png',
-    'Content-Length': TRANSPARENT_PNG.length,
-    'Access-Control-Allow-Origin': '*',
-    'Cache-Control': 'no-store',
-  });
-  res.end(TRANSPARENT_PNG);
 }
 
 function sendStaticFile(
@@ -218,8 +255,81 @@ function isRpcPath(pathname: string): boolean {
   return /\/g\/rpc\//i.test(pathname) || /\/g\/billing\//i.test(pathname) || /\/g\/fbfeed\//i.test(pathname);
 }
 
-function sendJson(res: ServerResponse, value: unknown): void {
-  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+async function handleDatabaseApi(method: string, pathname: string, body: Buffer, res: ServerResponse): Promise<void> {
+  try {
+    const parts = pathname.split('/').filter(Boolean);
+
+    if (method === 'GET' && pathname === '/__api/db/catalog') {
+      sendJson(res, { ok: true, items: itemCatalog() });
+      return;
+    }
+
+    if (method === 'GET' && pathname === '/__api/db/users') {
+      sendJson(res, { ok: true, users: await listAdminUsers() });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/__api/db/users') {
+      sendJson(res, { ok: true, user: await createAdminUser(parseJsonBody(body)) });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/__api/db/reset') {
+      await resetAdminDatabase();
+      sendJson(res, { ok: true });
+      return;
+    }
+
+    if (parts.length >= 4 && parts[0] === '__api' && parts[1] === 'db' && parts[2] === 'users') {
+      const networkUid = decodeURIComponent(parts[3] || '');
+
+      if (parts.length === 4 && method === 'PATCH') {
+        sendJson(res, { ok: true, user: await updateAdminUser(networkUid, parseJsonBody(body)) });
+        return;
+      }
+
+      if (parts.length === 4 && method === 'DELETE') {
+        await deleteAdminUser(networkUid);
+        sendJson(res, { ok: true });
+        return;
+      }
+
+      if (parts.length === 5 && parts[4] === 'items' && method === 'POST') {
+        sendJson(res, { ok: true, user: await addAdminOwnedItem(networkUid, parseJsonBody(body)) });
+        return;
+      }
+
+      if (parts.length === 6 && parts[4] === 'items') {
+        const serverId = Number(parts[5]);
+
+        if (method === 'PATCH') {
+          sendJson(res, { ok: true, user: await updateAdminOwnedItem(networkUid, serverId, parseJsonBody(body)) });
+          return;
+        }
+
+        if (method === 'DELETE') {
+          sendJson(res, { ok: true, user: await deleteAdminOwnedItem(networkUid, serverId) });
+          return;
+        }
+      }
+    }
+
+    sendJson(res, { ok: false, error: 'not found' }, 404);
+  } catch (error) {
+    sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+}
+
+function parseJsonBody<T>(body: Buffer): T {
+  if (!body.length) {
+    return {} as T;
+  }
+
+  return JSON.parse(body.toString('utf8')) as T;
+}
+
+function sendJson(res: ServerResponse, value: unknown, status = 200): void {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(value));
 }
 

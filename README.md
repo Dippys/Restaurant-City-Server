@@ -15,15 +15,19 @@ or:
 npm start
 ```
 
-`npm start` builds the TypeScript project first, then runs `dist/server.js`.
+`npm start` syncs the SQLite schema, builds the TypeScript project, then runs
+`dist/server.js`.
 
 Default URL: <http://localhost:8090>  
 Dashboard: <http://localhost:8090/__dash>
+Game page: <http://localhost:8090/game>  
+Database admin: <http://localhost:8090/admin>
 
 ## Useful commands
 
 ```bat
 npm run check
+npm run db:push
 npm run build
 npm run start:built
 ```
@@ -38,9 +42,13 @@ Use `npm run start:built` only after `npm run build`.
 | `src/http-server.ts` | HTTP routes, dashboard API, static serving, RPC endpoint |
 | `src/static-files.ts` | fuzzy asset index for RC root and `bin-xml` |
 | `src/request-log.ts` | in-memory request ring buffer and SSE fan-out |
+| `src/db/` | Prisma client and database-backed profile store |
 | `src/rpc/codec.ts` | PlayFish binary RPC primitive readers/writers |
+| `src/rpc/save-profile-parser.ts` | decoder for `saveProfile` profile/audit payloads |
 | `src/rpc/responders.ts` | implemented RPC response bodies |
 | `src/rpc/index.ts` | request parsing and batch/single response envelopes |
+| `prisma/schema.prisma` | SQLite persistence schema |
+| `prisma.config.ts` | Prisma 7 datasource config |
 | `server.js` | compatibility shim; run `npm start` if `dist/` is missing |
 
 ## RPC status
@@ -54,27 +62,41 @@ Implemented responders:
 | 3 | `getUserProfile` |
 | 4 | `getUsers` |
 | 5 | `saveProfile` |
+| 17 | `swapIngredient` |
+| 19 | `sendMail` |
 | 20 | `getMails` |
+| 25 | `quizzReply` |
+| 32 | `buyMystryBox` |
+| 34 | `storeImage` |
+| 35 | `rankRestaurant` |
+| 36 | `firstTimeVisitFriend` |
+| 37 | `getRandomStreetUsers` |
+| 38 | `getGourmetStreetUsers` |
 | 40 | `purchaseCoinsWithPfCash` |
 | 41 | `purchaseCashItem` |
 | 42 | `purchaseCashItemIngredients` |
+| 43 | `waterFriendGarden` |
 | 44 | `readBookmarkCount` |
 | 45 | `writeBookmarkCount` |
 | 46 | `sendNotification` |
 | 246 | `getPricepoints` |
+| 247 | `pollEvents` |
 | 248 | `getCashBalance` |
 | 249 | `getServerTime` |
 | 250 | `getPurchasableItems` |
 | 251 | `recordGameEvent` |
+| 253 | `getTimeToken0` |
 | 254 | `ping` |
 
-`getUserProfile` returns a synthetic starter profile that mirrors the local
-debug fallback user, plus three ingredient market entries. Autosaves are
-acknowledged with the requested save version and empty mail/ingredient/garden
-delta lists.
+SQLite now stores profile state, owned items, inventory, ingredients, garden
+plots, floors, employees, mails, bookmark count, cash balance and transactions,
+pricepoints, purchasable items, restaurant ranks, notifications, game events,
+visit rewards, and stored images. `saveProfile` applies the decoded PlayFish
+audit-change payload to those tables.
 
-The newsletter image requests observed as `/news0.png`, `/news1.png`, and
-`/news2.png` are served as generated transparent PNG placeholders.
+Newsletter image requests are normal static-file requests. If a real newsletter
+PNG is not present, the dashboard logs the 404 instead of returning a generated
+placeholder.
 
 ## Control endpoints
 
