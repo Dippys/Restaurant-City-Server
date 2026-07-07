@@ -1,0 +1,402 @@
+GET /game.swf  ->  HTTP 200
+time: 2026-07-07T11:26:11.823Z
+query: {"cb":"2158422408"}
+headers:
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-07T11:26:16.066Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  content-type: application/octet-stream
+  content-length: 1184
+  user-agent: Shockwave Flash
+  host: localhost:8090
+  cache-control: no-cache
+body: 1184 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f90001881c816f413d742653413d742653563d742645563d74264d50333d742641453d742656453d74264143433d662650523d742653503d662653423d66264445423d7426563d57494e25323033322532433025324330253243343635264d3d41646f626525323057696e646f777326523d31393230783130383026434f4c3d636f6c6f722641523d312e30264f533d57696e646f77732532303826415243483d783836264c3d656e26494d453d7426505233323d7426505236343d74264341533d33322650543d5374616e64416c6f6e65264156443d66264c46443d662657443d6626544c533d74264d4c3d352e312644503d37328629666225354673696725354673657373696f6e2535466b65793d3225324537786764356e5542774435366a424a372535464767504277253546253546253245333630302532453132363538323834303025324437313932313236383626666225354673696725354673733d395a426a446f253546416f4c4b5a6d656d766d7739566d512535462535462666622535467369672535466170692535466b65793d3963656138396630646433666234376631383434666430653663663232383133266662253546736967253546696672616d652535466b65793d6433643934343638303261343432353937353564333865366431363365383230266662253546736967253546657870697265733d3132363538323834303026666225354673696725354674696d653d3132363538323330333325324538323037266662253546736967253546636f6f6b69652535467369673d3666613632613139643566633530326132383035396163646630646336656462266662253546736967253546696e2535466e657725354666616365626f6f6b3d31266662253546736967253546696e253546696672616d653d3126666225354673696725354670726f66696c6525354675706461746525354674696d653d313235323537333738382666622535467369673d64376161396365303361343937373262356635303535396465663762393161362666622535467369672535466c6f63616c653d656e25354647422666622535467369672535466578742535467065726d733d73746174757325354675706461746525324370686f746f25354675706c6f6164253243766964656f25354675706c6f61642532436372656174652535466e6f746525324373686172652535466974656d2532436175746f2535467075626c69736825354673686f7274253546666565642532437075626c69736825354673747265616d2532436175746f2535467075626c697368253546726563656e74253546616374697669747926666225354673696725354661646465643d31266662253546736967253546757365723d37313932313236383626666225354673696725354661707025354669643d3738353030313536343032
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkAAYgcgW9BPXQmU0E9dCZTVj10JkVWPXQmTVAzPXQmQUU9dCZWRT10JkFDQz1mJlBSPXQmU1A9ZiZTQj1mJkRFQj10JlY9V0lOJTIwMzIlMkMwJTJDMCUyQzQ2NSZNPUFkb2JlJTIwV2luZG93cyZSPTE5MjB4MTA4MCZDT0w9Y29sb3ImQVI9MS4wJk9TPVdpbmRvd3MlMjA4JkFSQ0g9eDg2Jkw9ZW4mSU1FPXQmUFIzMj10JlBSNjQ9dCZDQVM9MzImUFQ9U3RhbmRBbG9uZSZBVkQ9ZiZMRkQ9ZiZXRD1mJlRMUz10Jk1MPTUuMSZEUD03MoYpZmIlNUZzaWclNUZzZXNzaW9uJTVGa2V5PTIlMkU3eGdkNW5VQndENTZqQko3JTVGR2dQQnclNUYlNUYlMkUzNjAwJTJFMTI2NTgyODQwMCUyRDcxOTIxMjY4NiZmYiU1RnNpZyU1RnNzPTlaQmpEbyU1RkFvTEtabWVtdm13OVZtUSU1RiU1RiZmYiU1RnNpZyU1RmFwaSU1RmtleT05Y2VhODlmMGRkM2ZiNDdmMTg0NGZkMGU2Y2YyMjgxMyZmYiU1RnNpZyU1RmlmcmFtZSU1RmtleT1kM2Q5NDQ2ODAyYTQ0MjU5NzU1ZDM4ZTZkMTYzZTgyMCZmYiU1RnNpZyU1RmV4cGlyZXM9MTI2NTgyODQwMCZmYiU1RnNpZyU1RnRpbWU9MTI2NTgyMzAzMyUyRTgyMDcmZmIlNUZzaWclNUZjb29raWUlNUZzaWc9NmZhNjJhMTlkNWZjNTAyYTI4MDU5YWNkZjBkYzZlZGImZmIlNUZzaWclNUZpbiU1Rm5ldyU1RmZhY2Vib29rPTEmZmIlNUZzaWclNUZpbiU1RmlmcmFtZT0xJmZiJTVGc2lnJTVGcHJvZmlsZSU1RnVwZGF0ZSU1RnRpbWU9MTI1MjU3Mzc4OCZmYiU1RnNpZz1kN2FhOWNlMDNhNDk3NzJiNWY1MDU1OWRlZjdiOTFhNiZmYiU1RnNpZyU1RmxvY2FsZT1lbiU1RkdCJmZiJTVGc2lnJTVGZXh0JTVGcGVybXM9c3RhdHVzJTVGdXBkYXRlJTJDcGhvdG8lNUZ1cGxvYWQlMkN2aWRlbyU1RnVwbG9hZCUyQ2NyZWF0ZSU1Rm5vdGUlMkNzaGFyZSU1Rml0ZW0lMkNhdXRvJTVGcHVibGlzaCU1RnNob3J0JTVGZmVlZCUyQ3B1Ymxpc2glNUZzdHJlYW0lMkNhdXRvJTVGcHVibGlzaCU1RnJlY2VudCU1RmFjdGl2aXR5JmZiJTVGc2lnJTVGYWRkZWQ9MSZmYiU1RnNpZyU1RnVzZXI9NzE5MjEyNjg2JmZiJTVGc2lnJTVGYXBwJTVGaWQ9Nzg1MDAxNTY0MDI=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW........oA=t&SA=t&SV=t&EV=t&MP3=t&AE=t&VE=t&ACC=f&PR=t&SP=f&SB=f&DEB=t&V=WIN%2032%2C0%2C0%2C465&M=Adobe%20Windows&R=1920x1080&COL=color&AR=1.0&OS=Windows%208&ARCH=x86&L=en&IME=t&PR32=t&PR64=t&CAS=32&PT=StandAlone&AVD=f&LFD=f&WD=f&TLS=t&ML=5.1&DP=72.)fb%5Fsig%5Fsession%5Fkey=2%2E7xgd5nUBwD56jBJ7%5FGgPBw%5F%5F%2E3600%2E1265828400%2D719212686&fb%5Fsig%5Fss=9ZBjDo%5FAoLKZmemvmw9VmQ%5F%5F&fb%5Fsig%5Fapi%5Fkey=9cea89f0dd3fb47f1844fd0e6cf22813&fb%5Fsig%5Fiframe%5Fkey=d3d9446802a44259755d38e6d163e820&fb%5Fsig%5Fexpires=1265828400&fb%5Fsig%5Ftime=1265823033%2E8207&fb%5Fsig%5Fcookie%5Fsig=6fa62a19d5fc502a28059acdf0dc6edb&fb%5Fsig%5Fin%5Fnew%5Ffacebook=1&fb%5Fsig%5Fin%5Fiframe=1&fb%5Fsig%5Fprofile%5Fupdate%5Ftime=1252573788&fb%5Fsig=d7aa9ce03a49772b5f50559def7b91a6&fb%5Fsig%5Flocale=en%5FGB&fb%5Fsig%5Fext%5Fperms=status%5Fupdate%2Cphoto%5Fupload%2Cvideo%5Fupload%2Ccreate%5Fnote%2Cshare%5Fitem%2Cauto%5Fpublish%5Fshort%5Ffeed%2Cpublish%5Fstream%2Cauto%5Fpublish%5Frecent%5Factivity&fb%5Fsig%5Fadded=1&fb%5Fsig%5Fuser=719212686&fb%5Fsig%5Fapp%5Fid=78500156402
+
+============================================================
+
+GET /resconfig.xml  ->  HTTP 200
+time: 2026-07-07T11:26:16.120Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-07T11:26:16.122Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  content-type: application/octet-stream
+  content-length: 142
+  user-agent: Shockwave Flash
+  host: localhost:8090
+  cache-control: no-cache
+body: 142 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570307f90003000200f8001400f601002c00
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcDB/kAAwACAPgAFAD2AQAsAA==
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW...............,.
+
+============================================================
+
+GET /indoor_asset.swf  ->  HTTP 200
+time: 2026-07-07T11:26:16.151Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /outdoor_asset.swf  ->  HTTP 200
+time: 2026-07-07T11:26:16.153Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /avatar_asset.swf  ->  HTTP 200
+time: 2026-07-07T11:26:16.156Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /ingredient_asset.swf  ->  HTTP 200
+time: 2026-07-07T11:26:16.157Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /game_asset.swf  ->  HTTP 200
+time: 2026-07-07T11:26:16.158Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /sound_asset.swf  ->  HTTP 200
+time: 2026-07-07T11:26:16.161Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /model.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.163Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /ingredient.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.165Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /recipe.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.166Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /perk_asset.swf  ->  HTTP 200
+time: 2026-07-07T11:26:16.167Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /quiz.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.168Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /lang_en.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.169Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /lang_fr.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.169Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /challenge.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.170Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /newsletter.xml  ->  HTTP 200
+time: 2026-07-07T11:26:16.171Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /avatar.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.171Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /perk.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.172Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /front.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.173Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /restaurant.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.174Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /appointment.bin  ->  HTTP 200
+time: 2026-07-07T11:26:16.178Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-07T11:26:16.892Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  content-type: application/octet-stream
+  content-length: 149
+  user-agent: Shockwave Flash
+  host: localhost:8090
+  cache-control: no-cache
+body: 149 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202fb0e0085770a636f756e7472793d4742fb0401857700
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvsOAIV3CmNvdW50cnk9R0L7BAGFdwA=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......w.country=GB....w.
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-07T11:26:16.894Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  content-type: application/octet-stream
+  content-length: 593
+  user-agent: Shockwave Flash
+  host: localhost:8090
+  cache-control: no-cache
+body: 593 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f90005834d020130000644756d6d7930ce1001780000015601130000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000b0001a70d0a160000167a55736473496b5479347435646e433649753662534741bfbd0800000000001600001637574d4d5772673451693851525363726e4f505f666143bea06c000000000016000016715038675f6b6e55772e514e58535a566e7361776d6145bdd25a000000000016000016636e65626e457a52664f67476b4f59464a4d76716a6147c1f54000000000001600001652735636766974793353624a763644397a686f53346149c2c3500000000000160000166e3447762e725963684467352e7663373843427664474bc08b11000000000016000016505a6774465264433732635a7149785951706d3843474dc1a7310000000000160000164a58544a664252566b544558654f6d7632462e7853614fc0d9280000000000160000164a5f6654735475665a415f3279654c7a784e4b6e424751c391610000000000160000164d453772587271694d4969457a44316258555468455753c99f040000000000
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYNNAgEwAAZEdW1teTDOEAF4AAABVgETAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAACwABpw0KFgAAFnpVc2RzSWtUeTR0NWRuQzZJdTZiU0dBv70IAAAAAAAWAAAWN1dNTVdyZzRRaThRUlNjcm5PUF9mYUO+oGwAAAAAABYAABZxUDhnX2tuVXcuUU5YU1pWbnNhd21hRb3SWgAAAAAAFgAAFmNuZWJuRXpSZk9nR2tPWUZKTXZxamFHwfVAAAAAAAAWAAAWUnNWNnZpdHkzU2JKdjZEOXpob1M0YUnCw1AAAAAAABYAABZuNEd2LnJZY2hEZzUudmM3OENCdmRHS8CLEQAAAAAAFgAAFlBaZ3RGUmRDNzJjWnFJeFlRcG04Q0dNwacxAAAAAAAWAAAWSlhUSmZCUlZrVEVYZU9tdjJGLnhTYU/A2SgAAAAAABYAABZKX2ZUc1R1ZlpBXzJ5ZUx6eE5LbkJHUcORYQAAAAAAFgAAFk1FN3JYcnFpTUlpRXpEMWJYVVRoRVdTyZ8EAAAAAAA=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......M..0..Dummy0...x...V................................................................................................zUsdsIkTy4t5dnC6Iu6bSGA............7WMMWrg4Qi8QRScrnOP_faC..l.........qP8g_knUw.QNXSZVnsawmaE..Z.........cnebnEzRfOgGkOYFJMvqjaG..@.........RsV6vity3SbJv6D9zhoS4aI..P.........n4Gv.rYchDg5.vc78CBvdGK............PZgtFRdC72cZqIxYQpm8CGM..1.........JXTJfBRVkTEXeOmv2F.xSaO..(.........J_fTsTufZA_2yeLzxNKnBGQ..a.........ME7rXrqiMIiEzD1bXUThEWS........
+
+============================================================
+
+GET /news0.png  ->  HTTP 404
+time: 2026-07-07T11:26:27.557Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /news1.png  ->  HTTP 404
+time: 2026-07-07T11:26:27.558Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+GET /news2.png  ->  HTTP 404
+time: 2026-07-07T11:26:27.558Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  user-agent: Shockwave Flash
+  host: localhost:8090
+body: 0 bytes
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-07T11:26:54.475Z
+headers:
+  referer: http://localhost:8090/game.swf?cb=2158422408
+  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
+  x-flash-version: 32,0,0,465
+  content-type: application/octet-stream
+  content-length: 153
+  user-agent: Shockwave Flash
+  host: localhost:8090
+  cache-control: no-cache
+body: 153 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d6876527137725702012a1801166131316372347873326f343648583436776658695447
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCASoYARZhMTFjcjR4czJvNDZIWDQ2d2ZYaVRH
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW..*...a11cr4xs2o46HX46wfXiTG
