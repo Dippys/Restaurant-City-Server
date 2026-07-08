@@ -6,14 +6,36 @@ import * as zlib from 'node:zlib';
 import type { ServerConfig } from './config';
 import {
   addAdminOwnedItem,
+  createAdminGameEvent,
+  createAdminMail,
   createAdminUser,
+  deleteAdminEmployee,
+  deleteAdminFloor,
+  deleteAdminGameEvent,
+  deleteAdminGardenPlot,
+  deleteAdminIngredient,
+  deleteAdminIngredientMarketItem,
+  deleteAdminInventoryItem,
+  deleteAdminMail,
   deleteAdminOwnedItem,
+  deleteAdminPricepoint,
+  deleteAdminPurchasableItem,
   deleteAdminUser,
   itemCatalog,
+  listEconomy,
   listAdminUsers,
   resetAdminDatabase,
+  updateAdminMail,
   updateAdminOwnedItem,
   updateAdminUser,
+  upsertAdminEmployee,
+  upsertAdminFloor,
+  upsertAdminGardenPlot,
+  upsertAdminIngredient,
+  upsertAdminIngredientMarketItem,
+  upsertAdminInventoryItem,
+  upsertAdminPricepoint,
+  upsertAdminPurchasableItem,
 } from './db/admin-store';
 import { ensureLoginAccount } from './db/profile-store';
 import { latestStoredImage } from './db/rpc-store';
@@ -314,6 +336,65 @@ async function handleDatabaseApi(method: string, pathname: string, body: Buffer,
       return;
     }
 
+    if (method === 'GET' && pathname === '/__api/db/economy') {
+      sendJson(res, { ok: true, economy: await listEconomy() });
+      return;
+    }
+
+    if (parts.length >= 4 && parts[0] === '__api' && parts[1] === 'db' && parts[2] === 'economy') {
+      const resource = parts[3] || '';
+      const id = parts.length >= 5 ? Number(parts[4]) : null;
+      const payload = parseJsonBody<any>(body);
+
+      if (resource === 'pricepoints') {
+        if (method === 'POST') {
+          sendJson(res, { ok: true, item: await upsertAdminPricepoint(null, payload) });
+          return;
+        }
+        if (id !== null && method === 'PATCH') {
+          sendJson(res, { ok: true, item: await upsertAdminPricepoint(id, payload) });
+          return;
+        }
+        if (id !== null && method === 'DELETE') {
+          await deleteAdminPricepoint(id);
+          sendJson(res, { ok: true });
+          return;
+        }
+      }
+
+      if (resource === 'purchasable-items') {
+        if (method === 'POST') {
+          sendJson(res, { ok: true, item: await upsertAdminPurchasableItem(null, payload) });
+          return;
+        }
+        if (id !== null && method === 'PATCH') {
+          sendJson(res, { ok: true, item: await upsertAdminPurchasableItem(id, payload) });
+          return;
+        }
+        if (id !== null && method === 'DELETE') {
+          await deleteAdminPurchasableItem(id);
+          sendJson(res, { ok: true });
+          return;
+        }
+      }
+
+      if (resource === 'ingredient-market') {
+        if (method === 'POST') {
+          sendJson(res, { ok: true, item: await upsertAdminIngredientMarketItem(null, payload) });
+          return;
+        }
+        if (id !== null && method === 'PATCH') {
+          sendJson(res, { ok: true, item: await upsertAdminIngredientMarketItem(id, payload) });
+          return;
+        }
+        if (id !== null && method === 'DELETE') {
+          await deleteAdminIngredientMarketItem(id);
+          sendJson(res, { ok: true });
+          return;
+        }
+      }
+    }
+
     if (parts.length >= 4 && parts[0] === '__api' && parts[1] === 'db' && parts[2] === 'users') {
       const networkUid = decodeURIComponent(parts[3] || '');
 
@@ -328,21 +409,136 @@ async function handleDatabaseApi(method: string, pathname: string, body: Buffer,
         return;
       }
 
-      if (parts.length === 5 && parts[4] === 'items' && method === 'POST') {
-        sendJson(res, { ok: true, user: await addAdminOwnedItem(networkUid, parseJsonBody(body)) });
-        return;
-      }
+      if (parts.length === 5) {
+        const resource = parts[4] || '';
+        const payload = parseJsonBody<any>(body);
 
-      if (parts.length === 6 && parts[4] === 'items') {
-        const serverId = Number(parts[5]);
-
-        if (method === 'PATCH') {
-          sendJson(res, { ok: true, user: await updateAdminOwnedItem(networkUid, serverId, parseJsonBody(body)) });
+        if (resource === 'items' && method === 'POST') {
+          sendJson(res, { ok: true, user: await addAdminOwnedItem(networkUid, payload) });
           return;
         }
 
-        if (method === 'DELETE') {
-          sendJson(res, { ok: true, user: await deleteAdminOwnedItem(networkUid, serverId) });
+        if (resource === 'inventory' && method === 'POST') {
+          sendJson(res, { ok: true, user: await upsertAdminInventoryItem(networkUid, null, payload) });
+          return;
+        }
+
+        if (resource === 'ingredients' && method === 'POST') {
+          sendJson(res, { ok: true, user: await upsertAdminIngredient(networkUid, null, payload) });
+          return;
+        }
+
+        if (resource === 'garden' && method === 'POST') {
+          sendJson(res, { ok: true, user: await upsertAdminGardenPlot(networkUid, null, payload) });
+          return;
+        }
+
+        if (resource === 'floors' && method === 'POST') {
+          sendJson(res, { ok: true, user: await upsertAdminFloor(networkUid, null, payload) });
+          return;
+        }
+
+        if (resource === 'employees' && method === 'POST') {
+          sendJson(res, { ok: true, user: await upsertAdminEmployee(networkUid, null, payload) });
+          return;
+        }
+
+        if (resource === 'mails' && method === 'POST') {
+          sendJson(res, { ok: true, user: await createAdminMail(networkUid, payload) });
+          return;
+        }
+
+        if (resource === 'events' && method === 'POST') {
+          sendJson(res, { ok: true, user: await createAdminGameEvent(networkUid, payload) });
+          return;
+        }
+      }
+
+      if (parts.length === 6) {
+        const resource = parts[4] || '';
+        const resourceId = decodeURIComponent(parts[5] || '');
+        const numericId = Number(resourceId);
+        const payload = parseJsonBody<any>(body);
+
+        if (resource === 'items') {
+          if (method === 'PATCH') {
+            sendJson(res, { ok: true, user: await updateAdminOwnedItem(networkUid, numericId, payload) });
+            return;
+          }
+          if (method === 'DELETE') {
+            sendJson(res, { ok: true, user: await deleteAdminOwnedItem(networkUid, numericId) });
+            return;
+          }
+        }
+
+        if (resource === 'inventory') {
+          if (method === 'PATCH') {
+            sendJson(res, { ok: true, user: await upsertAdminInventoryItem(networkUid, numericId, payload) });
+            return;
+          }
+          if (method === 'DELETE') {
+            sendJson(res, { ok: true, user: await deleteAdminInventoryItem(networkUid, numericId) });
+            return;
+          }
+        }
+
+        if (resource === 'ingredients') {
+          if (method === 'PATCH') {
+            sendJson(res, { ok: true, user: await upsertAdminIngredient(networkUid, numericId, payload) });
+            return;
+          }
+          if (method === 'DELETE') {
+            sendJson(res, { ok: true, user: await deleteAdminIngredient(networkUid, numericId) });
+            return;
+          }
+        }
+
+        if (resource === 'garden') {
+          if (method === 'PATCH') {
+            sendJson(res, { ok: true, user: await upsertAdminGardenPlot(networkUid, numericId, payload) });
+            return;
+          }
+          if (method === 'DELETE') {
+            sendJson(res, { ok: true, user: await deleteAdminGardenPlot(networkUid, numericId) });
+            return;
+          }
+        }
+
+        if (resource === 'floors') {
+          if (method === 'PATCH') {
+            sendJson(res, { ok: true, user: await upsertAdminFloor(networkUid, numericId, payload) });
+            return;
+          }
+          if (method === 'DELETE') {
+            sendJson(res, { ok: true, user: await deleteAdminFloor(networkUid, numericId) });
+            return;
+          }
+        }
+
+        if (resource === 'employees') {
+          if (method === 'PATCH') {
+            sendJson(res, { ok: true, user: await upsertAdminEmployee(networkUid, resourceId, payload) });
+            return;
+          }
+          if (method === 'DELETE') {
+            sendJson(res, { ok: true, user: await deleteAdminEmployee(networkUid, resourceId) });
+            return;
+          }
+        }
+
+        if (resource === 'mails') {
+          if (method === 'PATCH') {
+            sendJson(res, { ok: true, user: await updateAdminMail(networkUid, numericId, payload) });
+            return;
+          }
+          if (method === 'DELETE') {
+            sendJson(res, { ok: true, user: await deleteAdminMail(networkUid, numericId) });
+            return;
+          }
+        }
+
+        if (resource === 'events' && method === 'DELETE') {
+          sendJson(res, { ok: true, user: await deleteAdminGameEvent(networkUid, numericId) });
           return;
         }
       }

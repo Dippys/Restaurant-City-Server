@@ -1,24 +1,67 @@
-import type { OwnedItem, UserProfile } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from './client';
 import { FACEBOOK_NETWORK, ITEM_CATALOG, PLAYER_NETWORK_UID, defaultProfileName, isKnownItemId } from './defaults';
+import { ensureEconomyCatalog } from './rpc-store';
 import { ensureStarterFriends } from './profile-store';
 
-export type AdminUser = UserProfile & { ownedItems: OwnedItem[] };
+const adminUserInclude = {
+  ownedItems: { orderBy: { serverId: 'asc' as const } },
+  inventoryItems: { orderBy: { globalItemId: 'asc' as const } },
+  ingredients: { orderBy: { globalItemId: 'asc' as const } },
+  gardenPlots: { orderBy: { plotId: 'asc' as const } },
+  floors: { orderBy: { floorIndex: 'asc' as const } },
+  employees: { orderBy: { networkUid: 'asc' as const } },
+  mailsSent: { orderBy: { sendDate: 'desc' as const } },
+  mailsReceived: { orderBy: { sendDate: 'desc' as const } },
+  visits: { orderBy: { lastVisitedAt: 'desc' as const } },
+  visitCredits: { orderBy: { creditedAt: 'desc' as const } },
+  rankingsGiven: { orderBy: { updatedAt: 'desc' as const } },
+  rankingsReceived: { orderBy: { updatedAt: 'desc' as const } },
+  gameEvents: { orderBy: { createdAt: 'desc' as const }, take: 100 },
+  storedImages: {
+    select: {
+      id: true,
+      userProfileId: true,
+      imageType: true,
+      width: true,
+      height: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' as const },
+  },
+  notificationsSent: { orderBy: { createdAtUnix: 'desc' as const } },
+  notificationsReceived: { orderBy: { createdAtUnix: 'desc' as const } },
+  cashTransactions: { orderBy: { createdAtUnix: 'desc' as const }, take: 100 },
+} satisfies Prisma.UserProfileInclude;
+
+export type AdminUser = Prisma.UserProfileGetPayload<{ include: typeof adminUserInclude }>;
 
 export interface ProfileInput {
   readonly networkUid: string;
+  readonly playfishUid?: number;
   readonly firstName: string;
   readonly fullName: string;
   readonly restaurantName: string;
+  readonly imageUrl?: string;
+  readonly largeImageUrl?: string;
   readonly gender: number;
   readonly credits: number;
+  readonly cashBalance?: number;
+  readonly playCount?: number;
   readonly userLevel: number;
   readonly gourmetPoint: number;
+  readonly nbVote?: number;
+  readonly totalMark?: number;
   readonly trashPoint: number;
   readonly demandPoint: number;
   readonly musicPlay: number;
+  readonly bookmarkCount?: number;
   readonly activeFloorIndex: number;
   readonly isInStreet: boolean;
+  readonly saveVersion?: number;
+  readonly lastSave?: number;
+  readonly lastSurveyTime?: number;
+  readonly consecutionCount?: number;
 }
 
 export interface OwnedItemInput {
@@ -27,13 +70,94 @@ export interface OwnedItemInput {
   readonly positionY: number;
   readonly data: number;
   readonly roomIndex: number;
+  readonly employeeNetwork?: number;
+  readonly employeeNetworkUid?: string;
+  readonly employeePlayfishUid?: number;
+}
+
+export interface InventoryInput {
+  readonly globalItemId: number;
+  readonly number: number;
+  readonly isSelected?: boolean;
+}
+
+export interface IngredientInput {
+  readonly globalItemId: number;
+  readonly number: number;
+  readonly isLocked?: boolean;
+}
+
+export interface GardenPlotInput {
+  readonly plotId: number;
+  readonly ingredientId: number;
+  readonly plantWetTime: number;
+  readonly timeToDry: number;
+}
+
+export interface FloorInput {
+  readonly floorIndex: number;
+  readonly tilesJson: string | readonly number[];
+}
+
+export interface EmployeeInput {
+  readonly network?: number;
+  readonly networkUid: string;
+  readonly playfishUid?: number;
+  readonly happiness: number;
+  readonly task: number;
+  readonly notify?: boolean;
+}
+
+export interface MailInput {
+  readonly senderNetworkUid: string;
+  readonly recipientNetworkUid?: string;
+  readonly globalItemIds?: readonly number[];
+  readonly itemId?: number;
+  readonly message?: string;
+  readonly read?: boolean;
+  readonly deleted?: boolean;
+  readonly sendDate?: number;
+  readonly deleteTime?: number;
+  readonly type?: number;
+}
+
+export interface GameEventInput {
+  readonly eventType: number;
+  readonly eventText: string;
+  readonly createdAtUnix?: number;
+}
+
+export interface PricepointInput {
+  readonly productType: number;
+  readonly payoutParameter: number;
+  readonly paymentProvider: number;
+  readonly price: number;
+  readonly currency: string;
+  readonly currencyScale: number;
+  readonly clientData?: string;
+  readonly token: string;
+  readonly enabled?: boolean;
+}
+
+export interface PurchasableItemInput {
+  readonly skuId: number;
+  readonly price: number;
+  readonly currency: string;
+  readonly token: string;
+  readonly enabled?: boolean;
+}
+
+export interface IngredientMarketInput {
+  readonly ingredientId: number;
+  readonly price: number;
+  readonly enabled?: boolean;
 }
 
 export async function listAdminUsers(): Promise<AdminUser[]> {
   await ensureStarterFriends();
 
   return prisma.userProfile.findMany({
-    include: { ownedItems: { orderBy: { serverId: 'asc' } } },
+    include: adminUserInclude,
     orderBy: { networkUid: 'asc' },
   });
 }
@@ -42,30 +166,51 @@ export function itemCatalog() {
   return ITEM_CATALOG;
 }
 
+export async function listEconomy() {
+  await ensureEconomyCatalog();
+  const [pricepoints, purchasableItems, ingredientMarketItems] = await Promise.all([
+    prisma.pricepoint.findMany({ orderBy: { id: 'asc' } }),
+    prisma.purchasableItem.findMany({ orderBy: { id: 'asc' } }),
+    prisma.ingredientMarketItem.findMany({ orderBy: { ingredientId: 'asc' } }),
+  ]);
+
+  return { pricepoints, purchasableItems, ingredientMarketItems };
+}
+
 export async function createAdminUser(input: ProfileInput): Promise<AdminUser> {
   const clean = validateProfileInput(input, true);
   const id = profileKey(clean.networkUid);
   const { firstName, fullName } = clean.firstName ? clean : defaultProfileName(clean.networkUid);
-  const playfishUid = Number.parseInt(clean.networkUid, 10);
 
   await prisma.userProfile.create({
     data: {
       id,
       network: FACEBOOK_NETWORK,
       networkUid: clean.networkUid,
-      playfishUid: Number.isFinite(playfishUid) ? playfishUid : 0,
+      playfishUid: clean.playfishUid,
       firstName,
       fullName,
       restaurantName: clean.restaurantName,
+      imageUrl: clean.imageUrl,
+      largeImageUrl: clean.largeImageUrl,
       gender: clean.gender,
       credits: clean.credits,
+      cashBalance: clean.cashBalance,
+      playCount: clean.playCount,
       userLevel: clean.userLevel,
       gourmetPoint: clean.gourmetPoint,
+      nbVote: clean.nbVote,
+      totalMark: clean.totalMark,
       trashPoint: clean.trashPoint,
       demandPoint: clean.demandPoint,
       musicPlay: clean.musicPlay,
+      bookmarkCount: clean.bookmarkCount,
       activeFloorIndex: clean.activeFloorIndex,
       isInStreet: clean.isInStreet,
+      saveVersion: clean.saveVersion,
+      lastSave: clean.lastSave,
+      lastSurveyTime: clean.lastSurveyTime,
+      consecutionCount: clean.consecutionCount,
     },
   });
 
@@ -79,18 +224,30 @@ export async function updateAdminUser(networkUid: string, input: ProfileInput): 
   await prisma.userProfile.update({
     where: { id: profileKey(safeNetworkUid) },
     data: {
+      playfishUid: clean.playfishUid,
       firstName: clean.firstName,
       fullName: clean.fullName,
       restaurantName: clean.restaurantName,
+      imageUrl: clean.imageUrl,
+      largeImageUrl: clean.largeImageUrl,
       gender: clean.gender,
       credits: clean.credits,
+      cashBalance: clean.cashBalance,
+      playCount: clean.playCount,
       userLevel: clean.userLevel,
       gourmetPoint: clean.gourmetPoint,
+      nbVote: clean.nbVote,
+      totalMark: clean.totalMark,
       trashPoint: clean.trashPoint,
       demandPoint: clean.demandPoint,
       musicPlay: clean.musicPlay,
+      bookmarkCount: clean.bookmarkCount,
       activeFloorIndex: clean.activeFloorIndex,
       isInStreet: clean.isInStreet,
+      saveVersion: clean.saveVersion,
+      lastSave: clean.lastSave,
+      lastSurveyTime: clean.lastSurveyTime,
+      consecutionCount: clean.consecutionCount,
     },
   });
 
@@ -104,6 +261,19 @@ export async function deleteAdminUser(networkUid: string): Promise<void> {
 
 export async function resetAdminDatabase(): Promise<void> {
   await prisma.$transaction([
+    prisma.cashTransaction.deleteMany(),
+    prisma.notification.deleteMany(),
+    prisma.storedImage.deleteMany(),
+    prisma.gameEvent.deleteMany(),
+    prisma.restaurantRank.deleteMany(),
+    prisma.friendVisitCredit.deleteMany(),
+    prisma.friendVisit.deleteMany(),
+    prisma.mail.deleteMany(),
+    prisma.employee.deleteMany(),
+    prisma.restaurantFloor.deleteMany(),
+    prisma.gardenPlot.deleteMany(),
+    prisma.ingredientInventory.deleteMany(),
+    prisma.inventoryItem.deleteMany(),
     prisma.ownedItem.deleteMany(),
     prisma.userProfile.deleteMany(),
   ]);
@@ -122,9 +292,6 @@ export async function addAdminOwnedItem(networkUid: string, input: OwnedItemInpu
       userProfileId: profileKey(safeNetworkUid),
       serverId,
       ...item,
-      employeeNetwork: 0,
-      employeeNetworkUid: '',
-      employeePlayfishUid: 0,
     },
   });
 
@@ -159,34 +326,321 @@ export async function deleteAdminOwnedItem(networkUid: string, serverId: number)
   return getAdminUser(safeNetworkUid);
 }
 
+export async function upsertAdminInventoryItem(
+  networkUid: string,
+  globalItemId: number | null,
+  input: InventoryInput,
+): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const item = validateInventoryInput(input);
+  const existingItemId = globalItemId === null ? item.globalItemId : boundedInt(globalItemId, 'globalItemId', 1, 9999999);
+
+  if (existingItemId !== item.globalItemId) {
+    await prisma.inventoryItem.deleteMany({ where: { userProfileId: profileKey(safeNetworkUid), globalItemId: existingItemId } });
+  }
+
+  await prisma.inventoryItem.upsert({
+    where: { userProfileId_globalItemId: { userProfileId: profileKey(safeNetworkUid), globalItemId: item.globalItemId } },
+    update: item,
+    create: {
+      id: inventoryKey(safeNetworkUid, item.globalItemId),
+      userProfileId: profileKey(safeNetworkUid),
+      ...item,
+    },
+  });
+
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function deleteAdminInventoryItem(networkUid: string, globalItemId: number): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const safeGlobalItemId = boundedInt(globalItemId, 'globalItemId', 1, 9999999);
+  await prisma.inventoryItem.deleteMany({ where: { userProfileId: profileKey(safeNetworkUid), globalItemId: safeGlobalItemId } });
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function upsertAdminIngredient(
+  networkUid: string,
+  globalItemId: number | null,
+  input: IngredientInput,
+): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const item = validateIngredientInput(input);
+  const existingItemId = globalItemId === null ? item.globalItemId : boundedInt(globalItemId, 'globalItemId', 1, 9999999);
+
+  if (existingItemId !== item.globalItemId) {
+    await prisma.ingredientInventory.deleteMany({ where: { userProfileId: profileKey(safeNetworkUid), globalItemId: existingItemId } });
+  }
+
+  await prisma.ingredientInventory.upsert({
+    where: { userProfileId_globalItemId: { userProfileId: profileKey(safeNetworkUid), globalItemId: item.globalItemId } },
+    update: item,
+    create: {
+      id: ingredientKey(safeNetworkUid, item.globalItemId),
+      userProfileId: profileKey(safeNetworkUid),
+      ...item,
+    },
+  });
+
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function deleteAdminIngredient(networkUid: string, globalItemId: number): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const safeGlobalItemId = boundedInt(globalItemId, 'globalItemId', 1, 9999999);
+  await prisma.ingredientInventory.deleteMany({ where: { userProfileId: profileKey(safeNetworkUid), globalItemId: safeGlobalItemId } });
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function upsertAdminGardenPlot(networkUid: string, plotId: number | null, input: GardenPlotInput): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const plot = validateGardenPlotInput(input);
+  const existingPlotId = plotId === null ? plot.plotId : boundedInt(plotId, 'plotId', 0, 99);
+
+  if (existingPlotId !== plot.plotId) {
+    await prisma.gardenPlot.deleteMany({ where: { userProfileId: profileKey(safeNetworkUid), plotId: existingPlotId } });
+  }
+
+  await prisma.gardenPlot.upsert({
+    where: { userProfileId_plotId: { userProfileId: profileKey(safeNetworkUid), plotId: plot.plotId } },
+    update: plot,
+    create: {
+      id: gardenPlotKey(safeNetworkUid, plot.plotId),
+      userProfileId: profileKey(safeNetworkUid),
+      ...plot,
+    },
+  });
+
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function deleteAdminGardenPlot(networkUid: string, plotId: number): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const safePlotId = boundedInt(plotId, 'plotId', 0, 99);
+  await prisma.gardenPlot.deleteMany({ where: { userProfileId: profileKey(safeNetworkUid), plotId: safePlotId } });
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function upsertAdminFloor(networkUid: string, floorIndex: number | null, input: FloorInput): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const floor = validateFloorInput(input);
+  const existingFloorIndex = floorIndex === null ? floor.floorIndex : boundedInt(floorIndex, 'floorIndex', 0, 8);
+
+  if (existingFloorIndex !== floor.floorIndex) {
+    await prisma.restaurantFloor.deleteMany({ where: { userProfileId: profileKey(safeNetworkUid), floorIndex: existingFloorIndex } });
+  }
+
+  await prisma.restaurantFloor.upsert({
+    where: { userProfileId_floorIndex: { userProfileId: profileKey(safeNetworkUid), floorIndex: floor.floorIndex } },
+    update: floor,
+    create: {
+      id: floorKey(safeNetworkUid, floor.floorIndex),
+      userProfileId: profileKey(safeNetworkUid),
+      ...floor,
+    },
+  });
+
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function deleteAdminFloor(networkUid: string, floorIndex: number): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const safeFloorIndex = boundedInt(floorIndex, 'floorIndex', 0, 8);
+  await prisma.restaurantFloor.deleteMany({ where: { userProfileId: profileKey(safeNetworkUid), floorIndex: safeFloorIndex } });
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function upsertAdminEmployee(networkUid: string, employeeNetworkUid: string | null, input: EmployeeInput): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const employee = validateEmployeeInput(input);
+  const existingEmployeeUid = employeeNetworkUid === null ? employee.networkUid : validateLooseUid(employeeNetworkUid, 'employeeNetworkUid');
+
+  if (existingEmployeeUid !== employee.networkUid) {
+    await prisma.employee.deleteMany({ where: { userProfileId: profileKey(safeNetworkUid), networkUid: existingEmployeeUid } });
+  }
+
+  await prisma.employee.upsert({
+    where: { userProfileId_networkUid: { userProfileId: profileKey(safeNetworkUid), networkUid: employee.networkUid } },
+    update: employee,
+    create: {
+      id: employeeKey(safeNetworkUid, employee.networkUid),
+      userProfileId: profileKey(safeNetworkUid),
+      ...employee,
+    },
+  });
+
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function deleteAdminEmployee(networkUid: string, employeeNetworkUid: string): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const safeEmployeeUid = validateLooseUid(employeeNetworkUid, 'employeeNetworkUid');
+  await prisma.employee.deleteMany({ where: { userProfileId: profileKey(safeNetworkUid), networkUid: safeEmployeeUid } });
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function createAdminMail(networkUid: string, input: MailInput): Promise<AdminUser> {
+  const recipientNetworkUid = validateNetworkUid(input.recipientNetworkUid || networkUid);
+  const senderNetworkUid = validateNetworkUid(input.senderNetworkUid || PLAYER_NETWORK_UID);
+  const sender = await getAdminUser(senderNetworkUid);
+  const recipient = await getAdminUser(recipientNetworkUid);
+  const clean = validateMailInput(input);
+
+  await prisma.mail.create({
+    data: {
+      senderProfileId: sender.id,
+      recipientProfileId: recipient.id,
+      senderNetwork: sender.network,
+      senderNetworkUid: sender.networkUid,
+      senderPlayfishUid: sender.playfishUid,
+      recipientNetwork: recipient.network,
+      recipientNetworkUid: recipient.networkUid,
+      recipientPlayfishUid: recipient.playfishUid,
+      globalItemIdsJson: JSON.stringify(clean.globalItemIds),
+      itemId: clean.itemId,
+      message: clean.message,
+      read: clean.read,
+      deleted: clean.deleted,
+      sendDate: clean.sendDate,
+      deleteTime: clean.deleteTime,
+      type: clean.type,
+    },
+  });
+
+  return getAdminUser(recipientNetworkUid);
+}
+
+export async function updateAdminMail(networkUid: string, mailId: number, input: MailInput): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const safeMailId = boundedInt(mailId, 'mailId', 1, 2147483647);
+  const clean = validateMailInput(input);
+
+  await prisma.mail.update({
+    where: { id: safeMailId },
+    data: {
+      globalItemIdsJson: JSON.stringify(clean.globalItemIds),
+      itemId: clean.itemId,
+      message: clean.message,
+      read: clean.read,
+      deleted: clean.deleted,
+      sendDate: clean.sendDate,
+      deleteTime: clean.deleteTime,
+      type: clean.type,
+    },
+  });
+
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function deleteAdminMail(networkUid: string, mailId: number): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const safeMailId = boundedInt(mailId, 'mailId', 1, 2147483647);
+  await prisma.mail.deleteMany({ where: { id: safeMailId } });
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function createAdminGameEvent(networkUid: string, input: GameEventInput): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const event = validateGameEventInput(input);
+
+  await prisma.gameEvent.create({
+    data: {
+      userProfileId: profileKey(safeNetworkUid),
+      ...event,
+    },
+  });
+
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function deleteAdminGameEvent(networkUid: string, eventId: number): Promise<AdminUser> {
+  const safeNetworkUid = validateNetworkUid(networkUid);
+  const safeEventId = boundedInt(eventId, 'eventId', 1, 2147483647);
+  await prisma.gameEvent.deleteMany({ where: { id: safeEventId, userProfileId: profileKey(safeNetworkUid) } });
+  return getAdminUser(safeNetworkUid);
+}
+
+export async function upsertAdminPricepoint(id: number | null, input: PricepointInput) {
+  const item = validatePricepointInput(input);
+  if (id === null) {
+    return prisma.pricepoint.create({ data: item });
+  }
+
+  return prisma.pricepoint.update({ where: { id: boundedInt(id, 'id', 1, 2147483647) }, data: item });
+}
+
+export async function deleteAdminPricepoint(id: number): Promise<void> {
+  await prisma.pricepoint.deleteMany({ where: { id: boundedInt(id, 'id', 1, 2147483647) } });
+}
+
+export async function upsertAdminPurchasableItem(id: number | null, input: PurchasableItemInput) {
+  const item = validatePurchasableItemInput(input);
+  if (id === null) {
+    return prisma.purchasableItem.create({ data: item });
+  }
+
+  return prisma.purchasableItem.update({ where: { id: boundedInt(id, 'id', 1, 2147483647) }, data: item });
+}
+
+export async function deleteAdminPurchasableItem(id: number): Promise<void> {
+  await prisma.purchasableItem.deleteMany({ where: { id: boundedInt(id, 'id', 1, 2147483647) } });
+}
+
+export async function upsertAdminIngredientMarketItem(id: number | null, input: IngredientMarketInput) {
+  const item = validateIngredientMarketInput(input);
+  if (id === null) {
+    return prisma.ingredientMarketItem.create({ data: item });
+  }
+
+  return prisma.ingredientMarketItem.update({ where: { id: boundedInt(id, 'id', 1, 2147483647) }, data: item });
+}
+
+export async function deleteAdminIngredientMarketItem(id: number): Promise<void> {
+  await prisma.ingredientMarketItem.deleteMany({ where: { id: boundedInt(id, 'id', 1, 2147483647) } });
+}
+
 async function getAdminUser(networkUid: string): Promise<AdminUser> {
   return prisma.userProfile.findUniqueOrThrow({
     where: { id: profileKey(networkUid) },
-    include: { ownedItems: { orderBy: { serverId: 'asc' } } },
+    include: adminUserInclude,
   });
 }
 
-function validateProfileInput(input: ProfileInput, creating: boolean): ProfileInput {
+function validateProfileInput(input: ProfileInput, creating: boolean): Required<ProfileInput> {
   const networkUid = validateNetworkUid(input.networkUid);
+  const defaultName = defaultProfileName(networkUid);
+  const numericUid = Number.parseInt(networkUid, 10);
 
   return {
     networkUid,
-    firstName: cleanText(input.firstName || (creating ? defaultProfileName(networkUid).firstName : ''), 'firstName', 1, 32),
-    fullName: cleanText(input.fullName || (creating ? defaultProfileName(networkUid).fullName : ''), 'fullName', 1, 64),
+    playfishUid: boundedInt(input.playfishUid ?? (Number.isFinite(numericUid) ? numericUid : 0), 'playfishUid', 0, 2147483647),
+    firstName: cleanText(input.firstName || (creating ? defaultName.firstName : ''), 'firstName', 1, 32),
+    fullName: cleanText(input.fullName || (creating ? defaultName.fullName : ''), 'fullName', 1, 64),
     restaurantName: cleanText(input.restaurantName || 'My Restaurant', 'restaurantName', 1, 48),
-    gender: boundedInt(input.gender, 'gender', 0, 1),
+    imageUrl: cleanFreeText(input.imageUrl ?? '', 'imageUrl', 0, 500),
+    largeImageUrl: cleanFreeText(input.largeImageUrl ?? '', 'largeImageUrl', 0, 500),
+    gender: boundedInt(input.gender, 'gender', 0, 2),
     credits: boundedInt(input.credits, 'credits', 0, 999999999),
+    cashBalance: boundedInt(input.cashBalance ?? 250, 'cashBalance', 0, 999999999),
+    playCount: boundedInt(input.playCount ?? 0, 'playCount', 0, 999999999),
     userLevel: boundedInt(input.userLevel, 'userLevel', 1, 99),
     gourmetPoint: boundedInt(input.gourmetPoint, 'gourmetPoint', 0, 999999999),
+    nbVote: boundedInt(input.nbVote ?? 0, 'nbVote', 0, 999999999),
+    totalMark: boundedInt(input.totalMark ?? 0, 'totalMark', 0, 999999999),
     trashPoint: boundedInt(input.trashPoint, 'trashPoint', 0, 999999999),
     demandPoint: boundedInt(input.demandPoint, 'demandPoint', 0, 999999999),
     musicPlay: boundedInt(input.musicPlay, 'musicPlay', 0, 999999999),
+    bookmarkCount: boundedInt(input.bookmarkCount ?? 0, 'bookmarkCount', 0, 999999999),
     activeFloorIndex: boundedInt(input.activeFloorIndex, 'activeFloorIndex', 0, 8),
     isInStreet: Boolean(input.isInStreet),
+    saveVersion: boundedInt(input.saveVersion ?? 1, 'saveVersion', 0, 999999999),
+    lastSave: boundedInt(input.lastSave ?? 0, 'lastSave', 0, 2147483647),
+    lastSurveyTime: boundedInt(input.lastSurveyTime ?? 0, 'lastSurveyTime', 0, 2147483647),
+    consecutionCount: boundedInt(input.consecutionCount ?? 0, 'consecutionCount', 0, 999999999),
   };
 }
 
-function validateOwnedItemInput(input: OwnedItemInput): OwnedItemInput {
+function validateOwnedItemInput(input: OwnedItemInput) {
   const globalItemId = boundedInt(input.globalItemId, 'globalItemId', 1, 9999999);
   if (!isKnownItemId(globalItemId)) {
     throw new Error('Choose an item from the catalog.');
@@ -198,6 +652,113 @@ function validateOwnedItemInput(input: OwnedItemInput): OwnedItemInput {
     positionY: boundedInt(input.positionY, 'positionY', -1000, 1000),
     data: boundedInt(input.data, 'data', 0, 255),
     roomIndex: boundedInt(input.roomIndex, 'roomIndex', 0, 8),
+    employeeNetwork: boundedInt(input.employeeNetwork ?? 0, 'employeeNetwork', 0, 99),
+    employeeNetworkUid: cleanFreeText(input.employeeNetworkUid ?? '', 'employeeNetworkUid', 0, 18),
+    employeePlayfishUid: boundedInt(input.employeePlayfishUid ?? 0, 'employeePlayfishUid', 0, 2147483647),
+  };
+}
+
+function validateInventoryInput(input: InventoryInput) {
+  return {
+    globalItemId: boundedInt(input.globalItemId, 'globalItemId', 1, 9999999),
+    number: boundedInt(input.number, 'number', 0, 999999999),
+    isSelected: Boolean(input.isSelected),
+  };
+}
+
+function validateIngredientInput(input: IngredientInput) {
+  return {
+    globalItemId: boundedInt(input.globalItemId, 'globalItemId', 1, 9999999),
+    number: boundedInt(input.number, 'number', 0, 999999999),
+    isLocked: Boolean(input.isLocked),
+  };
+}
+
+function validateGardenPlotInput(input: GardenPlotInput) {
+  return {
+    plotId: boundedInt(input.plotId, 'plotId', 0, 99),
+    ingredientId: boundedInt(input.ingredientId, 'ingredientId', 0, 9999999),
+    plantWetTime: boundedInt(input.plantWetTime, 'plantWetTime', 0, 2147483647),
+    timeToDry: boundedInt(input.timeToDry, 'timeToDry', 0, 2147483647),
+  };
+}
+
+function validateFloorInput(input: FloorInput) {
+  const tilesJson = typeof input.tilesJson === 'string' ? input.tilesJson : JSON.stringify(input.tilesJson);
+  const parsed = JSON.parse(tilesJson) as unknown;
+  if (!Array.isArray(parsed) || !parsed.every((value) => Number.isInteger(Number(value)))) {
+    throw new Error('tilesJson must be a JSON array of integers.');
+  }
+
+  return {
+    floorIndex: boundedInt(input.floorIndex, 'floorIndex', 0, 8),
+    tilesJson: JSON.stringify(parsed.map(Number)),
+  };
+}
+
+function validateEmployeeInput(input: EmployeeInput) {
+  return {
+    network: boundedInt(input.network ?? FACEBOOK_NETWORK, 'network', 0, 99),
+    networkUid: validateLooseUid(input.networkUid, 'networkUid'),
+    playfishUid: boundedInt(input.playfishUid ?? (Number.parseInt(input.networkUid, 10) || 0), 'playfishUid', 0, 2147483647),
+    happiness: boundedInt(input.happiness, 'happiness', 0, 4 * 60 * 60 * 1000),
+    task: boundedInt(input.task, 'task', 0, 255),
+    notify: Boolean(input.notify),
+  };
+}
+
+function validateMailInput(input: MailInput) {
+  return {
+    senderNetworkUid: validateNetworkUid(input.senderNetworkUid || PLAYER_NETWORK_UID),
+    recipientNetworkUid: input.recipientNetworkUid ? validateNetworkUid(input.recipientNetworkUid) : '',
+    globalItemIds: [...(input.globalItemIds || [])].map((id) => boundedInt(id, 'globalItemId', 1, 9999999)),
+    itemId: boundedInt(input.itemId ?? 0, 'itemId', 0, 9999999),
+    message: cleanFreeText(input.message ?? '', 'message', 0, 500),
+    read: Boolean(input.read),
+    deleted: Boolean(input.deleted),
+    sendDate: boundedInt(input.sendDate ?? nowSeconds(), 'sendDate', 0, 2147483647),
+    deleteTime: boundedInt(input.deleteTime ?? 0, 'deleteTime', 0, 255),
+    type: boundedInt(input.type ?? 1, 'type', 0, 255),
+  };
+}
+
+function validateGameEventInput(input: GameEventInput) {
+  return {
+    eventType: boundedInt(input.eventType, 'eventType', 0, 255),
+    eventText: cleanFreeText(input.eventText, 'eventText', 0, 1000),
+    createdAtUnix: boundedInt(input.createdAtUnix ?? nowSeconds(), 'createdAtUnix', 0, 2147483647),
+  };
+}
+
+function validatePricepointInput(input: PricepointInput) {
+  return {
+    productType: boundedInt(input.productType, 'productType', 0, 9999999),
+    payoutParameter: boundedInt(input.payoutParameter, 'payoutParameter', 0, 999999999),
+    paymentProvider: boundedInt(input.paymentProvider, 'paymentProvider', 0, 9999999),
+    price: boundedInt(input.price, 'price', 0, 999999999),
+    currency: cleanFreeText(input.currency || 'USD', 'currency', 1, 12),
+    currencyScale: boundedInt(input.currencyScale, 'currencyScale', 0, 9),
+    clientData: cleanFreeText(input.clientData ?? '', 'clientData', 0, 500),
+    token: cleanToken(input.token),
+    enabled: input.enabled !== false,
+  };
+}
+
+function validatePurchasableItemInput(input: PurchasableItemInput) {
+  return {
+    skuId: boundedInt(input.skuId, 'skuId', 1, 9999999),
+    price: boundedInt(input.price, 'price', 0, 999999999),
+    currency: cleanFreeText(input.currency || 'PFC', 'currency', 1, 12),
+    token: cleanToken(input.token),
+    enabled: input.enabled !== false,
+  };
+}
+
+function validateIngredientMarketInput(input: IngredientMarketInput) {
+  return {
+    ingredientId: boundedInt(input.ingredientId, 'ingredientId', 1, 9999999),
+    price: boundedInt(input.price, 'price', 0, 999999999),
+    enabled: input.enabled !== false,
   };
 }
 
@@ -209,6 +770,10 @@ function validateNetworkUid(value: string): string {
   return networkUid;
 }
 
+function validateLooseUid(value: string, field: string): string {
+  return cleanFreeText(String(value ?? '').trim(), field, 1, 64);
+}
+
 function cleanText(value: string, field: string, minLength: number, maxLength: number): string {
   const clean = String(value ?? '').trim().replace(/\s+/g, ' ');
   if (clean.length < minLength || clean.length > maxLength) {
@@ -218,6 +783,22 @@ function cleanText(value: string, field: string, minLength: number, maxLength: n
     throw new Error(`${field} contains unsupported characters.`);
   }
   return clean;
+}
+
+function cleanFreeText(value: string, field: string, minLength: number, maxLength: number): string {
+  const clean = String(value ?? '').trim();
+  if (clean.length < minLength || clean.length > maxLength) {
+    throw new Error(`${field} must be ${minLength}-${maxLength} characters.`);
+  }
+  return clean;
+}
+
+function cleanToken(value: string): string {
+  const token = cleanFreeText(value, 'token', 1, 120);
+  if (!/^[\w:.-]+$/.test(token)) {
+    throw new Error('token may only contain letters, numbers, underscores, dots, dashes, and colons.');
+  }
+  return token;
 }
 
 function boundedInt(value: number, field: string, min: number, max: number): number {
@@ -234,4 +815,28 @@ function profileKey(networkUid: string): string {
 
 function ownedItemKey(networkUid: string, serverId: number): string {
   return `${profileKey(networkUid)}:owned:${serverId}`;
+}
+
+function inventoryKey(networkUid: string, globalItemId: number): string {
+  return `${profileKey(networkUid)}:inventory:${globalItemId}`;
+}
+
+function ingredientKey(networkUid: string, globalItemId: number): string {
+  return `${profileKey(networkUid)}:ingredient:${globalItemId}`;
+}
+
+function gardenPlotKey(networkUid: string, plotId: number): string {
+  return `${profileKey(networkUid)}:garden:${plotId}`;
+}
+
+function floorKey(networkUid: string, floorIndex: number): string {
+  return `${profileKey(networkUid)}:floor:${floorIndex}`;
+}
+
+function employeeKey(networkUid: string, employeeNetworkUid: string): string {
+  return `${profileKey(networkUid)}:employee:${employeeNetworkUid}`;
+}
+
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
 }

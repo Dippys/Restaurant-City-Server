@@ -44,10 +44,8 @@ export class StaticFileIndex {
     const next = new Map<string, string>();
     this.addDirectory(next, this.config.rcRoot);
     this.addDirectory(next, this.config.binXmlRoot);
-
-    if (this.config.useOriginalAssetSwfs) {
-      this.addOriginalAssetSwfs(next, this.config.originalAssetRoot);
-    }
+    this.addOriginalAssetSwfs(next, this.config.originalAssetRoot);
+    this.addRebuiltAssetSwfs(next, this.config.rebuiltAssetRoot);
 
     if (fs.existsSync(this.config.rebuiltSwf)) {
       next.set('game.swf', this.config.rebuiltSwf);
@@ -90,6 +88,14 @@ export class StaticFileIndex {
   }
 
   private addOriginalAssetSwfs(target: Map<string, string>, dir: string): void {
+    this.addSwfs(target, dir, false);
+  }
+
+  private addRebuiltAssetSwfs(target: Map<string, string>, dir: string): void {
+    this.addSwfs(target, dir, true);
+  }
+
+  private addSwfs(target: Map<string, string>, dir: string, includeGameSwf: boolean): void {
     let entries: string[];
     try {
       entries = fs.readdirSync(dir);
@@ -100,7 +106,7 @@ export class StaticFileIndex {
     for (const entry of entries) {
       const fullPath = path.join(dir, entry);
       try {
-        if (entry.toLowerCase() !== 'game.swf' && path.extname(entry).toLowerCase() === '.swf' && fs.statSync(fullPath).isFile()) {
+        if ((includeGameSwf || entry.toLowerCase() !== 'game.swf') && path.extname(entry).toLowerCase() === '.swf' && fs.statSync(fullPath).isFile()) {
           target.set(normaliseAssetName(entry), fullPath);
         }
       } catch {

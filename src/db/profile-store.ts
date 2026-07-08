@@ -59,6 +59,7 @@ export interface SaveAuditData {
   readonly upsertOwnedItems: readonly OwnedItemData[];
   readonly removeOwnedItemIds: readonly number[];
   readonly inventoryChanges: readonly InventoryItemData[];
+  readonly bulkInventoryMoves: readonly BulkInventoryMoveData[];
   readonly ingredientChanges: readonly IngredientChangeData[];
   readonly lockIngredientChanges: readonly IngredientLockData[];
   readonly gardenChanges: readonly GardenChangeData[];
@@ -73,6 +74,11 @@ export interface InventoryItemData {
   readonly globalItemId: number;
   readonly delta: number;
   readonly selected?: boolean;
+}
+
+export interface BulkInventoryMoveData {
+  readonly floorIndex: number;
+  readonly itemTypeId: number;
 }
 
 export interface IngredientChangeData {
@@ -165,11 +171,11 @@ export async function getProfiles(networkUids: readonly string[], activeNetworkU
 
 export async function getAllFriends(activeNetworkUid = PLAYER_NETWORK_UID): Promise<StoredProfile[]> {
   await ensureStarterFriends();
+  await ensureProfile(activeNetworkUid);
 
   return prisma.userProfile.findMany({
     where: {
-      networkUid: { in: STARTER_FRIENDS.map((friend) => friend.networkUid) },
-      NOT: { networkUid: activeNetworkUid },
+      networkUid: { in: [activeNetworkUid, ...STARTER_FRIENDS.map((friend) => friend.networkUid)] },
     },
     include: profileInclude,
     orderBy: { networkUid: 'asc' },
@@ -284,6 +290,10 @@ export async function savePlayerProfile(profile: SavedProfileData, audit: SaveAu
 
     for (const change of audit.inventoryChanges) {
       await changeInventoryItem(tx, profileId, profile.id.networkUid, change);
+    }
+
+    for (const move of audit.bulkInventoryMoves) {
+      await moveInGameItemsToInventory(tx, profileId, profile.id.networkUid, move);
     }
 
     for (const change of audit.ingredientChanges) {
@@ -749,6 +759,52 @@ async function changeInventoryItem(
       isSelected: Boolean(change.selected),
     },
   });
+}
+
+async function moveInGameItemsToInventory(
+  tx: any,
+  profileId: string,
+  networkUid: string,
+  move: BulkInventoryMoveData,
+): Promise<void> {
+  const ownedItems = await tx.ownedItem.findMany({
+    where: {
+      userProfileId: profileId,
+      roomIndex: move.floorIndex,
+    },
+  });
+
+  for (const item of ownedItems.filter((owned: OwnedItem) => itemType(owned.globalItemId) === move.itemTypeId)) {
+    await changeInventoryItem(tx, profileId, networkUid, { globalItemId: item.globalItemId, delta: 1 });
+    await tx.ownedItem.deleteMany({ where: { userProfileId: profileId, serverId: item.serverId } });
+  }
+
+  if (move.itemTypeId !== 3) {
+    return;
+  }
+
+  const floor = await tx.restaurantFloor.findUnique({
+    where: { userProfileId_floorIndex: { userProfileId: profileId, floorIndex: move.floorIndex } },
+  });
+
+  if (!floor) {
+    return;
+  }
+
+  for (const tileItemId of readStoredFloorTiles(floor.tilesJson)) {
+    if (tileItemId !== 0) {
+      await changeInventoryItem(tx, profileId, networkUid, { globalItemId: tileItemId, delta: 1 });
+    }
+  }
+}
+
+function readStoredFloorTiles(value: string): number[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
+  } catch {
+    return [];
+  }
 }
 
 async function changeIngredient(

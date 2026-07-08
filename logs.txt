@@ -1,59 +1,75 @@
 GET /game.swf  ->  HTTP 200
-time: 2026-07-07T11:26:11.823Z
-query: {"cb":"2158422408"}
+time: 2026-07-08T07:41:23.965Z
+query: {"account":"1130571586"}
 headers:
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 POST /g/rpc/cooking  ->  HTTP 200  [RPC]
-time: 2026-07-07T11:26:16.066Z
+time: 2026-07-08T07:41:24.093Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
   content-type: application/octet-stream
-  content-length: 1184
-  user-agent: Shockwave Flash
-  host: localhost:8090
-  cache-control: no-cache
-body: 1184 bytes
+  content-length: 1133
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 1133 bytes
 body.hex:
-00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f90001881c816f413d742653413d742653563d742645563d74264d50333d742641453d742656453d74264143433d662650523d742653503d662653423d66264445423d7426563d57494e25323033322532433025324330253243343635264d3d41646f626525323057696e646f777326523d31393230783130383026434f4c3d636f6c6f722641523d312e30264f533d57696e646f77732532303826415243483d783836264c3d656e26494d453d7426505233323d7426505236343d74264341533d33322650543d5374616e64416c6f6e65264156443d66264c46443d662657443d6626544c533d74264d4c3d352e312644503d37328629666225354673696725354673657373696f6e2535466b65793d3225324537786764356e5542774435366a424a372535464767504277253546253546253245333630302532453132363538323834303025324437313932313236383626666225354673696725354673733d395a426a446f253546416f4c4b5a6d656d766d7739566d512535462535462666622535467369672535466170692535466b65793d3963656138396630646433666234376631383434666430653663663232383133266662253546736967253546696672616d652535466b65793d6433643934343638303261343432353937353564333865366431363365383230266662253546736967253546657870697265733d3132363538323834303026666225354673696725354674696d653d3132363538323330333325324538323037266662253546736967253546636f6f6b69652535467369673d3666613632613139643566633530326132383035396163646630646336656462266662253546736967253546696e2535466e657725354666616365626f6f6b3d31266662253546736967253546696e253546696672616d653d3126666225354673696725354670726f66696c6525354675706461746525354674696d653d313235323537333738382666622535467369673d64376161396365303361343937373262356635303535396465663762393161362666622535467369672535466c6f63616c653d656e25354647422666622535467369672535466578742535467065726d733d73746174757325354675706461746525324370686f746f25354675706c6f6164253243766964656f25354675706c6f61642532436372656174652535466e6f746525324373686172652535466974656d2532436175746f2535467075626c69736825354673686f7274253546666565642532437075626c69736825354673747265616d2532436175746f2535467075626c697368253546726563656e74253546616374697669747926666225354673696725354661646465643d31266662253546736967253546757365723d37313932313236383626666225354673696725354661707025354669643d3738353030313536343032
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f900018769813c413d742653413d742653563d742645563d74264d50333d742641453d742656453d74264143433d662650523d662653503d742653423d66264445423d7426563d57494e253230382532433525324330253243323038264d3d41646f626525323057696e646f777326523d3136303078313230302644503d373226434f4c3d636f6c6f722641523d312e30264f533d57696e646f77732532305850264c3d656e2650543d45787465726e616c264156443d66264c46443d662657443d668629666225354673696725354673657373696f6e2535466b65793d3225324537786764356e5542774435366a424a372535464767504277253546253546253245333630302532453132363538323834303025324437313932313236383626666225354673696725354670726f66696c6525354675706461746525354674696d653d3132353235373337383826666225354673696725354661646465643d31266662253546736967253546657870697265733d31323635383238343030266662253546736967253546636f6f6b69652535467369673d36666136326131396435666335303261323830353961636466306463366564622666622535467369672535466578742535467065726d733d73746174757325354675706461746525324370686f746f25354675706c6f6164253243766964656f25354675706c6f61642532436372656174652535466e6f746525324373686172652535466974656d2532436175746f2535467075626c69736825354673686f7274253546666565642532437075626c69736825354673747265616d2532436175746f2535467075626c697368253546726563656e74253546616374697669747926666225354673696725354673733d395a426a446f253546416f4c4b5a6d656d766d7739566d512535462535462666622535467369672535466c6f63616c653d656e25354647422666622535467369673d6437616139636530336134393737326235663530353539646566376239316136266662253546736967253546757365723d373139323132363836266662253546736967253546696e253546696672616d653d31266662253546736967253546696e2535466e657725354666616365626f6f6b3d312666622535467369672535466170692535466b65793d3963656138396630646433666234376631383434666430653663663232383133266662253546736967253546696672616d652535466b65793d643364393434363830326134343235393735356433386536643136336538323026666225354673696725354674696d653d313236353832333033332532453832303726666225354673696725354661707025354669643d3738353030313536343032
 body.base64:
-AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkAAYgcgW9BPXQmU0E9dCZTVj10JkVWPXQmTVAzPXQmQUU9dCZWRT10JkFDQz1mJlBSPXQmU1A9ZiZTQj1mJkRFQj10JlY9V0lOJTIwMzIlMkMwJTJDMCUyQzQ2NSZNPUFkb2JlJTIwV2luZG93cyZSPTE5MjB4MTA4MCZDT0w9Y29sb3ImQVI9MS4wJk9TPVdpbmRvd3MlMjA4JkFSQ0g9eDg2Jkw9ZW4mSU1FPXQmUFIzMj10JlBSNjQ9dCZDQVM9MzImUFQ9U3RhbmRBbG9uZSZBVkQ9ZiZMRkQ9ZiZXRD1mJlRMUz10Jk1MPTUuMSZEUD03MoYpZmIlNUZzaWclNUZzZXNzaW9uJTVGa2V5PTIlMkU3eGdkNW5VQndENTZqQko3JTVGR2dQQnclNUYlNUYlMkUzNjAwJTJFMTI2NTgyODQwMCUyRDcxOTIxMjY4NiZmYiU1RnNpZyU1RnNzPTlaQmpEbyU1RkFvTEtabWVtdm13OVZtUSU1RiU1RiZmYiU1RnNpZyU1RmFwaSU1RmtleT05Y2VhODlmMGRkM2ZiNDdmMTg0NGZkMGU2Y2YyMjgxMyZmYiU1RnNpZyU1RmlmcmFtZSU1RmtleT1kM2Q5NDQ2ODAyYTQ0MjU5NzU1ZDM4ZTZkMTYzZTgyMCZmYiU1RnNpZyU1RmV4cGlyZXM9MTI2NTgyODQwMCZmYiU1RnNpZyU1RnRpbWU9MTI2NTgyMzAzMyUyRTgyMDcmZmIlNUZzaWclNUZjb29raWUlNUZzaWc9NmZhNjJhMTlkNWZjNTAyYTI4MDU5YWNkZjBkYzZlZGImZmIlNUZzaWclNUZpbiU1Rm5ldyU1RmZhY2Vib29rPTEmZmIlNUZzaWclNUZpbiU1RmlmcmFtZT0xJmZiJTVGc2lnJTVGcHJvZmlsZSU1RnVwZGF0ZSU1RnRpbWU9MTI1MjU3Mzc4OCZmYiU1RnNpZz1kN2FhOWNlMDNhNDk3NzJiNWY1MDU1OWRlZjdiOTFhNiZmYiU1RnNpZyU1RmxvY2FsZT1lbiU1RkdCJmZiJTVGc2lnJTVGZXh0JTVGcGVybXM9c3RhdHVzJTVGdXBkYXRlJTJDcGhvdG8lNUZ1cGxvYWQlMkN2aWRlbyU1RnVwbG9hZCUyQ2NyZWF0ZSU1Rm5vdGUlMkNzaGFyZSU1Rml0ZW0lMkNhdXRvJTVGcHVibGlzaCU1RnNob3J0JTVGZmVlZCUyQ3B1Ymxpc2glNUZzdHJlYW0lMkNhdXRvJTVGcHVibGlzaCU1RnJlY2VudCU1RmFjdGl2aXR5JmZiJTVGc2lnJTVGYWRkZWQ9MSZmYiU1RnNpZyU1RnVzZXI9NzE5MjEyNjg2JmZiJTVGc2lnJTVGYXBwJTVGaWQ9Nzg1MDAxNTY0MDI=
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkAAYdpgTxBPXQmU0E9dCZTVj10JkVWPXQmTVAzPXQmQUU9dCZWRT10JkFDQz1mJlBSPWYmU1A9dCZTQj1mJkRFQj10JlY9V0lOJTIwOCUyQzUlMkMwJTJDMjA4Jk09QWRvYmUlMjBXaW5kb3dzJlI9MTYwMHgxMjAwJkRQPTcyJkNPTD1jb2xvciZBUj0xLjAmT1M9V2luZG93cyUyMFhQJkw9ZW4mUFQ9RXh0ZXJuYWwmQVZEPWYmTEZEPWYmV0Q9ZoYpZmIlNUZzaWclNUZzZXNzaW9uJTVGa2V5PTIlMkU3eGdkNW5VQndENTZqQko3JTVGR2dQQnclNUYlNUYlMkUzNjAwJTJFMTI2NTgyODQwMCUyRDcxOTIxMjY4NiZmYiU1RnNpZyU1RnByb2ZpbGUlNUZ1cGRhdGUlNUZ0aW1lPTEyNTI1NzM3ODgmZmIlNUZzaWclNUZhZGRlZD0xJmZiJTVGc2lnJTVGZXhwaXJlcz0xMjY1ODI4NDAwJmZiJTVGc2lnJTVGY29va2llJTVGc2lnPTZmYTYyYTE5ZDVmYzUwMmEyODA1OWFjZGYwZGM2ZWRiJmZiJTVGc2lnJTVGZXh0JTVGcGVybXM9c3RhdHVzJTVGdXBkYXRlJTJDcGhvdG8lNUZ1cGxvYWQlMkN2aWRlbyU1RnVwbG9hZCUyQ2NyZWF0ZSU1Rm5vdGUlMkNzaGFyZSU1Rml0ZW0lMkNhdXRvJTVGcHVibGlzaCU1RnNob3J0JTVGZmVlZCUyQ3B1Ymxpc2glNUZzdHJlYW0lMkNhdXRvJTVGcHVibGlzaCU1RnJlY2VudCU1RmFjdGl2aXR5JmZiJTVGc2lnJTVGc3M9OVpCakRvJTVGQW9MS1ptZW12bXc5Vm1RJTVGJTVGJmZiJTVGc2lnJTVGbG9jYWxlPWVuJTVGR0ImZmIlNUZzaWc9ZDdhYTljZTAzYTQ5NzcyYjVmNTA1NTlkZWY3YjkxYTYmZmIlNUZzaWclNUZ1c2VyPTcxOTIxMjY4NiZmYiU1RnNpZyU1RmluJTVGaWZyYW1lPTEmZmIlNUZzaWclNUZpbiU1Rm5ldyU1RmZhY2Vib29rPTEmZmIlNUZzaWclNUZhcGklNUZrZXk9OWNlYTg5ZjBkZDNmYjQ3ZjE4NDRmZDBlNmNmMjI4MTMmZmIlNUZzaWclNUZpZnJhbWUlNUZrZXk9ZDNkOTQ0NjgwMmE0NDI1OTc1NWQzOGU2ZDE2M2U4MjAmZmIlNUZzaWclNUZ0aW1lPTEyNjU4MjMwMzMlMkU4MjA3JmZiJTVGc2lnJTVGYXBwJTVGaWQ9Nzg1MDAxNTY0MDI=
 body.ascii:
-..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW........oA=t&SA=t&SV=t&EV=t&MP3=t&AE=t&VE=t&ACC=f&PR=t&SP=f&SB=f&DEB=t&V=WIN%2032%2C0%2C0%2C465&M=Adobe%20Windows&R=1920x1080&COL=color&AR=1.0&OS=Windows%208&ARCH=x86&L=en&IME=t&PR32=t&PR64=t&CAS=32&PT=StandAlone&AVD=f&LFD=f&WD=f&TLS=t&ML=5.1&DP=72.)fb%5Fsig%5Fsession%5Fkey=2%2E7xgd5nUBwD56jBJ7%5FGgPBw%5F%5F%2E3600%2E1265828400%2D719212686&fb%5Fsig%5Fss=9ZBjDo%5FAoLKZmemvmw9VmQ%5F%5F&fb%5Fsig%5Fapi%5Fkey=9cea89f0dd3fb47f1844fd0e6cf22813&fb%5Fsig%5Fiframe%5Fkey=d3d9446802a44259755d38e6d163e820&fb%5Fsig%5Fexpires=1265828400&fb%5Fsig%5Ftime=1265823033%2E8207&fb%5Fsig%5Fcookie%5Fsig=6fa62a19d5fc502a28059acdf0dc6edb&fb%5Fsig%5Fin%5Fnew%5Ffacebook=1&fb%5Fsig%5Fin%5Fiframe=1&fb%5Fsig%5Fprofile%5Fupdate%5Ftime=1252573788&fb%5Fsig=d7aa9ce03a49772b5f50559def7b91a6&fb%5Fsig%5Flocale=en%5FGB&fb%5Fsig%5Fext%5Fperms=status%5Fupdate%2Cphoto%5Fupload%2Cvideo%5Fupload%2Ccreate%5Fnote%2Cshare%5Fitem%2Cauto%5Fpublish%5Fshort%5Ffeed%2Cpublish%5Fstream%2Cauto%5Fpublish%5Frecent%5Factivity&fb%5Fsig%5Fadded=1&fb%5Fsig%5Fuser=719212686&fb%5Fsig%5Fapp%5Fid=78500156402
-
-============================================================
-
-GET /resconfig.xml  ->  HTTP 200
-time: 2026-07-07T11:26:16.120Z
-headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
-  host: localhost:8090
-body: 0 bytes
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......i.<A=t&SA=t&SV=t&EV=t&MP3=t&AE=t&VE=t&ACC=f&PR=f&SP=t&SB=f&DEB=t&V=WIN%208%2C5%2C0%2C208&M=Adobe%20Windows&R=1600x1200&DP=72&COL=color&AR=1.0&OS=Windows%20XP&L=en&PT=External&AVD=f&LFD=f&WD=f.)fb%5Fsig%5Fsession%5Fkey=2%2E7xgd5nUBwD56jBJ7%5FGgPBw%5F%5F%2E3600%2E1265828400%2D719212686&fb%5Fsig%5Fprofile%5Fupdate%5Ftime=1252573788&fb%5Fsig%5Fadded=1&fb%5Fsig%5Fexpires=1265828400&fb%5Fsig%5Fcookie%5Fsig=6fa62a19d5fc502a28059acdf0dc6edb&fb%5Fsig%5Fext%5Fperms=status%5Fupdate%2Cphoto%5Fupload%2Cvideo%5Fupload%2Ccreate%5Fnote%2Cshare%5Fitem%2Cauto%5Fpublish%5Fshort%5Ffeed%2Cpublish%5Fstream%2Cauto%5Fpublish%5Frecent%5Factivity&fb%5Fsig%5Fss=9ZBjDo%5FAoLKZmemvmw9VmQ%5F%5F&fb%5Fsig%5Flocale=en%5FGB&fb%5Fsig=d7aa9ce03a49772b5f50559def7b91a6&fb%5Fsig%5Fuser=719212686&fb%5Fsig%5Fin%5Fiframe=1&fb%5Fsig%5Fin%5Fnew%5Ffacebook=1&fb%5Fsig%5Fapi%5Fkey=9cea89f0dd3fb47f1844fd0e6cf22813&fb%5Fsig%5Fiframe%5Fkey=d3d9446802a44259755d38e6d163e820&fb%5Fsig%5Ftime=1265823033%2E8207&fb%5Fsig%5Fapp%5Fid=78500156402
 
 ============================================================
 
 POST /g/rpc/cooking  ->  HTTP 200  [RPC]
-time: 2026-07-07T11:26:16.122Z
+time: 2026-07-08T07:41:24.310Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
   content-type: application/octet-stream
   content-length: 142
-  user-agent: Shockwave Flash
-  host: localhost:8090
-  cache-control: no-cache
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 142 bytes
 body.hex:
 00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570307f90003000200f8001400f601002c00
@@ -64,339 +80,1357 @@ body.ascii:
 
 ============================================================
 
-GET /indoor_asset.swf  ->  HTTP 200
-time: 2026-07-07T11:26:16.151Z
+GET /resconfig.xml  ->  HTTP 200
+time: 2026-07-08T07:41:24.380Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
-body: 0 bytes
-
-============================================================
-
-GET /outdoor_asset.swf  ->  HTTP 200
-time: 2026-07-07T11:26:16.153Z
-headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
-  host: localhost:8090
-body: 0 bytes
-
-============================================================
-
-GET /avatar_asset.swf  ->  HTTP 200
-time: 2026-07-07T11:26:16.156Z
-headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
-  host: localhost:8090
-body: 0 bytes
-
-============================================================
-
-GET /ingredient_asset.swf  ->  HTTP 200
-time: 2026-07-07T11:26:16.157Z
-headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
-  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 GET /game_asset.swf  ->  HTTP 200
-time: 2026-07-07T11:26:16.158Z
+time: 2026-07-08T07:41:24.408Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
-GET /sound_asset.swf  ->  HTTP 200
-time: 2026-07-07T11:26:16.161Z
+GET /avatar_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:24.439Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
-body: 0 bytes
-
-============================================================
-
-GET /model.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.163Z
-headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
-  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 GET /ingredient.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.165Z
+time: 2026-07-08T07:41:24.454Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
-GET /recipe.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.166Z
+GET /indoor_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:24.463Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /outdoor_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:24.497Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 GET /perk_asset.swf  ->  HTTP 200
-time: 2026-07-07T11:26:16.167Z
+time: 2026-07-08T07:41:24.518Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /ingredient_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:24.545Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /model.bin  ->  HTTP 200
+time: 2026-07-08T07:41:24.558Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 GET /quiz.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.168Z
+time: 2026-07-08T07:41:24.577Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
-GET /lang_en.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.169Z
+GET /recipe.bin  ->  HTTP 200
+time: 2026-07-08T07:41:24.603Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
-body: 0 bytes
-
-============================================================
-
-GET /lang_fr.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.169Z
-headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
-  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 GET /challenge.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.170Z
+time: 2026-07-08T07:41:24.614Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /lang_en.bin  ->  HTTP 200
+time: 2026-07-08T07:41:24.621Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /lang_fr.bin  ->  HTTP 200
+time: 2026-07-08T07:41:24.630Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 GET /newsletter.xml  ->  HTTP 200
-time: 2026-07-07T11:26:16.171Z
+time: 2026-07-08T07:41:24.638Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 GET /avatar.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.171Z
+time: 2026-07-08T07:41:24.649Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
-body: 0 bytes
-
-============================================================
-
-GET /perk.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.172Z
-headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
-  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 GET /front.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.173Z
+time: 2026-07-08T07:41:24.656Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 GET /restaurant.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.174Z
+time: 2026-07-08T07:41:24.663Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 GET /appointment.bin  ->  HTTP 200
-time: 2026-07-07T11:26:16.178Z
+time: 2026-07-08T07:41:24.671Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /sound_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:24.680Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /perk.bin  ->  HTTP 200
+time: 2026-07-08T07:41:24.697Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 0 bytes
 
 ============================================================
 
 POST /g/rpc/cooking  ->  HTTP 200  [RPC]
-time: 2026-07-07T11:26:16.892Z
+time: 2026-07-08T07:41:25.757Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
   content-type: application/octet-stream
   content-length: 149
-  user-agent: Shockwave Flash
-  host: localhost:8090
-  cache-control: no-cache
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
 body: 149 bytes
 body.hex:
-00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202fb0e0085770a636f756e7472793d4742fb0401857700
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202fb0e008a110a636f756e7472793d4742fb04018a1100
 body.base64:
-AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvsOAIV3CmNvdW50cnk9R0L7BAGFdwA=
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvsOAIoRCmNvdW50cnk9R0L7BAGKEQA=
 body.ascii:
-..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......w.country=GB....w.
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW........country=GB......
 
 ============================================================
 
 POST /g/rpc/cooking  ->  HTTP 200  [RPC]
-time: 2026-07-07T11:26:16.894Z
+time: 2026-07-08T07:41:25.805Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  content-type: application/octet-stream
-  content-length: 593
-  user-agent: Shockwave Flash
   host: localhost:8090
-  cache-control: no-cache
-body: 593 bytes
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 332
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 332 bytes
 body.hex:
-00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f90005834d020130000644756d6d7930ce1001780000015601130000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000b0001a70d0a160000167a55736473496b5479347435646e433649753662534741bfbd0800000000001600001637574d4d5772673451693851525363726e4f505f666143bea06c000000000016000016715038675f6b6e55772e514e58535a566e7361776d6145bdd25a000000000016000016636e65626e457a52664f67476b4f59464a4d76716a6147c1f54000000000001600001652735636766974793353624a763644397a686f53346149c2c3500000000000160000166e3447762e725963684467352e7663373843427664474bc08b11000000000016000016505a6774465264433732635a7149785951706d3843474dc1a7310000000000160000164a58544a664252566b544558654f6d7632462e7853614fc0d9280000000000160000164a5f6654735475665a415f3279654c7a784e4b6e424751c391610000000000160000164d453772587271694d4969457a44316258555468455753c99f040000000000
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f900058148020a31313330353731353836849b8cce42066469707079738499400b6a000001560113000000020000002500000000000000000000012c000000010000000000000001000000000000000e0000001c000000000000000000000000000000000000000000000001000000000000000001000000011712140900018e5a0208000005020431303031876986eef4000300020431303032876a000200020431303033876b000200020431303034876c000100020a31313330353731353836849b8cce4200010018008d70
 body.base64:
-AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYNNAgEwAAZEdW1teTDOEAF4AAABVgETAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAACwABpw0KFgAAFnpVc2RzSWtUeTR0NWRuQzZJdTZiU0dBv70IAAAAAAAWAAAWN1dNTVdyZzRRaThRUlNjcm5PUF9mYUO+oGwAAAAAABYAABZxUDhnX2tuVXcuUU5YU1pWbnNhd21hRb3SWgAAAAAAFgAAFmNuZWJuRXpSZk9nR2tPWUZKTXZxamFHwfVAAAAAAAAWAAAWUnNWNnZpdHkzU2JKdjZEOXpob1M0YUnCw1AAAAAAABYAABZuNEd2LnJZY2hEZzUudmM3OENCdmRHS8CLEQAAAAAAFgAAFlBaZ3RGUmRDNzJjWnFJeFlRcG04Q0dNwacxAAAAAAAWAAAWSlhUSmZCUlZrVEVYZU9tdjJGLnhTYU/A2SgAAAAAABYAABZKX2ZUc1R1ZlpBXzJ5ZUx6eE5LbkJHUcORYQAAAAAAFgAAFk1FN3JYcnFpTUlpRXpEMWJYVVRoRVdTyZ8EAAAAAAA=
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYFIAgoxMTMwNTcxNTg2hJuMzkIGZGlwcHlzhJlAC2oAAAFWARMAAAACAAAAJQAAAAAAAAAAAAABLAAAAAEAAAAAAAAAAQAAAAAAAAAOAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAQAAAAEXEhQJAAGOWgIIAAAFAgQxMDAxh2mG7vQAAwACBDEwMDKHagACAAIEMTAwM4drAAIAAgQxMDA0h2wAAQACCjExMzA1NzE1ODaEm4zOQgABABgAjXA=
 body.ascii:
-..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......M..0..Dummy0...x...V................................................................................................zUsdsIkTy4t5dnC6Iu6bSGA............7WMMWrg4Qi8QRScrnOP_faC..l.........qP8g_knUw.QNXSZVnsawmaE..Z.........cnebnEzRfOgGkOYFJMvqjaG..@.........RsV6vity3SbJv6D9zhoS4aI..P.........n4Gv.rYchDg5.vc78CBvdGK............PZgtFRdC72cZqIxYQpm8CGM..1.........JXTJfBRVkTEXeOmv2F.xSaO..(.........J_fTsTufZA_2yeLzxNKnBGQ..a.........ME7rXrqiMIiEzD1bXUThEWS........
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......H..1130571586....B.dippys..@.j...V.........%...........,....................................................................Z.......1001.i........1002.j.....1003.k.....1004.l.....1130571586....B......p
+
+============================================================
+
+GET /game.swf  ->  HTTP 200
+time: 2026-07-08T07:41:42.593Z
+query: {"account":"1130571586"}
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-08T07:41:42.667Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 1133
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 1133 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f900018769813c413d742653413d742653563d742645563d74264d50333d742641453d742656453d74264143433d662650523d662653503d742653423d66264445423d7426563d57494e253230382532433525324330253243323038264d3d41646f626525323057696e646f777326523d3136303078313230302644503d373226434f4c3d636f6c6f722641523d312e30264f533d57696e646f77732532305850264c3d656e2650543d45787465726e616c264156443d66264c46443d662657443d668629666225354673696725354673657373696f6e2535466b65793d3225324537786764356e5542774435366a424a372535464767504277253546253546253245333630302532453132363538323834303025324437313932313236383626666225354673696725354670726f66696c6525354675706461746525354674696d653d3132353235373337383826666225354673696725354661646465643d31266662253546736967253546657870697265733d31323635383238343030266662253546736967253546636f6f6b69652535467369673d36666136326131396435666335303261323830353961636466306463366564622666622535467369672535466578742535467065726d733d73746174757325354675706461746525324370686f746f25354675706c6f6164253243766964656f25354675706c6f61642532436372656174652535466e6f746525324373686172652535466974656d2532436175746f2535467075626c69736825354673686f7274253546666565642532437075626c69736825354673747265616d2532436175746f2535467075626c697368253546726563656e74253546616374697669747926666225354673696725354673733d395a426a446f253546416f4c4b5a6d656d766d7739566d512535462535462666622535467369672535466c6f63616c653d656e25354647422666622535467369673d6437616139636530336134393737326235663530353539646566376239316136266662253546736967253546757365723d373139323132363836266662253546736967253546696e253546696672616d653d31266662253546736967253546696e2535466e657725354666616365626f6f6b3d312666622535467369672535466170692535466b65793d3963656138396630646433666234376631383434666430653663663232383133266662253546736967253546696672616d652535466b65793d643364393434363830326134343235393735356433386536643136336538323026666225354673696725354674696d653d313236353832333033332532453832303726666225354673696725354661707025354669643d3738353030313536343032
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkAAYdpgTxBPXQmU0E9dCZTVj10JkVWPXQmTVAzPXQmQUU9dCZWRT10JkFDQz1mJlBSPWYmU1A9dCZTQj1mJkRFQj10JlY9V0lOJTIwOCUyQzUlMkMwJTJDMjA4Jk09QWRvYmUlMjBXaW5kb3dzJlI9MTYwMHgxMjAwJkRQPTcyJkNPTD1jb2xvciZBUj0xLjAmT1M9V2luZG93cyUyMFhQJkw9ZW4mUFQ9RXh0ZXJuYWwmQVZEPWYmTEZEPWYmV0Q9ZoYpZmIlNUZzaWclNUZzZXNzaW9uJTVGa2V5PTIlMkU3eGdkNW5VQndENTZqQko3JTVGR2dQQnclNUYlNUYlMkUzNjAwJTJFMTI2NTgyODQwMCUyRDcxOTIxMjY4NiZmYiU1RnNpZyU1RnByb2ZpbGUlNUZ1cGRhdGUlNUZ0aW1lPTEyNTI1NzM3ODgmZmIlNUZzaWclNUZhZGRlZD0xJmZiJTVGc2lnJTVGZXhwaXJlcz0xMjY1ODI4NDAwJmZiJTVGc2lnJTVGY29va2llJTVGc2lnPTZmYTYyYTE5ZDVmYzUwMmEyODA1OWFjZGYwZGM2ZWRiJmZiJTVGc2lnJTVGZXh0JTVGcGVybXM9c3RhdHVzJTVGdXBkYXRlJTJDcGhvdG8lNUZ1cGxvYWQlMkN2aWRlbyU1RnVwbG9hZCUyQ2NyZWF0ZSU1Rm5vdGUlMkNzaGFyZSU1Rml0ZW0lMkNhdXRvJTVGcHVibGlzaCU1RnNob3J0JTVGZmVlZCUyQ3B1Ymxpc2glNUZzdHJlYW0lMkNhdXRvJTVGcHVibGlzaCU1RnJlY2VudCU1RmFjdGl2aXR5JmZiJTVGc2lnJTVGc3M9OVpCakRvJTVGQW9MS1ptZW12bXc5Vm1RJTVGJTVGJmZiJTVGc2lnJTVGbG9jYWxlPWVuJTVGR0ImZmIlNUZzaWc9ZDdhYTljZTAzYTQ5NzcyYjVmNTA1NTlkZWY3YjkxYTYmZmIlNUZzaWclNUZ1c2VyPTcxOTIxMjY4NiZmYiU1RnNpZyU1RmluJTVGaWZyYW1lPTEmZmIlNUZzaWclNUZpbiU1Rm5ldyU1RmZhY2Vib29rPTEmZmIlNUZzaWclNUZhcGklNUZrZXk9OWNlYTg5ZjBkZDNmYjQ3ZjE4NDRmZDBlNmNmMjI4MTMmZmIlNUZzaWclNUZpZnJhbWUlNUZrZXk9ZDNkOTQ0NjgwMmE0NDI1OTc1NWQzOGU2ZDE2M2U4MjAmZmIlNUZzaWclNUZ0aW1lPTEyNjU4MjMwMzMlMkU4MjA3JmZiJTVGc2lnJTVGYXBwJTVGaWQ9Nzg1MDAxNTY0MDI=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......i.<A=t&SA=t&SV=t&EV=t&MP3=t&AE=t&VE=t&ACC=f&PR=f&SP=t&SB=f&DEB=t&V=WIN%208%2C5%2C0%2C208&M=Adobe%20Windows&R=1600x1200&DP=72&COL=color&AR=1.0&OS=Windows%20XP&L=en&PT=External&AVD=f&LFD=f&WD=f.)fb%5Fsig%5Fsession%5Fkey=2%2E7xgd5nUBwD56jBJ7%5FGgPBw%5F%5F%2E3600%2E1265828400%2D719212686&fb%5Fsig%5Fprofile%5Fupdate%5Ftime=1252573788&fb%5Fsig%5Fadded=1&fb%5Fsig%5Fexpires=1265828400&fb%5Fsig%5Fcookie%5Fsig=6fa62a19d5fc502a28059acdf0dc6edb&fb%5Fsig%5Fext%5Fperms=status%5Fupdate%2Cphoto%5Fupload%2Cvideo%5Fupload%2Ccreate%5Fnote%2Cshare%5Fitem%2Cauto%5Fpublish%5Fshort%5Ffeed%2Cpublish%5Fstream%2Cauto%5Fpublish%5Frecent%5Factivity&fb%5Fsig%5Fss=9ZBjDo%5FAoLKZmemvmw9VmQ%5F%5F&fb%5Fsig%5Flocale=en%5FGB&fb%5Fsig=d7aa9ce03a49772b5f50559def7b91a6&fb%5Fsig%5Fuser=719212686&fb%5Fsig%5Fin%5Fiframe=1&fb%5Fsig%5Fin%5Fnew%5Ffacebook=1&fb%5Fsig%5Fapi%5Fkey=9cea89f0dd3fb47f1844fd0e6cf22813&fb%5Fsig%5Fiframe%5Fkey=d3d9446802a44259755d38e6d163e820&fb%5Fsig%5Ftime=1265823033%2E8207&fb%5Fsig%5Fapp%5Fid=78500156402
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-08T07:41:42.693Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 142
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 142 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570307f90003000200f8001400f601002c00
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcDB/kAAwACAPgAFAD2AQAsAA==
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW...............,.
+
+============================================================
+
+GET /resconfig.xml  ->  HTTP 200
+time: 2026-07-08T07:41:42.730Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /game_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:42.751Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /avatar_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:42.753Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /sound_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:42.755Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /indoor_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:42.756Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /outdoor_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:42.758Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /perk_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:42.759Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /ingredient_asset.swf  ->  HTTP 200
+time: 2026-07-08T07:41:42.759Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /ingredient.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.760Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /model.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.761Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /perk.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.762Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /newsletter.xml  ->  HTTP 200
+time: 2026-07-08T07:41:42.765Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /quiz.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.765Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /restaurant.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.767Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /challenge.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.768Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /front.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.769Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /recipe.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.770Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /lang_fr.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.771Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /appointment.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.772Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /avatar.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.773Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+GET /lang_en.bin  ->  HTTP 200
+time: 2026-07-08T07:41:42.774Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 0 bytes
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-08T07:41:43.876Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 149
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 149 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202fb0e0088150a636f756e7472793d4742fb0401881500
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvsOAIgVCmNvdW50cnk9R0L7BAGIFQA=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW........country=GB......
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-08T07:41:43.897Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 328
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 328 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f900058144020a31313330353731353836849b8cce42066469707079738499400b6a000001560113000000020000002500000000000000000000012c000000010000000000000001000000000000000e0000001c000000000000000000000000000000000000000000000001000000000000000001000000011712140900018a780108000005020431303031876986eef4000300020431303032876a000200020431303033876b000200020431303034876c000100020a31313330353731353836849b8cce42000100
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYFEAgoxMTMwNTcxNTg2hJuMzkIGZGlwcHlzhJlAC2oAAAFWARMAAAACAAAAJQAAAAAAAAAAAAABLAAAAAEAAAAAAAAAAQAAAAAAAAAOAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAQAAAAEXEhQJAAGKeAEIAAAFAgQxMDAxh2mG7vQAAwACBDEwMDKHagACAAIEMTAwM4drAAIAAgQxMDA0h2wAAQACCjExMzA1NzE1ODaEm4zOQgABAA==
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......D..1130571586....B.dippys..@.j...V.........%...........,....................................................................x.......1001.i........1002.j.....1003.k.....1004.l.....1130571586....B...
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-08T07:42:43.890Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 479
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 479 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f90005825b020a31313330353731353836849b8cce4206646970707973849a24016a000001560113000000020000002f00000000000000000000012c000000010000000000000001000000000000000e0000001c0000000000000000000000000000000000000000000000010000000000000000010000000117121409000283d4420f23000223000223000223000223000223000223000223000223000223000208000005020431303031876986eef4000300020431303032876a86ee9b6d0200020431303033876b86ee845c0200020431303034876c86eea82f0100020a31313330353731353836849b8cce4286eeb2580100200000162e754c343574425232717057466244464c744d65526100200000162e754c343574425232717057466244464c744d65526100200000162e754c343574425232717057466244464c744d65526100200000162e754c343574425232717057466244464c744d65526100
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYJbAgoxMTMwNTcxNTg2hJuMzkIGZGlwcHlzhJokAWoAAAFWARMAAAACAAAALwAAAAAAAAAAAAABLAAAAAEAAAAAAAAAAQAAAAAAAAAOAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAQAAAAEXEhQJAAKD1EIPIwACIwACIwACIwACIwACIwACIwACIwACIwACIwACCAAABQIEMTAwMYdphu70AAMAAgQxMDAyh2qG7pttAgACBDEwMDOHa4buhFwCAAIEMTAwNIdshu6oLwEAAgoxMTMwNTcxNTg2hJuMzkKG7rJYAQAgAAAWLnVMNDV0QlIycXBXRmJERkx0TWVSYQAgAAAWLnVMNDV0QlIycXBXRmJERkx0TWVSYQAgAAAWLnVMNDV0QlIycXBXRmJERkx0TWVSYQAgAAAWLnVMNDV0QlIycXBXRmJERkx0TWVSYQA=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......[..1130571586....B.dippys..$.j...V........./...........,.....................................................................B.#..#..#..#..#..#..#..#..#..#........1001.i........1002.j...m....1003.k...\....1004.l.../....1130571586....B...X.. ....uL45tBR2qpWFbDFLtMeRa. ....uL45tBR2qpWFbDFLtMeRa. ....uL45tBR2qpWFbDFLtMeRa. ....uL45tBR2qpWFbDFLtMeRa.
 
 ============================================================
 
 GET /news0.png  ->  HTTP 404
-time: 2026-07-07T11:26:27.557Z
+time: 2026-07-08T07:42:50.727Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=0
 body: 0 bytes
 
 ============================================================
 
 GET /news1.png  ->  HTTP 404
-time: 2026-07-07T11:26:27.558Z
+time: 2026-07-08T07:42:50.727Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=0
 body: 0 bytes
 
 ============================================================
 
 GET /news2.png  ->  HTTP 404
-time: 2026-07-07T11:26:27.558Z
+time: 2026-07-08T07:42:50.729Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  user-agent: Shockwave Flash
   host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=0
 body: 0 bytes
 
 ============================================================
 
 POST /g/rpc/cooking  ->  HTTP 200  [RPC]
-time: 2026-07-07T11:26:54.475Z
+time: 2026-07-08T07:43:43.931Z
 headers:
-  referer: http://localhost:8090/game.swf?cb=2158422408
-  accept: text/xml, application/xml, application/xhtml+xml, text/html;q=0.9, text/plain;q=0.8, text/css, image/png, image/jpeg, image/gif;q=0.8, application/x-shockwave-flash, video/mp4;q=0.9, flv-application/octet-stream;q=0.8, video/x-flv;q=0.7, audio/mp4, application/futuresplash, */*;q=0.5, application/x-mpegURL
-  x-flash-version: 32,0,0,465
-  content-type: application/octet-stream
-  content-length: 153
-  user-agent: Shockwave Flash
   host: localhost:8090
-  cache-control: no-cache
-body: 153 bytes
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 360
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 360 bytes
 body.hex:
-00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d6876527137725702012a1801166131316372347873326f343648583436776658695447
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f900058164020a31313330353731353836849b8cce4206646970707973849a24016a81dbdd010001560113000000020000002f00000000000000000000012c000000010000000000000001000000000000000e0000001c000000000000000000000000000000000000000000000001000000000000000001000100013f121409000387a94a0508000005020431303031876986eef4000300020431303032876a86eac6660200020431303033876b86eaaf550200020431303034876c86ead3280100020a31313330353731353836849b8cce4286eadd51010026000000270000002700000027000000
 body.base64:
-AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCASoYARZhMTFjcjR4czJvNDZIWDQ2d2ZYaVRH
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYFkAgoxMTMwNTcxNTg2hJuMzkIGZGlwcHlzhJokAWqB290BAAFWARMAAAACAAAALwAAAAAAAAAAAAABLAAAAAEAAAAAAAAAAQAAAAAAAAAOAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAQABAAE/EhQJAAOHqUoFCAAABQIEMTAwMYdphu70AAMAAgQxMDAyh2qG6sZmAgACBDEwMDOHa4bqr1UCAAIEMTAwNIdshurTKAEAAgoxMTMwNTcxNTg2hJuMzkKG6t1RAQAmAAAAJwAAACcAAAAnAAAA
 body.ascii:
-..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW..*...a11cr4xs2o46HX46wfXiTG
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......d..1130571586....B.dippys..$.j......V........./...........,.............................................................?.......J.......1001.i........1002.j...f....1003.k...U....1004.l...(....1130571586....B...Q..&...'...'...'...
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-08T07:44:43.971Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 365
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 365 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f900058169020a31313330353731353836849b8cce4206646970707973849a42016a81dbdd010001560113000000020000002f00000000000000000000012c00000001000000000000000100000000000000100000001e000000000000000000000000000000000000000000000001000000000000000001000100013f12140900048afe510702000402000402000408000005020431303031876986eef4000300020431303032876a86e6f15e0200020431303033876b86e6da4d0200020431303034876c86e6fe200100020a31313330353731353836849b8cce4286e788490100270000002700000027000000
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYFpAgoxMTMwNTcxNTg2hJuMzkIGZGlwcHlzhJpCAWqB290BAAFWARMAAAACAAAALwAAAAAAAAAAAAABLAAAAAEAAAAAAAAAAQAAAAAAAAAQAAAAHgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAQABAAE/EhQJAASK/lEHAgAEAgAEAgAECAAABQIEMTAwMYdphu70AAMAAgQxMDAyh2qG5vFeAgACBDEwMDOHa4bm2k0CAAIEMTAwNIdshub+IAEAAgoxMTMwNTcxNTg2hJuMzkKG54hJAQAnAAAAJwAAACcAAAA=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......i..1130571586....B.dippys..B.j......V........./...........,.............................................................?.......Q................1001.i........1002.j...^....1003.k...M....1004.l... ....1130571586....B...I..'...'...'...
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-08T07:46:14.884Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 359
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 359 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f900058163020a31313330353731353836849b8cce4206646970707973849a74016c81dbdd010001560113000000020000002f00000000000000000000012c000000010000000000000001000000000000001600000022000000000000000000000000000000000000000000000001000000000000000001000100013f121409000590c4750602000402000402000402000402000408000005020431303031876986eef4000300020431303032876a86e1ab360200020431303033876b86e194250200020431303034876c86e1b7780100020a31313330353731353836849b8cce4286e1c2210100
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYFjAgoxMTMwNTcxNTg2hJuMzkIGZGlwcHlzhJp0AWyB290BAAFWARMAAAACAAAALwAAAAAAAAAAAAABLAAAAAEAAAAAAAAAAQAAAAAAAAAWAAAAIgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAQABAAE/EhQJAAWQxHUGAgAEAgAEAgAEAgAEAgAECAAABQIEMTAwMYdphu70AAMAAgQxMDAyh2qG4as2AgACBDEwMDOHa4bhlCUCAAIEMTAwNIdshuG3eAEAAgoxMTMwNTcxNTg2hJuMzkKG4cIhAQA=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......c..1130571586....B.dippys..t.l......V........./...........,.......................".....................................?.......u......................1001.i........1002.j...6....1003.k...%....1004.l...x....1130571586....B...!..
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-08T07:47:14.918Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 356
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 356 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f900058160020a31313330353731353836849b8cce4206646970707973849b1c016c81dbdd010001560113000000020000002f00000000000000000000012c000000010000000000000001000000000000001800000024000000000000000000000000000000000000000000000001000000000000000001000100013f12140900069499770502000402000402000402000408000005020431303031876986eef4000300020431303032876a86ddd63c0200020431303033876b86ddbf2b0200020431303034876c86dde27e0100020a31313330353731353836849b8cce4286dded270100
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYFgAgoxMTMwNTcxNTg2hJuMzkIGZGlwcHlzhJscAWyB290BAAFWARMAAAACAAAALwAAAAAAAAAAAAABLAAAAAEAAAAAAAAAAQAAAAAAAAAYAAAAJAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAQABAAE/EhQJAAaUmXcFAgAEAgAEAgAEAgAECAAABQIEMTAwMYdphu70AAMAAgQxMDAyh2qG3dY8AgACBDEwMDOHa4bdvysCAAIEMTAwNIdsht3ifgEAAgoxMTMwNTcxNTg2hJuMzkKG3e0nAQA=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......`..1130571586....B.dippys....l......V........./...........,.......................$.....................................?.......w...................1001.i........1002.j...<....1003.k...+....1004.l...~....1130571586....B...'..
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-08T07:48:14.929Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 353
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 353 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f90005815d020a31313330353731353836849b8cce4206646970707973849b3a016c81dbdd010001560113000000020000002f00000000000000000000012c000000010000000000000001000000000000001a00000026000000000000000000000000000000000000000000000001000000000000000001000100013f121409000797ee600402000402000402000408000005020431303031876986eef4000300020431303032876a86da81500200020431303033876b86d9ea3f0200020431303034876c86da8e120100020a31313330353731353836849b8cce4286da983b0100
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYFdAgoxMTMwNTcxNTg2hJuMzkIGZGlwcHlzhJs6AWyB290BAAFWARMAAAACAAAALwAAAAAAAAAAAAABLAAAAAEAAAAAAAAAAQAAAAAAAAAaAAAAJgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAQABAAE/EhQJAAeX7mAEAgAEAgAEAgAECAAABQIEMTAwMYdphu70AAMAAgQxMDAyh2qG2oFQAgACBDEwMDOHa4bZ6j8CAAIEMTAwNIdshtqOEgEAAgoxMTMwNTcxNTg2hJuMzkKG2pg7AQA=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......]..1130571586....B.dippys..:.l......V........./...........,.......................&.....................................?.......`................1001.i........1002.j...P....1003.k...?....1004.l........1130571586....B...;..
+
+============================================================
+
+POST /g/rpc/cooking  ->  HTTP 200  [RPC]
+time: 2026-07-08T07:49:14.972Z
+headers:
+  host: localhost:8090
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0
+  accept: */*
+  accept-language: en-US,en;q=0.9
+  accept-encoding: gzip, deflate, br, zstd
+  referer: http://localhost:8090/game
+  content-type: application/octet-stream
+  content-length: 365
+  origin: http://localhost:8090
+  dnt: 1
+  connection: keep-alive
+  cookie: rc_username=dippys
+  sec-fetch-dest: empty
+  sec-fetch-mode: cors
+  sec-fetch-site: same-origin
+  sec-gpc: 1
+  priority: u=4
+body: 365 bytes
+body.hex:
+00ff7a616c32654561616e61616962475442354f713643364f4e5733742e30465848655f713553384947746e6469556e33484e7a64765576756a3372647532414b6a6b6e3139687a316263443139466c4a6d326d6461556d7469326e7447596f6471576d6330336d744b596d7469326f647a74375a4d687652713772570202f900058169020a31313330353731353836849b8cce4206646970707973849b58016a81dbdd010001560113000000020000002f00000000000000000000012c000000010000000000000001000000000000001b00000029000000000000000000000000000000000000000000000001000000000000000001000100013f12140900089bc3680702000402000402000408000005020431303031876986eef4000300020431303032876a86d6ac480200020431303033876b86d695370200020431303034876c86d6b90a0100020a31313330353731353836849b8cce4286d6c3330100270000002700000027000000
+body.base64:
+AP96YWwyZUVhYW5hYWliR1RCNU9xNkM2T05XM3QuMEZYSGVfcTVTOElHdG5kaVVuM0hOemR2VXZ1ajNyZHUyQUtqa24xOWh6MWJjRDE5RmxKbTJtZGFVbXRpMm50R1lvZHFXbWMwM210S1ltdGkyb2R6dDdaTWh2UnE3clcCAvkABYFpAgoxMTMwNTcxNTg2hJuMzkIGZGlwcHlzhJtYAWqB290BAAFWARMAAAACAAAALwAAAAAAAAAAAAABLAAAAAEAAAAAAAAAAQAAAAAAAAAbAAAAKQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAQABAAE/EhQJAAibw2gHAgAEAgAEAgAECAAABQIEMTAwMYdphu70AAMAAgQxMDAyh2qG1qxIAgACBDEwMDOHa4bWlTcCAAIEMTAwNIdshta5CgEAAgoxMTMwNTcxNTg2hJuMzkKG1sMzAQAnAAAAJwAAACcAAAA=
+body.ascii:
+..zal2eEaanaaibGTB5Oq6C6ONW3t.0FXHe_q5S8IGtndiUn3HNzdvUvuj3rdu2AKjkn19hz1bcD19FlJm2mdaUmti2ntGYodqWmc03mtKYmti2odzt7ZMhvRq7rW......i..1130571586....B.dippys..X.j......V........./...........,.......................).....................................?.......h................1001.i........1002.j...H....1003.k...7....1004.l........1130571586....B...3..'...'...'...

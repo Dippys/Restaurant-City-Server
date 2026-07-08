@@ -4,6 +4,7 @@ import type {
   GardenChangeData,
   IngredientChangeData,
   IngredientLockData,
+  BulkInventoryMoveData,
   InventoryItemData,
   NetworkUidData,
   OwnedItemData,
@@ -127,6 +128,7 @@ function readAuditChanges(
   const upsertOwnedItems: OwnedItemData[] = [];
   const removeOwnedItemIds: number[] = [];
   const inventoryChanges: InventoryItemData[] = [];
+  const bulkInventoryMoves: BulkInventoryMoveData[] = [];
   const ingredientChanges: IngredientChangeData[] = [];
   const lockIngredientChanges: IngredientLockData[] = [];
   const gardenChanges: GardenChangeData[] = [];
@@ -161,9 +163,17 @@ function readAuditChanges(
           const [item, nextPos] = readOwnedItem(body, pos);
           pos = nextPos;
           removeOwnedItemIds.push(item.serverId);
+          inventoryChanges.push({ globalItemId: item.globalItemId, delta: 1 });
         }
         break;
       case ACTION_FROM_INVENTORY_TO_GAME:
+        {
+          const [item, nextPos] = readOwnedItem(body, pos);
+          pos = nextPos;
+          upsertOwnedItems.push(item);
+          inventoryChanges.push({ globalItemId: item.globalItemId, delta: -1 });
+        }
+        break;
       case ACTION_SAVE_OWNED_ITEM:
         {
           const [item, nextPos] = readOwnedItem(body, pos);
@@ -249,7 +259,7 @@ function readAuditChanges(
         {
           let itemId = 0;
           [itemId, pos] = readVarint(body, pos);
-          gardenChanges.push({ plotId: itemId, ingredientId: itemId, action: 'seed' });
+          gardenChanges.push({ plotId: itemId, action: 'seed' });
         }
         break;
       case ACTION_WATER_PLANT:
@@ -313,8 +323,13 @@ function readAuditChanges(
         }
         break;
       case ACTION_MOVE_IN_GAME_ITEMS_TO_INVENTORY:
-        pos = skipVarint(body, pos);
-        pos = skipVarint(body, pos);
+        {
+          let floorIndex = 0;
+          [floorIndex, pos] = readVarint(body, pos);
+          let itemTypeId = 0;
+          [itemTypeId, pos] = readVarint(body, pos);
+          bulkInventoryMoves.push({ floorIndex, itemTypeId });
+        }
         break;
       default:
         pos = skipAuditPayload(body, pos, action);
@@ -328,6 +343,7 @@ function readAuditChanges(
     upsertOwnedItems,
     removeOwnedItemIds,
     inventoryChanges,
+    bulkInventoryMoves,
     ingredientChanges,
     lockIngredientChanges,
     gardenChanges,
