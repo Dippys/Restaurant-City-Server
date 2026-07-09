@@ -277,6 +277,20 @@ model CashTransaction {
   @@index([userProfileId, createdAt])
 }
 
+// Idempotency marker for once-per-day server-generated content (daily quiz mail,
+// daily free-ingredient bonus, NPC gifts/ranks). One row per (player, kind, day).
+model SystemGrant {
+  id            String   @id
+  userProfileId String
+  kind          String
+  dayKey        String
+  createdAtUnix Int
+  createdAt     DateTime @default(now())
+
+  @@unique([userProfileId, kind, dayKey])
+  @@index([userProfileId])
+}
+
 model Pricepoint {
   id              Int      @id @default(autoincrement())
   productType     Int

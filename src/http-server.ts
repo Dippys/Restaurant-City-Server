@@ -43,7 +43,9 @@ import { RequestLog } from './request-log';
 import { StaticFileIndex } from './static-files';
 import type { CapturedRequest } from './types';
 import { buildResponse } from './rpc';
+import { writeString } from './rpc/codec';
 import { accountFromRequest, accountFromUsername, defaultAccount, loginCookie, logoutCookie } from './session';
+import { enqueueGlobalLiveEvent, enqueueLiveEvent, listOnlineUsers, LIVE_EVENT_ALERT } from './live-events';
 
 const CROSSDOMAIN = [
   '<?xml version="1.0"?>',
@@ -176,6 +178,11 @@ async function handleRequest(
     return;
   }
 
+  if (pathname.startsWith('/__api/live')) {
+    await handleLiveApi(req.method || 'GET', pathname, body, res);
+    return;
+  }
+
   if (pathname.startsWith('/__api/db')) {
     await handleDatabaseApi(req.method || 'GET', pathname, body, res);
     return;
@@ -233,6 +240,43 @@ async function handleRpc(req: IncomingMessage, res: ServerResponse, body: Buffer
     'Access-Control-Allow-Origin': '*',
   });
   res.end(response);
+}
+
+async function handleLiveApi(method: string, pathname: string, body: Buffer, res: ServerResponse): Promise<void> {
+  try {
+    if (method === 'GET' && pathname === '/__api/live/online') {
+      sendJson(res, { ok: true, users: listOnlineUsers() });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/__api/live/alert') {
+      const input = parseJsonBody<{ scope?: string; networkUid?: string; title?: string; message?: string }>(body);
+      const title = cleanLiveText(input.title || 'Restaurant City', 80);
+      const message = cleanLiveText(input.message || '', 500);
+      if (!message) {
+        throw new Error('Message is required.');
+      }
+
+      const eventBody = Buffer.concat([writeString(title), writeString(message)]);
+      let delivered = 0;
+      if (input.scope === 'global') {
+        delivered = enqueueGlobalLiveEvent(LIVE_EVENT_ALERT, eventBody);
+      } else {
+        const networkUid = String(input.networkUid || '').trim();
+        if (!networkUid) {
+          throw new Error('Choose an online user or send globally.');
+        }
+        delivered = enqueueLiveEvent(networkUid, LIVE_EVENT_ALERT, eventBody) ? 1 : 0;
+      }
+
+      sendJson(res, { ok: true, delivered, users: listOnlineUsers() });
+      return;
+    }
+
+    sendJson(res, { ok: false, error: 'unknown live route' }, 404);
+  } catch (error) {
+    sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+  }
 }
 
 function sendStaticFile(
@@ -561,6 +605,15 @@ function parseJsonBody<T>(body: Buffer): T {
 function sendJson(res: ServerResponse, value: unknown, status = 200): void {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(value));
+}
+
+function cleanLiveText(value: string, maxLength: number): string {
+  const text = String(value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  const flashSafe = Array.from(text).filter((char) => {
+    const codePoint = char.codePointAt(0) ?? 0;
+    return codePoint === 9 || codePoint === 10 || (codePoint >= 32 && codePoint <= 0xffff);
+  });
+  return flashSafe.slice(0, maxLength).join('');
 }
 
 function encodeArgbPng(argb: Buffer, width: number, height: number): Buffer {

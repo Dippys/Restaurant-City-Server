@@ -1,6 +1,18 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from './client';
-import { FACEBOOK_NETWORK, ITEM_CATALOG, PLAYER_NETWORK_UID, defaultProfileName, isKnownItemId } from './defaults';
+import {
+  DEFAULT_NEW_PLAYER_DEMAND,
+  FACEBOOK_NETWORK,
+  ITEM_CATALOG,
+  PLAYER_NETWORK_UID,
+  STARTER_BUILDING_ITEMS,
+  STARTER_INGREDIENTS,
+  STARTER_RECIPES,
+  STARTER_RESTAURANT_ITEMS,
+  defaultProfileName,
+  isKnownItemId,
+  type OwnedItemSeed,
+} from './defaults';
 import { ensureEconomyCatalog } from './rpc-store';
 import { ensureStarterFriends } from './profile-store';
 
@@ -181,6 +193,7 @@ export async function createAdminUser(input: ProfileInput): Promise<AdminUser> {
   const clean = validateProfileInput(input, true);
   const id = profileKey(clean.networkUid);
   const { firstName, fullName } = clean.firstName ? clean : defaultProfileName(clean.networkUid);
+  const starterOwnedItems = seedAdminOwnedItems(clean.networkUid, [...STARTER_BUILDING_ITEMS, ...STARTER_RESTAURANT_ITEMS]);
 
   await prisma.userProfile.create({
     data: {
@@ -211,6 +224,10 @@ export async function createAdminUser(input: ProfileInput): Promise<AdminUser> {
       lastSave: clean.lastSave,
       lastSurveyTime: clean.lastSurveyTime,
       consecutionCount: clean.consecutionCount,
+      ownedItems: { create: starterOwnedItems },
+      inventoryItems: { create: seedAdminStarterRecipes(clean.networkUid) },
+      ingredients: { create: seedAdminStarterIngredients(clean.networkUid) },
+      floors: { create: seedAdminStarterFloors(clean.networkUid) },
     },
   });
 
@@ -622,13 +639,13 @@ function validateProfileInput(input: ProfileInput, creating: boolean): Required<
     gender: boundedInt(input.gender, 'gender', 0, 2),
     credits: boundedInt(input.credits, 'credits', 0, 999999999),
     cashBalance: boundedInt(input.cashBalance ?? 250, 'cashBalance', 0, 999999999),
-    playCount: boundedInt(input.playCount ?? 0, 'playCount', 0, 999999999),
+    playCount: boundedInt(input.playCount ?? 1, 'playCount', 0, 999999999),
     userLevel: boundedInt(input.userLevel, 'userLevel', 1, 99),
     gourmetPoint: boundedInt(input.gourmetPoint, 'gourmetPoint', 0, 999999999),
     nbVote: boundedInt(input.nbVote ?? 0, 'nbVote', 0, 999999999),
     totalMark: boundedInt(input.totalMark ?? 0, 'totalMark', 0, 999999999),
     trashPoint: boundedInt(input.trashPoint, 'trashPoint', 0, 999999999),
-    demandPoint: boundedInt(input.demandPoint, 'demandPoint', 0, 999999999),
+    demandPoint: boundedInt(input.demandPoint ?? DEFAULT_NEW_PLAYER_DEMAND, 'demandPoint', 0, 999999999),
     musicPlay: boundedInt(input.musicPlay, 'musicPlay', 0, 999999999),
     bookmarkCount: boundedInt(input.bookmarkCount ?? 0, 'bookmarkCount', 0, 999999999),
     activeFloorIndex: boundedInt(input.activeFloorIndex, 'activeFloorIndex', 0, 8),
@@ -835,6 +852,50 @@ function floorKey(networkUid: string, floorIndex: number): string {
 
 function employeeKey(networkUid: string, employeeNetworkUid: string): string {
   return `${profileKey(networkUid)}:employee:${employeeNetworkUid}`;
+}
+
+function seedAdminOwnedItems(networkUid: string, seeds: readonly OwnedItemSeed[]) {
+  return seeds.map((item, index) => {
+    const serverId = -(index + 1);
+    return {
+      id: ownedItemKey(networkUid, serverId),
+      serverId,
+      globalItemId: item.id,
+      positionX: item.x,
+      positionY: item.y,
+      data: item.data ?? 0,
+      roomIndex: item.roomIndex ?? 0,
+      employeeNetwork: 0,
+      employeeNetworkUid: '',
+      employeePlayfishUid: 0,
+    };
+  });
+}
+
+function seedAdminStarterRecipes(networkUid: string) {
+  return STARTER_RECIPES.map((recipe) => ({
+    id: inventoryKey(networkUid, recipe.id),
+    globalItemId: recipe.id,
+    number: recipe.level,
+    isSelected: recipe.selected,
+  }));
+}
+
+function seedAdminStarterIngredients(networkUid: string) {
+  return STARTER_INGREDIENTS.map((ingredient) => ({
+    id: ingredientKey(networkUid, ingredient.id),
+    globalItemId: ingredient.id,
+    number: ingredient.count,
+    isLocked: false,
+  }));
+}
+
+function seedAdminStarterFloors(networkUid: string) {
+  return [0, 1].map((floorIndex) => ({
+    id: floorKey(networkUid, floorIndex),
+    floorIndex,
+    tilesJson: JSON.stringify(Array.from({ length: 20 * 40 }, () => 0)),
+  }));
 }
 
 function nowSeconds(): number {

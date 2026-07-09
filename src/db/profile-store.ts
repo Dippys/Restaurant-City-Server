@@ -3,9 +3,13 @@ import { prisma } from './client';
 import {
   FACEBOOK_NETWORK,
   PLAYER_NETWORK_UID,
+  SYSTEM_NETWORK_UID,
   STARTER_FRIENDS,
   STARTER_BUILDING_ITEMS,
   STARTER_RESTAURANT_ITEMS,
+  STARTER_RECIPES,
+  STARTER_INGREDIENTS,
+  DEFAULT_NEW_PLAYER_DEMAND,
   type FriendProfileSeed,
   type OwnedItemSeed,
   defaultProfileName,
@@ -169,13 +173,16 @@ export async function getProfiles(networkUids: readonly string[], activeNetworkU
   });
 }
 
+// Online mode: every account on the server is a mutual friend of every other,
+// alongside the seeded NPCs. Returns all real player + NPC profiles except the
+// caller and the reserved system uids (default player '0', system sender '1').
 export async function getAllFriends(activeNetworkUid = PLAYER_NETWORK_UID): Promise<StoredProfile[]> {
   await ensureStarterFriends();
   await ensureProfile(activeNetworkUid);
 
   return prisma.userProfile.findMany({
     where: {
-      networkUid: { in: [activeNetworkUid, ...STARTER_FRIENDS.map((friend) => friend.networkUid)] },
+      networkUid: { notIn: [activeNetworkUid, PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID] },
     },
     include: profileInclude,
     orderBy: { networkUid: 'asc' },
@@ -479,13 +486,23 @@ async function ensureProfile(networkUid: string, options: EnsureProfileOptions =
       restaurantName: options.restaurantName ?? (safeNetworkUid === PLAYER_NETWORK_UID ? 'My Restaurant' : firstName),
       gender: 0,
       credits: 0,
+      // playCount starts at 1 so the first session takes the client's fresh-user
+      // boot branch (demand 120, money 0). It is advanced by initSession only
+      // after tutorial progress exists, never by ordinary save traffic.
+      playCount: options.seedStarterItems ? 1 : 0,
       userLevel: 1,
       gourmetPoint: 0,
       trashPoint: 0,
-      demandPoint: 0,
+      demandPoint: options.seedStarterItems ? DEFAULT_NEW_PLAYER_DEMAND : 0,
       musicPlay: 0,
       ownedItems: {
         create: options.seedStarterItems ? seedOwnedItems(safeNetworkUid, starterSeeds()) : [],
+      },
+      inventoryItems: {
+        create: options.seedStarterItems ? seedStarterRecipes(safeNetworkUid) : [],
+      },
+      ingredients: {
+        create: options.seedStarterItems ? seedStarterIngredients(safeNetworkUid) : [],
       },
       floors: {
         create: options.seedStarterItems ? seedStarterFloors(safeNetworkUid) : [],
@@ -535,6 +552,24 @@ function seedOwnedItems(networkUid: string, seeds: readonly OwnedItemSeed[]) {
   });
 }
 
+function seedStarterRecipes(networkUid: string) {
+  return STARTER_RECIPES.map((recipe) => ({
+    id: inventoryKey(networkUid, recipe.id),
+    globalItemId: recipe.id,
+    number: recipe.level,
+    isSelected: recipe.selected,
+  }));
+}
+
+function seedStarterIngredients(networkUid: string) {
+  return STARTER_INGREDIENTS.map((ingredient) => ({
+    id: ingredientKey(networkUid, ingredient.id),
+    globalItemId: ingredient.id,
+    number: ingredient.count,
+    isLocked: false,
+  }));
+}
+
 function seedStarterFloors(networkUid: string) {
   return STARTER_FLOOR_INDEXES.map((floorIndex) => ({
     id: floorKey(networkUid, floorIndex),
@@ -582,13 +617,46 @@ async function repairProfileStateInTransaction(
   let nextServerId = ownedItems.reduce((min: number, item: OwnedItem) => Math.min(min, item.serverId), 0) - 1;
 
   if (seedStarterItems) {
-    if (!ownedItems.some((item: OwnedItem) => itemType(item.globalItemId) === 2)) {
-      nextServerId = await addStarterOwnedItems(tx, networkUid, profileId, STARTER_BUILDING_ITEMS, nextServerId);
-      repaired = true;
-    }
+    const starterRepair = await addMissingStarterOwnedItems(
+      tx,
+      networkUid,
+      profileId,
+      ownedItems,
+      starterSeeds(),
+      nextServerId,
+    );
+    nextServerId = starterRepair.nextServerId;
+    repaired ||= starterRepair.repaired;
 
-    if (!ownedItems.some((item: OwnedItem) => itemType(item.globalItemId) === 3)) {
-      nextServerId = await addStarterOwnedItems(tx, networkUid, profileId, STARTER_RESTAURANT_ITEMS, nextServerId);
+    // Learned recipes are permanent, so an empty menu means this profile predates
+    // food seeding (or was created before starter food existed). Backfill the
+    // original starter menu, ingredients, and demand without ever re-granting to a
+    // played account.
+    const inventoryItems = loadedProfile?.inventoryItems
+      ?? await tx.inventoryItem.findMany({ where: { userProfileId: profileId } });
+    if (inventoryItems.length === 0) {
+      for (const recipe of seedStarterRecipes(networkUid)) {
+        await tx.inventoryItem.create({ data: { ...recipe, userProfileId: profileId } });
+      }
+
+      const ingredients = loadedProfile?.ingredients
+        ?? await tx.ingredientInventory.findMany({ where: { userProfileId: profileId } });
+      if (ingredients.length === 0) {
+        for (const ingredient of seedStarterIngredients(networkUid)) {
+          await tx.ingredientInventory.create({ data: { ...ingredient, userProfileId: profileId } });
+        }
+      }
+
+      const demand = loadedProfile?.demandPoint
+        ?? (await tx.userProfile.findUnique({ where: { id: profileId }, select: { demandPoint: true } }))?.demandPoint
+        ?? 0;
+      if (demand === 0) {
+        await tx.userProfile.update({
+          where: { id: profileId },
+          data: { demandPoint: DEFAULT_NEW_PLAYER_DEMAND },
+        });
+      }
+
       repaired = true;
     }
   }
@@ -665,6 +733,49 @@ async function addStarterOwnedItems(
   }
 
   return nextServerId;
+}
+
+async function addMissingStarterOwnedItems(
+  tx: any,
+  networkUid: string,
+  profileId: string,
+  ownedItems: readonly OwnedItem[],
+  seeds: readonly OwnedItemSeed[],
+  nextServerId: number,
+): Promise<{ nextServerId: number; repaired: boolean }> {
+  const existingCounts = new Map<number, number>();
+  for (const item of ownedItems) {
+    existingCounts.set(item.globalItemId, (existingCounts.get(item.globalItemId) ?? 0) + 1);
+  }
+
+  let repaired = false;
+  for (const seed of seeds) {
+    const remaining = existingCounts.get(seed.id) ?? 0;
+    if (remaining > 0) {
+      existingCounts.set(seed.id, remaining - 1);
+      continue;
+    }
+
+    await tx.ownedItem.create({
+      data: {
+        id: ownedItemKey(networkUid, nextServerId),
+        userProfileId: profileId,
+        serverId: nextServerId,
+        globalItemId: seed.id,
+        positionX: seed.x,
+        positionY: seed.y,
+        data: seed.data ?? 0,
+        roomIndex: seed.roomIndex ?? 0,
+        employeeNetwork: 0,
+        employeeNetworkUid: '',
+        employeePlayfishUid: 0,
+      },
+    });
+    nextServerId -= 1;
+    repaired = true;
+  }
+
+  return { nextServerId, repaired };
 }
 
 function defaultFloorTiles(): number[] {

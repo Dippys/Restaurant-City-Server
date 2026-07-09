@@ -1,11 +1,19 @@
 import type { Mail, Pricepoint, PurchasableItem } from '@prisma/client';
 import { prisma } from './client';
-import { FACEBOOK_NETWORK, PLAYER_NETWORK_UID } from './defaults';
+import { FACEBOOK_NETWORK, PLAYER_NETWORK_UID, isNpcUid } from './defaults';
 import { getAllFriends, getPlayerProfile, getProfiles, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
+import { ensureDailyContent, sendNpcGift, grantMailItem } from './system-mail';
+import { resolveIngredientId, firstVisitIngredientId } from './ingredient-catalog';
 import type { ActiveAccount } from '../session';
+import { pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
 
 const STATUS_OK = 0;
 const STATUS_NOT_ENOUGH_CASH = 1;
+
+// Client mail type ids (see com.playfish.rpc.cooking.RpcClient in the SWF).
+const MAIL_TYPE_GIFT = 4;
+const MAIL_TYPE_SECURECHANGE = 6;
+const MAIL_TYPE_SECUREECHANGE_OK = 8;
 const STARTING_CASH_BALANCE = 250;
 const DEFAULT_CASH_COST = 1;
 const GARDEN_WETNESS_PER_WATER_SECONDS = 3 * 60 * 60;
@@ -13,6 +21,7 @@ const GARDEN_MAX_WETNESS_SECONDS = 9 * 60 * 60;
 const MAX_VISIT_ACTIVITY_GP = 15;
 const VISIT_ACTIVITY_PAYOUTS: ReadonlyArray<readonly [number, number]> = [[1, 500], [2, 100], [5, 50]];
 const MIN_VISIT_ACTIVITY_PAYOUT = 15;
+const initializedPlayCountSessions = new Set<string>();
 
 export interface StatusBalance {
   readonly status: number;
@@ -113,11 +122,25 @@ export async function cashBalance(account: ActiveAccount): Promise<number> {
 }
 
 export async function initSession(account: ActiveAccount): Promise<void> {
-  await ensureAccountProfile(account);
-  await prisma.userProfile.update({
-    where: { id: profileKey(account.networkUid) },
-    data: { playCount: { increment: 1 } },
-  });
+  const profile = await ensureAccountProfile(account);
+  if (shouldIncrementPlayCountOnInit(profile)) {
+    initializedPlayCountSessions.add(account.networkUid);
+    await prisma.userProfile.update({
+      where: { id: profileKey(account.networkUid) },
+      data: { playCount: { increment: 1 } },
+    });
+  }
+  await ensureDailyContent(account);
+}
+
+function shouldIncrementPlayCountOnInit(profile: StoredProfile): boolean {
+  if (initializedPlayCountSessions.has(profile.networkUid)) {
+    return false;
+  }
+
+  // The Flash tutorial stays active until the player has two employees: the
+  // player character plus one hired friend (see WorldStreet's < 2 tutorial gate).
+  return profile.playCount > 1 || profile.employees.length >= 2 || profile.gourmetPoint > 0 || profile.userLevel > 1;
 }
 
 export async function purchaseCoinsWithCash(account: ActiveAccount, token: string): Promise<StatusBalance> {
@@ -205,6 +228,7 @@ export async function purchaseCashIngredients(account: ActiveAccount, tokens: re
 
 export async function receivedMails(account: ActiveAccount): Promise<StoredMail[]> {
   await ensureAccountProfile(account);
+  await ensureDailyContent(account);
   return prisma.mail.findMany({
     where: { recipientProfileId: profileKey(account.networkUid), deleted: false },
     orderBy: { sendDate: 'desc' },
@@ -222,6 +246,37 @@ export async function sendMail(account: ActiveAccount, mail: {
   const recipientUid = mail.recipient.networkUid || String(mail.recipient.playfishUid || PLAYER_NETWORK_UID);
   await ensureProfileByUid(recipientUid);
 
+  // NPC recipients have no client to act, so the server responds on their behalf:
+  // trade requests are auto-accepted and gifts are reciprocated.
+  if (isNpcUid(recipientUid)) {
+    if (mail.type === MAIL_TYPE_SECURECHANGE) {
+      await autoAcceptNpcTrade(account, recipientUid, mail.globalItemIds);
+      return STATUS_OK;
+    }
+
+    await persistMail(sender, recipientUid, mail);
+    if (mail.type === MAIL_TYPE_GIFT) {
+      await sendNpcGift(account, recipientUid);
+    }
+    return STATUS_OK;
+  }
+
+  await persistMail(sender, recipientUid, mail);
+  // A gift's item is not added by the recipient's client on open (it only shows
+  // "item added"), so the server persists it to the recipient — matching PlayFish.
+  if (mail.type === MAIL_TYPE_GIFT) {
+    await grantMailItem(recipientUid, mail.globalItemIds[0] ?? 0);
+  }
+  return STATUS_OK;
+}
+
+async function persistMail(sender: StoredProfile, recipientUid: string, mail: {
+  recipient: NetworkUidData;
+  globalItemIds: readonly number[];
+  itemId: number;
+  message: string;
+  type: number;
+}): Promise<void> {
   await prisma.mail.create({
     data: {
       senderProfileId: profileKey(sender.networkUid),
@@ -240,8 +295,52 @@ export async function sendMail(account: ActiveAccount, mail: {
       type: mail.type,
     },
   });
+}
 
-  return STATUS_OK;
+// A player mailed a trade request to an NPC. The offer carries both ingredient ids
+// (globalItemIds[0] = player gives, [1] = NPC gives). The NPC "accepts" instantly:
+// the player gives item 0 and receives item 1, then gets a confirmation mail.
+async function autoAcceptNpcTrade(player: ActiveAccount, npcUid: string, globalItemIds: readonly number[]): Promise<void> {
+  const playerGives = globalItemIds[0] ?? 0;
+  const playerReceives = globalItemIds[1] ?? 0;
+  const npcProfile = await ensureProfileByUid(npcUid);
+
+  await prisma.$transaction(async (tx) => {
+    if (playerGives > 0) {
+      await adjustIngredient(tx, player.networkUid, playerGives, -1);
+    }
+    if (playerReceives > 0) {
+      await adjustIngredient(tx, player.networkUid, playerReceives, 1);
+    }
+  });
+
+  await deliverNpcTradeConfirmation(player, npcProfile, playerGives, playerReceives);
+}
+
+async function deliverNpcTradeConfirmation(
+  player: ActiveAccount,
+  npc: StoredProfile,
+  playerGives: number,
+  playerReceives: number,
+): Promise<void> {
+  await prisma.mail.create({
+    data: {
+      senderProfileId: profileKey(npc.networkUid),
+      recipientProfileId: profileKey(player.networkUid),
+      senderNetwork: npc.network || FACEBOOK_NETWORK,
+      senderNetworkUid: npc.networkUid,
+      senderPlayfishUid: npc.playfishUid,
+      recipientNetwork: FACEBOOK_NETWORK,
+      recipientNetworkUid: player.networkUid,
+      recipientPlayfishUid: player.playfishUid,
+      globalItemIdsJson: JSON.stringify([playerReceives, playerGives]),
+      itemId: 0,
+      message: '',
+      sendDate: nowSeconds(),
+      deleteTime: 0,
+      type: MAIL_TYPE_SECUREECHANGE_OK,
+    },
+  });
 }
 
 export async function bookmarkCount(account: ActiveAccount): Promise<number> {
@@ -308,26 +407,39 @@ export async function rankRestaurant(account: ActiveAccount, target: NetworkUidD
   await ensureAccountProfile(account);
   const targetNetworkUid = target.networkUid || String(target.playfishUid || PLAYER_NETWORK_UID);
   const targetProfile = await ensureProfileByUid(targetNetworkUid);
-  await prisma.restaurantRank.upsert({
-    where: { fromProfileId_targetNetworkUid: { fromProfileId: profileKey(account.networkUid), targetNetworkUid } },
-    update: { rating },
-    create: {
-      id: `${profileKey(account.networkUid)}:rank:${targetNetworkUid}`,
-      fromProfileId: profileKey(account.networkUid),
-      targetProfileId: targetProfile.id,
-      targetNetwork: target.network || FACEBOOK_NETWORK,
-      targetNetworkUid,
-      targetPlayfishUid: target.playfishUid,
-      rating,
-    },
+
+  await prisma.$transaction(async (tx) => {
+    // A player has a single standing rank per restaurant. Re-ranking replaces the
+    // previous rating: adjust totalMark by the delta and count nbVote only once.
+    const previous = await tx.restaurantRank.findUnique({
+      where: { fromProfileId_targetNetworkUid: { fromProfileId: profileKey(account.networkUid), targetNetworkUid } },
+    });
+    const markDelta = previous ? rating - previous.rating : rating;
+    const voteDelta = previous ? 0 : 1;
+
+    await tx.restaurantRank.upsert({
+      where: { fromProfileId_targetNetworkUid: { fromProfileId: profileKey(account.networkUid), targetNetworkUid } },
+      update: { rating },
+      create: {
+        id: `${profileKey(account.networkUid)}:rank:${targetNetworkUid}`,
+        fromProfileId: profileKey(account.networkUid),
+        targetProfileId: targetProfile.id,
+        targetNetwork: target.network || FACEBOOK_NETWORK,
+        targetNetworkUid,
+        targetPlayfishUid: target.playfishUid,
+        rating,
+      },
+    });
+
+    await tx.userProfile.update({
+      where: { id: targetProfile.id },
+      data: {
+        nbVote: { increment: voteDelta },
+        totalMark: { increment: markDelta },
+      },
+    });
   });
-  await prisma.userProfile.update({
-    where: { id: targetProfile.id },
-    data: {
-      nbVote: { increment: 1 },
-      totalMark: { increment: rating },
-    },
-  });
+
   return STATUS_OK;
 }
 
@@ -338,37 +450,25 @@ export async function firstVisitFriend(account: ActiveAccount, friend: NetworkUi
   const existing = await prisma.friendVisit.findUnique({
     where: { userProfileId_friendNetworkUid: { userProfileId: profileKey(account.networkUid), friendNetworkUid } },
   });
-  const giftIngredientId = existing?.giftIngredientId ?? defaultIngredient(friendNetworkUid);
+  const giftIngredientId = existing?.giftIngredientId ?? firstVisitIngredientId();
   const now = nowSeconds();
 
-  await prisma.$transaction(async (tx) => {
-    await tx.friendVisit.upsert({
-      where: { userProfileId_friendNetworkUid: { userProfileId: profileKey(account.networkUid), friendNetworkUid } },
-      update: { lastVisitedAt: now },
-      create: {
-        id: `${profileKey(account.networkUid)}:visit:${friendNetworkUid}`,
-        userProfileId: profileKey(account.networkUid),
-        friendNetwork: friend.network || FACEBOOK_NETWORK,
-        friendNetworkUid,
-        friendPlayfishUid: friend.playfishUid,
-        firstVisitedAt: now,
-        lastVisitedAt: now,
-        giftIngredientId,
-      },
-    });
-    if (!existing) {
-      await tx.ingredientInventory.upsert({
-        where: { userProfileId_globalItemId: { userProfileId: profileKey(account.networkUid), globalItemId: giftIngredientId } },
-        update: { number: { increment: 1 } },
-        create: {
-          id: ingredientKey(account.networkUid, giftIngredientId),
-          userProfileId: profileKey(account.networkUid),
-          globalItemId: giftIngredientId,
-          number: 1,
-          isLocked: false,
-        },
-      });
-    }
+  // Record the visit only. The returned gift is added to the visitor's inventory
+  // CLIENT-side (RpcFirstTimeVisitFriend adds it and it persists via saveProfile),
+  // so the server must not also grant it — that would double the gift on reload.
+  await prisma.friendVisit.upsert({
+    where: { userProfileId_friendNetworkUid: { userProfileId: profileKey(account.networkUid), friendNetworkUid } },
+    update: { lastVisitedAt: now },
+    create: {
+      id: `${profileKey(account.networkUid)}:visit:${friendNetworkUid}`,
+      userProfileId: profileKey(account.networkUid),
+      friendNetwork: friend.network || FACEBOOK_NETWORK,
+      friendNetworkUid,
+      friendPlayfishUid: friend.playfishUid,
+      firstVisitedAt: now,
+      lastVisitedAt: now,
+      giftIngredientId,
+    },
   });
 
   return { status: STATUS_OK, gift: { globalItemId: giftIngredientId, number: 1, isSelected: false } };
@@ -386,24 +486,96 @@ export async function gourmetStreetUsers(account: ActiveAccount, count: number):
     .slice(0, Math.max(0, count || friends.length));
 }
 
-export async function swapIngredient(account: ActiveAccount, target: NetworkUidData, offeredToken: string, requestedToken: string): Promise<number> {
+// A player (`account`) accepts an ingredient trade offered by `target`. The offer
+// was a MAIL_TYPE_SECURECHANGE mail target->account carrying both ingredient ids.
+//
+// Division of labour matches the PlayFish client: the accepter's own inventory is
+// updated CLIENT-side (WorldMailTradeIngredient.onTradeIngredientSuccess) and
+// persisted via their next saveProfile, so the server must NOT touch it. The
+// offerer (`target`) is only a remote object in the accepter's client, which
+// cannot save another account — so the server owns the offerer's side. The client
+// also does not persist the offer-mail deletion on success, so the server consumes
+// it, and delivers the offerer an informational MAIL_TYPE_SECUREECHANGE_OK mail.
+export async function swapIngredient(
+  account: ActiveAccount,
+  target: NetworkUidData,
+  offeredToken: string,
+  requestedToken: string,
+  mailId: number,
+): Promise<number> {
   await ensureAccountProfile(account);
-  await ensureProfileByUid(target.networkUid || String(target.playfishUid || PLAYER_NETWORK_UID));
-  const offered = itemIdFromToken(offeredToken, 4000000);
-  const requested = itemIdFromToken(requestedToken, 4000001);
+  const targetUid = target.networkUid || String(target.playfishUid || PLAYER_NETWORK_UID);
+  const targetProfile = await ensureProfileByUid(targetUid);
+  // The client sends each ingredient's opaque `hash`, not its numeric id.
+  const offered = resolveIngredientId(offeredToken, 4000000);
+  const requested = resolveIngredientId(requestedToken, 4000001);
+
   await prisma.$transaction(async (tx) => {
-    await tx.ingredientInventory.upsert({
-      where: { userProfileId_globalItemId: { userProfileId: profileKey(account.networkUid), globalItemId: offered } },
-      update: { number: { decrement: 1 } },
-      create: { id: ingredientKey(account.networkUid, offered), userProfileId: profileKey(account.networkUid), globalItemId: offered, number: 0 },
-    });
-    await tx.ingredientInventory.upsert({
-      where: { userProfileId_globalItemId: { userProfileId: profileKey(account.networkUid), globalItemId: requested } },
-      update: { number: { increment: 1 } },
-      create: { id: ingredientKey(account.networkUid, requested), userProfileId: profileKey(account.networkUid), globalItemId: requested, number: 1 },
-    });
+    // Offerer side only (NPCs trade from infinite stock, so skip their inventory).
+    if (!isNpcUid(targetUid)) {
+      await adjustIngredient(tx, targetUid, requested, -1);
+      await adjustIngredient(tx, targetUid, offered, 1);
+    }
+    // Consume the trade-offer mail in the accepter's inbox (client won't persist it).
+    if (mailId > 0) {
+      await tx.mail.updateMany({
+        where: { id: mailId, recipientProfileId: profileKey(account.networkUid) },
+        data: { deleted: true },
+      });
+    }
   });
+
+  // Notify the offerer their trade was accepted (real players see it; harmless for NPCs).
+  await deliverTradeConfirmation(account, targetProfile, offered, requested);
   return STATUS_OK;
+}
+
+// Reads/writes an ingredient count with a floor of 0, deleting empty non-locked rows.
+async function adjustIngredient(tx: any, networkUid: string, ingredientId: number, delta: number): Promise<void> {
+  const profileId = profileKey(networkUid);
+  const existing = await tx.ingredientInventory.findUnique({
+    where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: ingredientId } },
+  });
+  const next = Math.max(0, (existing?.number ?? 0) + delta);
+
+  if (next === 0 && !existing?.isLocked) {
+    if (existing) {
+      await tx.ingredientInventory.deleteMany({ where: { userProfileId: profileId, globalItemId: ingredientId } });
+    }
+    return;
+  }
+
+  await tx.ingredientInventory.upsert({
+    where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: ingredientId } },
+    update: { number: next },
+    create: { id: ingredientKey(networkUid, ingredientId), userProfileId: profileId, globalItemId: ingredientId, number: next, isLocked: false },
+  });
+}
+
+async function deliverTradeConfirmation(
+  accepter: ActiveAccount,
+  offerer: StoredProfile,
+  offered: number,
+  requested: number,
+): Promise<void> {
+  await prisma.mail.create({
+    data: {
+      senderProfileId: profileKey(accepter.networkUid),
+      recipientProfileId: profileKey(offerer.networkUid),
+      senderNetwork: FACEBOOK_NETWORK,
+      senderNetworkUid: accepter.networkUid,
+      senderPlayfishUid: accepter.playfishUid,
+      recipientNetwork: offerer.network || FACEBOOK_NETWORK,
+      recipientNetworkUid: offerer.networkUid,
+      recipientPlayfishUid: offerer.playfishUid,
+      globalItemIdsJson: JSON.stringify([offered, requested]),
+      itemId: 0,
+      message: '',
+      sendDate: nowSeconds(),
+      deleteTime: 0,
+      type: MAIL_TYPE_SECUREECHANGE_OK,
+    },
+  });
 }
 
 export async function buyMysteryBox(account: ActiveAccount, category: string, tokens: readonly string[]): Promise<number> {
@@ -423,18 +595,29 @@ export async function buyMysteryBox(account: ActiveAccount, category: string, to
   return chosen;
 }
 
+// Answering the daily quiz. `quizId` is the quiz mail id, `answer` the chosen
+// reward ingredient's hash, `correct` whether the answer was right.
+//
+// Matches the PlayFish client: WorldQuiz applies the reward CLIENT-side — it adds
+// the reward ingredient (locked, so it persists via saveProfile) and this build
+// forces the coin reward to 0 (RpcReplyQuiz zeroes it). So the server grants
+// nothing (doing so would double the ingredient); it only consumes the quiz mail
+// so it can't be answered twice, and returns the unchanged coin balance.
 export async function replyQuiz(account: ActiveAccount, quizId: number, answer: string, correct: boolean): Promise<number> {
-  await ensureAccountProfile(account);
-  const reward = correct ? 100 : 10;
-  const profile = await prisma.userProfile.update({
-    where: { id: profileKey(account.networkUid) },
-    data: { credits: { increment: reward } },
-  });
+  const profile = await ensureAccountProfile(account);
+
+  if (quizId > 0) {
+    await prisma.mail.updateMany({
+      where: { id: quizId, recipientProfileId: profileKey(account.networkUid) },
+      data: { deleted: true },
+    });
+  }
+
   await prisma.gameEvent.create({
     data: {
       userProfileId: profileKey(account.networkUid),
       eventType: 25,
-      eventText: JSON.stringify({ quizId, answer, correct, reward }),
+      eventText: JSON.stringify({ quizId, answer, correct }),
       createdAtUnix: nowSeconds(),
     },
   });
@@ -558,12 +741,18 @@ export async function recordGameEvent(account: ActiveAccount, eventType: number,
   });
 }
 
-export async function pollEvents(account: ActiveAccount, request: PollRequest): Promise<{ minPollInterval: number; requestTimeout: number }> {
+// The stock client only used this as a keep-alive. Our rebuilt SWF registers a
+// small game-specific alert event so admins can push live messages to online users.
+// Returning zero events here is therefore the correct, complete behaviour.
+export async function pollEvents(account: ActiveAccount, request: PollRequest): Promise<{ minPollInterval: number; requestTimeout: number; events: readonly LiveEvent[] }> {
   await ensureAccountProfile(account);
+  touchOnline(account);
+  const events = pollLiveEvents(account, request.ackEventIds);
   const requestTimeout = boundedInt(request.requestTimeout, 5000, 120000, 30000);
   return {
-    minPollInterval: request.synchronous ? 30000 : 0,
+    minPollInterval: request.synchronous ? 30000 : 5000,
     requestTimeout,
+    events,
   };
 }
 

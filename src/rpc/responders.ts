@@ -50,6 +50,7 @@ import {
   setBookmarkCount,
   type StoredMail,
 } from '../db/rpc-store';
+import type { LiveEvent } from '../live-events';
 
 type RpcResponder = (
   request: ParsedRequest | ParsedSubRequest,
@@ -371,7 +372,7 @@ async function getGourmetStreetUsers(request: ParsedRequest | ParsedSubRequest, 
 
 async function swapIngredientResponder(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
   const parsed = readSwapIngredient(requestBody(request));
-  return writeU8(await swapIngredient(account, parsed.target, parsed.offeredToken, parsed.requestedToken));
+  return writeU8(await swapIngredient(account, parsed.target, parsed.offeredToken, parsed.requestedToken, parsed.mailId));
 }
 
 async function sendMailResponder(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
@@ -410,7 +411,16 @@ async function pollEventsResponder(request: ParsedRequest | ParsedSubRequest, ac
   return Buffer.concat([
     writeVarint(result.minPollInterval),
     writeVarint(result.requestTimeout),
-    writeArray([]),
+    writeArray(result.events.map(writeLiveEvent)),
+  ]);
+}
+
+function writeLiveEvent(event: LiveEvent): Buffer {
+  return Buffer.concat([
+    writeVarint(event.id),
+    writeU8(event.type),
+    writeVarint(event.body.length),
+    event.body,
   ]);
 }
 
@@ -517,9 +527,10 @@ function readSwapIngredient(body: Buffer) {
   let requestedToken = '';
   [requestedToken, pos] = readString(body, pos);
   [, pos] = readBool(body, pos);
-  [, pos] = readVarint(body, pos);
+  let mailId = 0;
+  [mailId, pos] = readVarint(body, pos);
   [, pos] = readBool(body, pos);
-  return { target, offeredToken, requestedToken };
+  return { target, offeredToken, requestedToken, mailId };
 }
 
 function readSendMail(body: Buffer) {

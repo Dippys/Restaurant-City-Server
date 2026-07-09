@@ -224,6 +224,23 @@
     border-radius:6px;
     background:#0d0e0f;
   }
+  .online-list {
+    display:grid;
+    gap:8px;
+    margin-top:10px;
+  }
+  .online-row {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding:9px 10px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:#17191b;
+  }
+  .online-row strong { display:block; }
+  .online-row span { color:var(--muted); font:11px var(--mono); }
   @media (max-width:1080px) {
     main { grid-template-columns:1fr; }
     aside { border-right:0; border-bottom:1px solid var(--line); }
@@ -276,11 +293,13 @@ const TABS = [
   ['employees', 'Employees'],
   ['mail', 'Mail'],
   ['activity', 'Activity'],
+  ['alerts', 'Alerts'],
   ['economy', 'Economy'],
 ];
 
 const state = {
   users: [],
+  online: [],
   catalog: [],
   economy: { pricepoints: [], purchasableItems: [], ingredientMarketItems: [] },
   selected: null,
@@ -317,14 +336,16 @@ async function api(path, options = {}) {
 
 async function load() {
   const selectedUid = state.selected?.networkUid || null;
-  const [catalog, users, economy] = await Promise.all([
+  const [catalog, users, economy, live] = await Promise.all([
     api('/__api/db/catalog'),
     api('/__api/db/users'),
     api('/__api/db/economy'),
+    api('/__api/live/online'),
   ]);
   state.catalog = catalog.items;
   state.users = users.users;
   state.economy = economy.economy;
+  state.online = live.users;
   state.selected = selectedUid ? state.users.find((user) => user.networkUid === selectedUid) || null : state.selected;
   if (!state.selected && state.users.length) state.selected = state.users[0];
   renderAll();
@@ -387,6 +408,11 @@ function renderSummary() {
     addPill(`market ${state.economy.ingredientMarketItems.length}`);
     return;
   }
+  if (state.activeTab === 'alerts') {
+    addPill(`online ${state.online.length}`);
+    addPill(`pending ${state.online.reduce((sum, user) => sum + user.pendingEvents, 0)}`);
+    return;
+  }
   const user = state.selected;
   if (!user) {
     addPill('new user');
@@ -412,6 +438,10 @@ function renderPanel() {
   panelEl.textContent = '';
   if (state.activeTab === 'economy') {
     renderEconomy();
+    return;
+  }
+  if (state.activeTab === 'alerts') {
+    renderAlerts();
     return;
   }
   if (!state.selected) {
@@ -445,13 +475,13 @@ function renderProfile(user) {
     gender: 0,
     credits: 0,
     cashBalance: 250,
-    playCount: 0,
+    playCount: 1,
     userLevel: 1,
     gourmetPoint: 0,
     nbVote: 0,
     totalMark: 0,
     trashPoint: 0,
-    demandPoint: 0,
+    demandPoint: 120,
     musicPlay: 0,
     bookmarkCount: 0,
     activeFloorIndex: 0,
@@ -791,6 +821,83 @@ function renderActivity(user) {
       readonlyColumn('createdAt', 'Created', 180),
     ],
   });
+}
+
+function renderAlerts() {
+  const onlineOptions = state.online.map((user) => (
+    `<option value="${escapeAttr(user.networkUid)}">${escapeHtml(user.username)} (${escapeHtml(user.networkUid)})</option>`
+  )).join('');
+  const form = document.createElement('form');
+  form.className = 'band';
+  form.innerHTML = `
+    <h2>Live Alerts</h2>
+    <div class="grid">
+      <label>Target
+        <select name="scope" id="alertScope">
+          <option value="global">All online users</option>
+          <option value="single">One online user</option>
+        </select>
+      </label>
+      <label>User
+        <select name="networkUid" id="alertUser" ${state.online.length ? '' : 'disabled'}>
+          ${onlineOptions || '<option value="">No online users</option>'}
+        </select>
+      </label>
+      ${profileInput('title', 'Title', 'Restaurant City')}
+    </div>
+    <label style="margin-top:10px">Message
+      <textarea name="message" maxlength="500" placeholder="Type the alert text"></textarea>
+    </label>
+    <div class="actions">
+      <button class="primary" type="submit" ${state.online.length ? '' : 'disabled'}>Send Alert</button>
+      <button type="button" id="refreshOnline">Refresh Online</button>
+    </div>
+  `;
+  form.querySelector('#refreshOnline').onclick = () => refreshOnline().catch((error) => setMsg(error.message, 'err'));
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    try {
+      const result = await api('/__api/live/alert', {
+        method: 'POST',
+        body: JSON.stringify({
+          scope: String(data.get('scope') || 'global'),
+          networkUid: String(data.get('networkUid') || ''),
+          title: String(data.get('title') || ''),
+          message: String(data.get('message') || ''),
+        }),
+      });
+      state.online = result.users;
+      setMsg(`Queued alert for ${result.delivered} user${result.delivered === 1 ? '' : 's'}`, 'ok');
+      renderAll();
+    } catch (error) {
+      setMsg(error.message, 'err');
+    }
+  };
+  panelEl.append(form);
+
+  const list = document.createElement('div');
+  list.className = 'online-list';
+  if (!state.online.length) {
+    list.append(empty('No online users. Open /game with a user and wait for the poll loop.'));
+  } else {
+    for (const user of state.online) {
+      const row = document.createElement('div');
+      row.className = 'online-row';
+      row.innerHTML = `
+        <div><strong>${escapeHtml(user.username)}</strong><span>ID ${escapeHtml(user.networkUid)} | PF ${user.playfishUid}</span></div>
+        <span>${user.pendingEvents} queued | ${user.inflightEvents} waiting ack</span>
+      `;
+      list.append(row);
+    }
+  }
+  panelEl.append(list);
+}
+
+async function refreshOnline() {
+  const live = await api('/__api/live/online');
+  state.online = live.users;
+  renderAll();
 }
 
 function renderEconomy() {
