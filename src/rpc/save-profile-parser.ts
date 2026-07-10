@@ -11,6 +11,7 @@ import type {
   SaveAuditData,
   SavedProfileData,
 } from '../db/profile-store';
+import { resolveRecipeEntry } from '../db/recipe-catalog';
 import {
   readArray,
   readBool,
@@ -216,7 +217,12 @@ function readAuditChanges(
             [qty, pos] = readVarint(body, pos);
             inventoryChanges.push({ globalItemId: itemIdFromToken(token), delta: Math.max(1, qty) });
           } else {
-            inventoryChanges.push({ globalItemId: itemIdFromToken(token), delta: 1, selected: true });
+            const recipe = resolveRecipeEntry(token);
+            const recipeId = recipe?.id ?? itemIdFromToken(token);
+            inventoryChanges.push({ globalItemId: recipeId, delta: 1, selected: true });
+            for (const ingredientId of recipe?.ingredientIds ?? []) {
+              ingredientChanges.push({ globalItemId: ingredientId, delta: -1 });
+            }
           }
         }
         break;

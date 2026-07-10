@@ -338,6 +338,10 @@ export async function savePlayerProfile(profile: SavedProfileData, audit: SaveAu
       });
     }
 
+    if (audit.floorChanges.length > 0) {
+      await ensureFloorTileInventoryCounts(tx, profileId, profile.id.networkUid);
+    }
+
     for (const employee of audit.employeeChanges) {
       const employeeNetworkUid = employee.id.networkUid || String(employee.id.playfishUid || '');
       if (!employeeNetworkUid) {
@@ -906,6 +910,41 @@ async function moveInGameItemsToInventory(
     if (tileItemId !== 0) {
       await changeInventoryItem(tx, profileId, networkUid, { globalItemId: tileItemId, delta: 1 });
     }
+  }
+}
+
+async function ensureFloorTileInventoryCounts(tx: any, profileId: string, networkUid: string): Promise<void> {
+  const floors = await tx.restaurantFloor.findMany({ where: { userProfileId: profileId } });
+  const requiredCounts = new Map<number, number>();
+
+  for (const floor of floors) {
+    for (const tileItemId of readStoredFloorTiles(floor.tilesJson)) {
+      if (tileItemId !== 0) {
+        requiredCounts.set(tileItemId, (requiredCounts.get(tileItemId) ?? 0) + 1);
+      }
+    }
+  }
+
+  for (const [globalItemId, requiredCount] of requiredCounts) {
+    const existing = await tx.inventoryItem.findUnique({
+      where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId } },
+    });
+
+    if ((existing?.number ?? 0) >= requiredCount) {
+      continue;
+    }
+
+    await tx.inventoryItem.upsert({
+      where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId } },
+      update: { number: requiredCount },
+      create: {
+        id: inventoryKey(networkUid, globalItemId),
+        userProfileId: profileId,
+        globalItemId,
+        number: requiredCount,
+        isSelected: false,
+      },
+    });
   }
 }
 
