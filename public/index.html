@@ -248,9 +248,11 @@ function addEntry(entry) {
   if (autoscrollEl.checked) row.scrollIntoView({ block: 'end', behavior: 'smooth' });
 }
 
+let csrfToken = '';
+fetch('/__api/session').then(r => r.json()).then(session => { csrfToken = session.csrfToken || ''; }).catch(() => {});
 filterEl.oninput = () => listEl.querySelectorAll('.row').forEach(applyFilter);
 document.getElementById('clear').onclick = async () => {
-  await fetch('/__api/clear', { method: 'POST' }).catch(() => {});
+  await fetch('/__api/clear', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken } }).catch(() => {});
   listEl.querySelectorAll('.row').forEach(r => r.remove());
   seen.clear(); total = rpc = miss = 0;
   countEl.textContent = rpcEl.textContent = missEl.textContent = 0;

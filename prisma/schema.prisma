@@ -6,6 +6,40 @@ datasource db {
   provider = "sqlite"
 }
 
+model Account {
+  id           String    @id
+  username     String
+  usernameKey  String    @unique
+  firstName    String
+  lastName     String
+  pinHash      String
+  pinSalt      String
+  networkUid   String    @unique
+  playfishUid  Int       @unique
+  role         String    @default("USER")
+  disabled     Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastLoginAt  DateTime?
+  sessions     Session[]
+}
+
+model Session {
+  id           String   @id
+  tokenHash    String   @unique
+  csrfToken    String
+  accountId    String
+  expiresAt    DateTime
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  ipAddress    String   @default("")
+  userAgent    String   @default("")
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([expiresAt])
+}
+
 model UserProfile {
   id               String      @id
   network          Int         @default(2)

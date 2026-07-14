@@ -1,0 +1,253 @@
+/* ============================================================
+   Restaurant City — shared "sky" theme
+   Palette extracted from the game SWFs (JPEXS shape export):
+   brand cyan #35c0e9 / #00c1eb, steel-blue #305585, blue button
+   #63a7e5, cream panels, food-colored accents. Pure CSS, offline.
+   ============================================================ */
+
+:root {
+  /* Sky / water brand */
+  --cyan:       #35c0e9;   /* signature loading-wave cyan */
+  --cyan-2:     #00c1eb;
+  --sky:        #66cff0;
+  --sky-lite:   #bfe8ef;
+  --sky-pale:   #eaf8fd;
+
+  /* Structural blues */
+  --steel:      #305585;   /* borders, headings */
+  --steel-dk:   #24476f;
+  --blue:       #4aa3e8;   /* primary button */
+  --blue-dk:    #2f7fc7;
+  --blue-dkr:   #256099;
+  --bluegrey:   #77a0ad;
+
+  /* Warm paper panels (RC panels are cream on blue) */
+  --paper:      #fffaf0;
+  --paper-2:    #fffdf8;
+  --cream:      #ffedc9;
+
+  /* Text — slate blue ink */
+  --ink:        #2c435a;
+  --ink-soft:   #5c748a;
+  --muted:      #94a7b6;
+
+  /* Food accents */
+  --basil:      #6fbf3b;
+  --basil-dk:   #4e971f;
+  --tomato:     #e2534a;
+  --tomato-dk:  #c33a31;
+  --gold:       #ffd21f;
+  --gold-dk:    #e0a800;
+  --wood:       #b56910;
+  --wood-dk:    #8a4f0c;
+
+  --line:       #cfe6ef;
+  --line-dk:    #a9cfdd;
+
+  --radius:     18px;
+  --radius-sm:  12px;
+  --shadow:     0 12px 30px rgba(29, 84, 120, .22);
+  --shadow-sm:  0 5px 14px rgba(29, 84, 120, .16);
+
+  --font: "Trebuchet MS", "Segoe UI", Verdana, system-ui, -apple-system, sans-serif;
+
+  /* signature white wave crest (data-URI, self-contained) */
+  --wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 40' preserveAspectRatio='none'%3E%3Cpath fill='%23fffaf0' d='M0,20 C100,40 200,4 320,14 C440,24 520,42 640,30 C760,18 850,2 970,12 C1090,22 1150,32 1200,22 L1200,40 L0,40 Z'/%3E%3C/svg%3E");
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font: 16px/1.6 var(--font);
+  background-color: var(--sky);
+  /* sky gradient + soft clouds */
+  background-image:
+    radial-gradient(150px 60px at 12% 22%, rgba(255,255,255,.9), transparent 70%),
+    radial-gradient(210px 80px at 82% 15%, rgba(255,255,255,.85), transparent 70%),
+    radial-gradient(180px 70px at 65% 38%, rgba(255,255,255,.7), transparent 70%),
+    radial-gradient(160px 60px at 30% 60%, rgba(255,255,255,.6), transparent 70%),
+    linear-gradient(180deg, var(--sky) 0%, #8bd8f2 40%, var(--sky-pale) 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--blue-dk); text-decoration: none; font-weight: 700; }
+a:hover { color: var(--blue-dkr); text-decoration: underline; }
+
+/* ---------- Sky top bar with wave crest ---------- */
+.rc-topbar {
+  position: relative;
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 22px 20px;
+  color: #fff;
+  background: linear-gradient(180deg, var(--cyan-2), var(--cyan) 70%);
+  box-shadow: 0 4px 20px rgba(0, 130, 170, .3);
+}
+.rc-topbar::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: -1px; height: 16px;
+  background: var(--wave); background-size: 1200px 16px; background-repeat: repeat-x;
+}
+.rc-topbar a { color: #fff; }
+.rc-topbar a:hover { color: #eafaff; }
+
+/* ---------- Brand logo lockup ---------- */
+.rc-brand { display: inline-flex; align-items: center; gap: 11px; text-decoration: none; }
+.rc-brand:hover { text-decoration: none; }
+.rc-brand .rc-plate {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, #fff 0 38%, #eef6fb 39% 58%, #c7e4f0 59% 100%);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 0 rgba(0,90,120,.3);
+  flex: none;
+}
+.rc-wordmark {
+  font-size: 21px; font-weight: 800; letter-spacing: .3px;
+  color: #fff;
+  text-shadow: 0 2px 0 var(--blue-dkr), 0 0 1px var(--blue-dkr);
+}
+
+/* Big display logo for hero/auth headers */
+.rc-logo {
+  font-size: clamp(34px, 7vw, 62px);
+  font-weight: 800; line-height: 1.02; letter-spacing: .5px;
+  color: var(--cyan);
+  text-shadow:
+    2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff,
+    0 6px 0 var(--blue-dkr), 0 9px 16px rgba(29,84,120,.35);
+  margin: 0;
+}
+.rc-logo .thin { color: var(--gold); text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff, 0 6px 0 var(--gold-dk); }
+
+/* ---------- Layout ---------- */
+.rc-wrap { max-width: 960px; margin: 0 auto; padding: 30px 20px 60px; }
+.rc-wrap-narrow { max-width: 520px; }
+
+/* ---------- Panel / menu card ---------- */
+.rc-panel {
+  background: var(--paper-2);
+  border: 3px solid var(--steel);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 26px;
+  position: relative;
+}
+.rc-panel::before {
+  content: "";
+  position: absolute; inset: 6px;
+  border: 2px dashed var(--line-dk);
+  border-radius: calc(var(--radius) - 6px);
+  pointer-events: none;
+}
+.rc-panel > * { position: relative; }
+
+/* panel with a blue title bar */
+.rc-panel.titled { padding-top: 0; overflow: hidden; }
+.rc-panel.titled > .rc-panel-title {
+  margin: 0 -26px 20px; padding: 14px 26px;
+  background: linear-gradient(180deg, var(--sky), var(--cyan));
+  color: #fff; font-size: 19px; font-weight: 800;
+  text-shadow: 0 2px 0 var(--blue-dkr);
+  border-bottom: 3px solid var(--steel);
+}
+
+.rc-eyebrow {
+  display: inline-block;
+  font-size: 12px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--steel-dk); background: #ffffffcc;
+  border: 2px solid #fff; padding: 5px 12px; border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+}
+
+h1, h2, h3 { color: var(--steel-dk); line-height: 1.15; }
+.rc-title { font-size: clamp(26px, 4vw, 38px); font-weight: 800; margin: 16px 0 8px; }
+.rc-muted { color: var(--ink-soft); }
+
+/* white-on-sky text for hero content sitting on the sky */
+.on-sky, .on-sky.rc-muted { color: var(--steel-dk); }
+
+/* ---------- Chunky candy buttons ---------- */
+.rc-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: inherit; font-weight: 800; font-size: 16px; color: #fff; text-decoration: none;
+  padding: 12px 22px; border: none; border-radius: 14px; cursor: pointer;
+  background: linear-gradient(#6fbdf0, var(--blue) 45%, var(--blue-dk));
+  box-shadow: 0 5px 0 var(--blue-dkr), var(--shadow-sm);
+  transition: transform .08s ease, box-shadow .08s ease, filter .1s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.rc-btn:hover { filter: brightness(1.06); text-decoration: none; color: #fff; }
+.rc-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--blue-dkr); }
+.rc-btn[disabled] { filter: grayscale(.4) brightness(.97); cursor: default; }
+
+.rc-btn.green { background: linear-gradient(#8ed35a, var(--basil) 45%, var(--basil-dk)); box-shadow: 0 5px 0 #3d7a17, var(--shadow-sm); }
+.rc-btn.green:active { box-shadow: 0 1px 0 #3d7a17; }
+
+.rc-btn.gold { color: var(--wood-dk); background: linear-gradient(#ffe580, var(--gold) 45%, var(--gold-dk)); box-shadow: 0 5px 0 #ad8100, var(--shadow-sm); }
+.rc-btn.gold:active { box-shadow: 0 1px 0 #ad8100; }
+
+.rc-btn.red { background: linear-gradient(#ee7a72, var(--tomato) 45%, var(--tomato-dk)); box-shadow: 0 5px 0 #9c2c24, var(--shadow-sm); }
+.rc-btn.red:active { box-shadow: 0 1px 0 #9c2c24; }
+
+.rc-btn.ghost { color: var(--steel-dk); background: linear-gradient(#ffffff, #eef7fb); box-shadow: 0 5px 0 var(--line-dk), var(--shadow-sm); }
+.rc-btn.ghost:hover { color: var(--steel); filter: none; background: linear-gradient(#ffffff, #e2f1f8); }
+.rc-btn.ghost:active { box-shadow: 0 1px 0 var(--line-dk); }
+
+.rc-btn.small { padding: 8px 14px; font-size: 14px; border-radius: 11px; box-shadow: 0 4px 0 var(--blue-dkr); }
+.rc-btn.small:active { box-shadow: 0 1px 0 var(--blue-dkr); }
+.rc-btn.green.small { box-shadow: 0 4px 0 #3d7a17; } .rc-btn.green.small:active { box-shadow: 0 1px 0 #3d7a17; }
+.rc-btn.gold.small { box-shadow: 0 4px 0 #ad8100; } .rc-btn.gold.small:active { box-shadow: 0 1px 0 #ad8100; }
+.rc-btn.ghost.small { box-shadow: 0 4px 0 var(--line-dk); } .rc-btn.ghost.small:active { box-shadow: 0 1px 0 var(--line-dk); }
+
+/* ---------- Forms ---------- */
+.rc-form { display: grid; gap: 16px; }
+.rc-form label { display: grid; gap: 6px; font-weight: 800; color: var(--steel-dk); font-size: 14px; }
+.rc-input {
+  width: 100%; font: inherit; font-size: 16px; font-weight: 600; color: var(--ink);
+  padding: 12px 13px; background: #fbfeff;
+  border: 2px solid var(--line-dk); border-radius: var(--radius-sm);
+  box-shadow: inset 0 2px 4px rgba(40,90,120,.08);
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.rc-input::placeholder { color: #a9c2ce; font-weight: 500; }
+.rc-input:focus {
+  outline: none; border-color: var(--cyan);
+  box-shadow: inset 0 2px 4px rgba(40,90,120,.06), 0 0 0 3px var(--sky-lite);
+}
+.rc-note { color: var(--muted); font-size: 13px; font-weight: 600; }
+
+.rc-check { display: flex; gap: 9px; align-items: flex-start; font-weight: 600; color: var(--ink-soft); font-size: 14px; }
+.rc-check input { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--cyan); }
+
+.rc-msg { min-height: 22px; font-weight: 700; font-size: 14px; }
+.rc-msg.error, .error { color: var(--tomato-dk); }
+.rc-msg.ok, .ok { color: var(--basil-dk); }
+
+/* notice banner */
+.rc-notice {
+  background: #fff8e2; color: #7a5600;
+  border: 3px solid var(--gold); border-radius: var(--radius-sm);
+  padding: 14px 16px; font-size: 14px; font-weight: 600; box-shadow: var(--shadow-sm);
+}
+.rc-notice strong { color: #b57e00; }
+
+/* ---------- Footer ---------- */
+.rc-footer {
+  margin-top: 40px; padding-top: 20px;
+  border-top: 3px dashed rgba(255,255,255,.7);
+  display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
+  font-size: 14px; color: var(--steel-dk); font-weight: 700;
+}
+.rc-footer a { color: var(--steel-dk); }
+.rc-footer a:hover { color: var(--blue-dkr); }
+
+.hidden { display: none !important; }
+
+@media (max-width: 560px) {
+  .rc-panel { padding: 20px; }
+  .rc-panel.titled { padding-top: 0; }
+  .rc-panel.titled > .rc-panel-title { margin: 0 -20px 18px; padding: 12px 20px; }
+  .rc-topbar { padding: 12px 14px 18px; gap: 10px; }
+}

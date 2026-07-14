@@ -1,5 +1,7 @@
 node_modules
 dist
+.env
+*.bak
 dev.db
 dev.db-journal
 prisma/dev.db

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Restaurant City account</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  .auth-wrap { max-width: 460px; margin: 0 auto; padding: 20px 20px 60px; }
+  .auth-head { text-align: center; padding: 20px 0 14px; }
+  .auth-head .rc-logo { font-size: clamp(30px, 8vw, 46px); }
+  .auth-head img { width: 92px; height: auto; margin-bottom: -6px; filter: drop-shadow(0 4px 6px rgba(29,84,120,.28)); }
+  .rc-form h2 { margin: 0 0 4px; font-size: 24px; }
+  .switch { text-align: center; margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; font-weight: 600; }
+  .rc-btn.block { width: 100%; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-head">
+    <img src="/assets/chef.png" alt="">
+    <a href="/" style="text-decoration:none"><h1 class="rc-logo">Restaurant <span class="thin">City</span></h1></a>
+  </div>
+
+  <div class="rc-panel">
+    <form id="loginForm" class="rc-form">
+      <h2>Welcome back, chef!</h2>
+      <p class="switch" style="margin-bottom:6px">Log in to get back to your kitchen.</p>
+      <label>Username
+        <input class="rc-input" name="username" minlength="3" maxlength="24" autocomplete="username" required>
+      </label>
+      <label>PIN
+        <input class="rc-input" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" autocomplete="current-password" required>
+      </label>
+      <button class="rc-btn green block">Log in</button>
+      <div class="rc-msg error" aria-live="polite"></div>
+      <p class="switch">New player? <a href="/signup">Create an account</a>.</p>
+    </form>
+
+    <form id="signupForm" class="rc-form hidden">
+      <h2>Open your restaurant</h2>
+      <p class="switch" style="margin-bottom:6px">Create an account to start cooking.</p>
+      <label>First name
+        <input class="rc-input" name="firstName" maxlength="50" autocomplete="given-name" required>
+      </label>
+      <label>Last name
+        <input class="rc-input" name="lastName" maxlength="50" autocomplete="family-name" required>
+      </label>
+      <label>Username
+        <input class="rc-input" name="username" minlength="3" maxlength="24" pattern="[A-Za-z0-9_.-]{3,24}" autocomplete="username" required>
+      </label>
+      <label>PIN
+        <input class="rc-input" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" autocomplete="new-password" required>
+      </label>
+      <p class="rc-note">Use 6–12 digits. Avoid birthdays, repeated digits, or a PIN you use elsewhere.</p>
+      <label class="rc-check"><input name="accept" type="checkbox" required> <span>I agree to the <a href="/terms">Terms</a> and acknowledge the <a href="/privacy">Privacy Policy</a>.</span></label>
+      <button class="rc-btn gold block">Create account</button>
+      <div class="rc-msg error" aria-live="polite"></div>
+      <p class="switch">Already registered? <a href="/login">Log in</a>.</p>
+    </form>
+  </div>
+</div>
+<script>
+const signup=location.pathname==='/signup', loginForm=document.querySelector('#loginForm'), signupForm=document.querySelector('#signupForm'); if(signup){loginForm.classList.add('hidden');signupForm.classList.remove('hidden')}
+const next=new URLSearchParams(location.search).get('next'); const safeNext=next&&next.startsWith('/')&&!next.startsWith('//')?next:'/game';
+for(const [form,path] of [[loginForm,'/__api/login'],[signupForm,'/__api/signup']]) form.addEventListener('submit',async e=>{e.preventDefault();const error=form.querySelector('.error');error.textContent='';const button=form.querySelector('button');button.disabled=true;const data=Object.fromEntries(new FormData(form));delete data.accept;try{const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Request failed');location.replace(safeNext)}catch(err){error.textContent=err.message||String(err);button.disabled=false}});
+</script>
+</body>
+</html>

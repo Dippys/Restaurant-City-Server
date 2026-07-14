@@ -38,21 +38,22 @@ import {
   upsertAdminPurchasableItem,
 } from './db/admin-store';
 import { ensureLoginAccount } from './db/profile-store';
+import { loginAccount, purgeExpiredSessions, registerAccount, revokeSession, updateAccountSettings } from './db/auth-store';
 import { latestStoredImage } from './db/rpc-store';
 import { RequestLog } from './request-log';
 import { StaticFileIndex } from './static-files';
 import type { CapturedRequest } from './types';
 import { buildResponse } from './rpc';
 import { writeString } from './rpc/codec';
-import { accountFromRequest, accountFromUsername, defaultAccount, loginCookie, logoutCookie } from './session';
+import { accountFromRequest, accountFromUsername, clientIp, logoutCookie, requestIsSecure, sessionCookie } from './session';
+import type { ActiveAccount } from './session';
 import { enqueueGlobalLiveEvent, enqueueLiveEvent, listOnlineUsers, LIVE_EVENT_ALERT } from './live-events';
 
 const CROSSDOMAIN = [
   '<?xml version="1.0"?>',
   '<!DOCTYPE cross-domain-policy SYSTEM "http://www.adobe.com/xml/dtds/cross-domain-policy.dtd">',
   '<cross-domain-policy>',
-  '  <allow-access-from domain="*" to-ports="*"/>',
-  '  <allow-http-request-headers-from domain="*" headers="*"/>',
+  '  <site-control permitted-cross-domain-policies="none"/>',
   '</cross-domain-policy>',
   '',
 ].join('\n');
@@ -68,14 +69,17 @@ export function createServer(config: ServerConfig): RestaurantCityServer {
   const staticFiles = new StaticFileIndex(config);
 
   const httpServer = http.createServer((req, res) => {
+    applySecurityHeaders(res);
     handleRequest(config, staticFiles, requestLog, req, res).catch((error) => {
       console.error(error);
       if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.writeHead(error instanceof RequestTooLargeError ? 413 : 500, { 'Content-Type': 'text/plain; charset=utf-8' });
       }
-      res.end('internal server error');
+      res.end(error instanceof RequestTooLargeError ? 'request too large' : 'internal server error');
     });
   });
+
+  purgeExpiredSessions().catch((error) => console.error('Session cleanup failed:', error));
 
   return { httpServer, staticFiles, requestLog };
 }
@@ -93,7 +97,23 @@ async function handleRequest(
 
   const entry = createEntry(requestLog.nextId(), req, url, pathname, body);
 
-  if (pathname === '/__dash' || pathname === '/' || pathname === '/dashboard') {
+  if (pathname === '/') {
+    serveHtml(config, res, 'home.html');
+    return;
+  }
+
+  if (pathname === '/login' || pathname === '/signup') {
+    serveHtml(config, res, 'auth.html');
+    return;
+  }
+
+  if (pathname === '/terms' || pathname === '/privacy' || pathname === '/cookies' || pathname === '/community-guidelines') {
+    serveHtml(config, res, 'legal.html');
+    return;
+  }
+
+  if (pathname === '/__dash' || pathname === '/dashboard') {
+    if (!(await requireAdmin(req, res))) return;
     const html = fs.readFileSync(path.join(config.serverRoot, 'public', 'index.html'));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
@@ -101,13 +121,21 @@ async function handleRequest(
   }
 
   if (pathname === '/game' || pathname === '/play') {
+    if (!(await requireAccount(req, res, true))) return;
     const html = fs.readFileSync(path.join(config.serverRoot, 'public', 'game.html'));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
     return;
   }
 
+  if (pathname === '/account') {
+    if (!(await requireAccount(req, res, true))) return;
+    serveHtml(config, res, 'account.html');
+    return;
+  }
+
   if (pathname === '/admin' || pathname === '/database') {
+    if (!(await requireAdmin(req, res))) return;
     const html = fs.readFileSync(path.join(config.serverRoot, 'public', 'admin.html'));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
@@ -115,11 +143,11 @@ async function handleRequest(
   }
 
   if (pathname === '/__events') {
+    if (!(await requireAdmin(req, res))) return;
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
     });
     res.write('retry: 2000\n\n');
     requestLog.addSseClient(res);
@@ -128,28 +156,32 @@ async function handleRequest(
   }
 
   if (pathname === '/__api/requests') {
+    if (!(await requireAdmin(req, res))) return;
     sendJson(res, requestLog.snapshot());
     return;
   }
 
   if (pathname === '/__api/clear') {
+    if (!(await requireAdminMutation(req, res))) return;
     requestLog.clear();
     sendJson(res, { ok: true });
     return;
   }
 
   if (pathname === '/__api/reindex') {
+    if (!(await requireAdminMutation(req, res))) return;
     staticFiles.reindex();
     sendJson(res, { ok: true, files: staticFiles.size });
     return;
   }
 
   if (pathname === '/__api/session' && req.method === 'GET') {
-    const account = accountFromRequest(req);
+    const account = await accountFromRequest(req);
     sendJson(res, {
       ok: true,
       loggedIn: Boolean(account),
-      account,
+      account: publicAccount(account),
+      csrfToken: account?.csrfToken || null,
     });
     return;
   }
@@ -157,19 +189,53 @@ async function handleRequest(
   if (pathname === '/__api/login' && req.method === 'POST') {
     try {
       const input = parseJsonBody<{ username?: string }>(body);
-      const account = accountFromUsername(input.username || '');
-      const profile = await ensureLoginAccount(account);
-      res.setHeader('Set-Cookie', loginCookie(account.username));
-      sendJson(res, { ok: true, account, profile });
+      checkAuthRateLimit(req, String(input.username || ''));
+      const result = await loginAccount(input, clientIp(req), String(req.headers['user-agent'] || ''));
+      if (!result) { recordAuthFailure(req, String(input.username || '')); sendJson(res, { ok: false, error: 'Invalid username or PIN.' }, 401); return; }
+      clearAuthFailures(req, String(input.username || ''));
+      const profile = await ensureLoginAccount(result.account);
+      res.setHeader('Set-Cookie', sessionCookie(result.rawToken, requestIsSecure(req)));
+      sendJson(res, { ok: true, account: publicAccount(result.account), csrfToken: result.account.csrfToken, profile });
     } catch (error) {
-      sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+      const status = error instanceof RateLimitError ? 429 : 400;
+      sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, status);
+    }
+    return;
+  }
+
+  if (pathname === '/__api/signup' && req.method === 'POST') {
+    try {
+      const input = parseJsonBody<{ username?: string }>(body);
+      enforceSignupRateLimit(req);
+      const result = await registerAccount(parseJsonBody(body), clientIp(req), String(req.headers['user-agent'] || ''));
+      const profile = await ensureLoginAccount(result.account);
+      res.setHeader('Set-Cookie', sessionCookie(result.rawToken, requestIsSecure(req)));
+      sendJson(res, { ok: true, account: publicAccount(result.account), csrfToken: result.account.csrfToken, profile }, 201);
+    } catch (error) {
+      const status = error instanceof RateLimitError ? 429 : 400;
+      sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, status);
     }
     return;
   }
 
   if (pathname === '/__api/logout' && req.method === 'POST') {
-    res.setHeader('Set-Cookie', logoutCookie());
+    const account = await requireMutation(req, res);
+    if (!account) return;
+    await revokeSession(account.sessionId);
+    res.setHeader('Set-Cookie', logoutCookie(requestIsSecure(req)));
     sendJson(res, { ok: true });
+    return;
+  }
+
+  if (pathname === '/__api/account' && req.method === 'PATCH') {
+    const account = await requireMutation(req, res);
+    if (!account?.id || !account.sessionId) return;
+    try {
+      await updateAccountSettings(account.id, account.sessionId, parseJsonBody(body));
+      sendJson(res, { ok: true });
+    } catch (error) {
+      sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+    }
     return;
   }
 
@@ -179,11 +245,13 @@ async function handleRequest(
   }
 
   if (pathname.startsWith('/__api/live')) {
+    if (!(await requireAdminMutationForMethod(req, res))) return;
     await handleLiveApi(req.method || 'GET', pathname, body, res);
     return;
   }
 
   if (pathname.startsWith('/__api/db')) {
+    if (!(await requireAdminMutationForMethod(req, res))) return;
     await handleDatabaseApi(req.method || 'GET', pathname, body, res);
     return;
   }
@@ -195,6 +263,41 @@ async function handleRequest(
     res.end(CROSSDOMAIN);
     requestLog.record(entry);
     return;
+  }
+
+  if (pathname === '/theme.css') {
+    const fullPath = path.join(config.serverRoot, 'public', 'theme.css');
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      sendStaticFile(res, fullPath, 'text/css; charset=utf-8', entry, 'public/theme.css');
+      requestLog.record(entry);
+      return;
+    }
+  }
+
+  const assetMatch = pathname.match(/^\/assets\/([A-Za-z0-9._-]+\.(?:png|jpg|jpeg|gif|svg|webp))$/);
+  if (assetMatch) {
+    const filename = assetMatch[1];
+    const fullPath = path.join(config.serverRoot, 'public', 'assets', filename);
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      const ext = path.extname(filename).toLowerCase();
+      const assetMime: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp' };
+      const mimeType = assetMime[ext] || 'application/octet-stream';
+      sendStaticFile(res, fullPath, mimeType, entry, `public/assets/${filename}`);
+      requestLog.record(entry);
+      return;
+    }
+  }
+
+  const ruffleMatch = pathname.match(/^\/ruffle\/([A-Za-z0-9._-]+)$/);
+  if (ruffleMatch) {
+    const filename = ruffleMatch[1];
+    const fullPath = path.join(config.serverRoot, 'node_modules', '@ruffle-rs', 'ruffle', filename);
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      const mimeType = filename.endsWith('.wasm') ? 'application/wasm' : filename.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'application/octet-stream';
+      sendStaticFile(res, fullPath, mimeType, entry, `ruffle/${filename}`);
+      requestLog.record(entry);
+      return;
+    }
   }
 
   if (isRpcPath(pathname)) {
@@ -211,14 +314,20 @@ async function handleRequest(
   }
 
   entry.status = 404;
-  res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+  res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('not found');
   requestLog.record(entry);
 }
 
 async function handleRpc(req: IncomingMessage, res: ServerResponse, body: Buffer, entry: CapturedRequest): Promise<void> {
   entry.kind = 'rpc';
-  const account = accountFromRequest(req) ?? defaultAccount();
+  const account = await accountFromRequest(req);
+  if (!account) {
+    entry.status = 401;
+    res.writeHead(401, { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' });
+    res.end(Buffer.from([0, 0, 0]));
+    return;
+  }
 
   let response: Buffer;
   try {
@@ -237,7 +346,7 @@ async function handleRpc(req: IncomingMessage, res: ServerResponse, body: Buffer
   res.writeHead(200, {
     'Content-Type': 'application/octet-stream',
     'Content-Length': response.length,
-    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store',
   });
   res.end(response);
 }
@@ -294,7 +403,6 @@ function sendStaticFile(
     res.writeHead(200, {
       'Content-Type': mimeType,
       'Content-Length': data.length,
-      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-store',
     });
     res.end(data);
@@ -603,9 +711,125 @@ function parseJsonBody<T>(body: Buffer): T {
 }
 
 function sendJson(res: ServerResponse, value: unknown, status = 200): void {
+  res.setHeader('Cache-Control', 'no-store');
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(value));
 }
+
+function serveHtml(config: ServerConfig, res: ServerResponse, filename: string): void {
+  const html = fs.readFileSync(path.join(config.serverRoot, 'public', filename));
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(html);
+}
+
+function publicAccount(account: ActiveAccount | null): Omit<ActiveAccount, 'csrfToken' | 'sessionId'> | null {
+  if (!account) return null;
+  const { csrfToken: _csrfToken, sessionId: _sessionId, ...safe } = account;
+  return safe;
+}
+
+async function requireAccount(req: IncomingMessage, res: ServerResponse, redirect = false): Promise<ActiveAccount | null> {
+  const account = await accountFromRequest(req);
+  if (account) return account;
+  if (redirect) {
+    res.writeHead(303, { Location: `/login?next=${encodeURIComponent(req.url || '/game')}` });
+    res.end();
+  } else {
+    sendJson(res, { ok: false, error: 'Authentication required.' }, 401);
+  }
+  return null;
+}
+
+async function requireAdmin(req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
+  const account = await requireAccount(req, res);
+  if (!account) return null;
+  if (account.role !== 'ADMIN') {
+    sendJson(res, { ok: false, error: 'Administrator access required.' }, 403);
+    return null;
+  }
+  return account;
+}
+
+async function requireMutation(req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
+  const account = await requireAccount(req, res);
+  if (!account) return null;
+  if (!sameOrigin(req) || !account.csrfToken || req.headers['x-csrf-token'] !== account.csrfToken) {
+    sendJson(res, { ok: false, error: 'Invalid security token. Refresh the page and try again.' }, 403);
+    return null;
+  }
+  return account;
+}
+
+async function requireAdminMutation(req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
+  const account = await requireMutation(req, res);
+  if (!account) return null;
+  if (account.role !== 'ADMIN') {
+    sendJson(res, { ok: false, error: 'Administrator access required.' }, 403);
+    return null;
+  }
+  return account;
+}
+
+async function requireAdminMutationForMethod(req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
+  return req.method === 'GET' || req.method === 'HEAD' ? requireAdmin(req, res) : requireAdminMutation(req, res);
+}
+
+function sameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    const parsed = new URL(origin);
+    return parsed.host === req.headers.host;
+  } catch {
+    return false;
+  }
+}
+
+function applySecurityHeaders(res: ServerResponse): void {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src 'self'; worker-src 'self' blob:; img-src 'self' data:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'");
+}
+
+const authAttempts = new Map<string, { count: number; resetAt: number }>();
+const signupAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function authRateKey(req: IncomingMessage, username: string): string {
+  return `${clientIp(req)}:${username.trim().toLocaleLowerCase('en-US')}`;
+}
+
+function checkAuthRateLimit(req: IncomingMessage, username: string): void {
+  const now = Date.now();
+  const key = authRateKey(req, username);
+  const current = authAttempts.get(key);
+  if (current && current.resetAt > now && current.count >= 10) throw new RateLimitError('Too many attempts. Try again in 15 minutes.');
+  if (current && current.resetAt <= now) authAttempts.delete(key);
+}
+
+function recordAuthFailure(req: IncomingMessage, username: string): void {
+  const key = authRateKey(req, username);
+  const current = authAttempts.get(key);
+  authAttempts.set(key, !current || current.resetAt <= Date.now() ? { count: 1, resetAt: Date.now() + 15 * 60 * 1000 } : { ...current, count: current.count + 1 });
+}
+
+function clearAuthFailures(req: IncomingMessage, username: string): void {
+  authAttempts.delete(authRateKey(req, username));
+}
+
+function enforceSignupRateLimit(req: IncomingMessage): void {
+  const key = clientIp(req);
+  const now = Date.now();
+  const current = signupAttempts.get(key);
+  if (!current || current.resetAt <= now) { signupAttempts.set(key, { count: 1, resetAt: now + 60 * 60 * 1000 }); return; }
+  if (current.count >= 5) throw new RateLimitError('Too many accounts created. Try again later.');
+  current.count += 1;
+}
+
+class RateLimitError extends Error {}
+class RequestTooLargeError extends Error {}
 
 function cleanLiveText(value: string, maxLength: number): string {
   const text = String(value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
@@ -691,7 +915,16 @@ const CRC32_TABLE = Array.from({ length: 256 }, (_value, index) => {
 function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > 10 * 1024 * 1024) {
+        reject(new RequestTooLargeError());
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });

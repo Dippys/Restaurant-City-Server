@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Restaurant City</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  .home-hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 28px; align-items: center; padding: 26px 0 10px; }
+  .home-hero .col { display: grid; gap: 20px; justify-items: start; }
+  .home-hero p.lead { font-size: 19px; max-width: 44ch; margin: 0; }
+  .home-actions { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .cta-wrap { position: relative; display: inline-flex; align-items: center; }
+  .chef { width: 84px; height: auto; margin-left: -6px; filter: drop-shadow(0 4px 6px rgba(29,84,120,.28)); }
+  .food-strip { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .food-strip img { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 3px 3px rgba(29,84,120,.22)); }
+  .hero-art { justify-self: center; }
+  .hero-art img { width: 100%; max-width: 420px; height: auto; filter: drop-shadow(0 12px 18px rgba(29,84,120,.3)); }
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-top: 30px; }
+  .feature { background: var(--paper-2); border: 3px solid var(--line-dk); border-radius: var(--radius-sm); padding: 16px 18px; box-shadow: var(--shadow-sm); display: flex; gap: 12px; align-items: center; }
+  .feature img { width: 44px; height: 44px; object-fit: contain; flex: none; filter: drop-shadow(0 2px 2px rgba(29,84,120,.2)); }
+  .feature h3 { margin: 0 0 3px; font-size: 16px; }
+  .feature p { margin: 0; font-size: 13px; color: var(--ink-soft); }
+  .skyline { margin-top: 40px; width: 100%; display: block; opacity: .9; }
+  .home-welcome { font-weight: 800; color: #fff; }
+  @media (max-width: 720px) { .home-hero { grid-template-columns: 1fr; } .hero-art { order: -1; } }
+</style>
+</head>
+<body>
+<header class="rc-topbar">
+  <a class="rc-brand" href="/">
+    <span class="rc-plate"></span>
+    <span class="rc-wordmark">Restaurant City</span>
+  </a>
+  <div style="flex:1"></div>
+  <nav id="guest" style="display:flex;gap:10px;align-items:center">
+    <a class="rc-btn ghost small" href="/login">Log in</a>
+    <a class="rc-btn gold small" href="/signup">Create account</a>
+  </nav>
+  <nav id="member" class="hidden" style="display:flex;gap:12px;align-items:center">
+    <span class="home-welcome" id="welcome"></span>
+    <a class="rc-btn ghost small" href="/account">Account</a>
+    <a class="rc-btn green small" href="/game">Play</a>
+  </nav>
+</header>
+
+<main class="rc-wrap">
+  <section class="home-hero">
+    <div class="col">
+      <span class="rc-eyebrow">Your restaurant awaits</span>
+      <h1 class="rc-logo">Restaurant <span class="thin">City</span></h1>
+      <p class="lead rc-muted">Build your restaurant, cook up new recipes, decorate your dining room, and visit your friends' kitchens. Your progress is saved between sessions.</p>
+      <div class="food-strip" aria-hidden="true">
+        <img src="/assets/food-pizza.png" alt="">
+        <img src="/assets/food-chicken.png" alt="">
+        <img src="/assets/food-orange.png" alt="">
+        <img src="/assets/food-cucumber.png" alt="">
+        <img src="/assets/food-butter.png" alt="">
+      </div>
+      <div class="home-actions">
+        <span class="cta-wrap">
+          <a class="rc-btn green" href="/game">▶ Play Restaurant City</a>
+          <img class="chef" src="/assets/chef.png" alt="">
+        </span>
+        <a class="rc-btn ghost" href="/signup">New player? Sign up</a>
+      </div>
+    </div>
+    <div class="hero-art">
+      <img src="/assets/building.png" alt="A Restaurant City building">
+    </div>
+  </section>
+
+  <section class="feature-grid">
+    <div class="feature"><img src="/assets/food-chicken.png" alt=""><div><h3>Cook &amp; serve</h3><p>Unlock recipes and keep customers happy for coins.</p></div></div>
+    <div class="feature"><img src="/assets/food-pizza.png" alt=""><div><h3>Decorate</h3><p>Design your dream dining room, floor to décor.</p></div></div>
+    <div class="feature"><img src="/assets/food-orange.png" alt=""><div><h3>Visit friends</h3><p>Drop by other restaurants and lend a hand.</p></div></div>
+    <div class="feature"><img src="/assets/food-butter.png" alt=""><div><h3>Saved progress</h3><p>Your kitchen is right where you left it.</p></div></div>
+  </section>
+
+  <img class="skyline" src="/assets/skyline.png" alt="">
+
+  <footer class="rc-footer">
+    <span>© Restaurant City</span>
+    <a href="/terms">Terms</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/cookies">Cookies</a>
+    <a href="/community-guidelines">Community guidelines</a>
+  </footer>
+</main>
+
+<script>
+fetch('/__api/session').then(r=>r.json()).then(s=>{
+  if(s.loggedIn){
+    guest.classList.add('hidden');
+    member.classList.remove('hidden');
+    welcome.textContent = `Hi, ${s.account.firstName || s.account.username}!`;
+  }
+}).catch(()=>{});
+</script>
+</body>
+</html>

@@ -4,129 +4,42 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Restaurant City - Play</title>
+<link rel="stylesheet" href="/theme.css" />
 <style>
-  :root {
-    --bg:#101113;
-    --bar:#1c2024;
-    --line:#30363d;
-    --text:#edf2f7;
-    --muted:#9aa6b2;
-    --accent:#5bb8ff;
-    --green:#62c085;
-    --red:#e07272;
-  }
-  * { box-sizing:border-box; }
-  html, body { height:100%; }
+  html, body { height: 100%; }
   body {
-    margin:0;
-    background:var(--bg);
-    color:var(--text);
-    font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    display:grid;
-    grid-template-rows:auto 1fr;
-    overflow:hidden;
+    margin: 0;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+    background-attachment: scroll;
   }
-  header {
-    height:48px;
-    display:flex;
-    align-items:center;
-    gap:14px;
-    padding:0 16px;
-    background:var(--bar);
-    border-bottom:1px solid var(--line);
-  }
-  h1 {
-    margin:0;
-    font-size:15px;
-    font-weight:700;
-  }
-  nav {
-    display:flex;
-    gap:8px;
-    margin-left:auto;
-  }
-  a, button {
-    color:var(--text);
-    text-decoration:none;
-    border:1px solid var(--line);
-    background:#252b31;
-    border-radius:6px;
-    padding:6px 10px;
-    font-size:12px;
-    font-family:inherit;
-    cursor:pointer;
-  }
-  a:hover, button:hover { border-color:var(--accent); }
-  .status {
-    color:var(--muted);
-    font-size:12px;
-  }
+  .game-status { color: #eafaff; font-size: 13px; font-weight: 700; }
   main {
-    display:grid;
-    place-items:center;
-    min-height:0;
-    padding:16px;
+    display: grid;
+    place-items: center;
+    min-height: 0;
+    padding: 24px 20px;
+    /* sky world with soft clouds */
     background:
-      linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px),
-      linear-gradient(0deg, rgba(255,255,255,.025) 1px, transparent 1px),
-      #121416;
-    background-size:32px 32px;
+      radial-gradient(160px 60px at 18% 24%, rgba(255,255,255,.9), transparent 70%),
+      radial-gradient(200px 76px at 80% 18%, rgba(255,255,255,.8), transparent 70%),
+      radial-gradient(150px 60px at 55% 70%, rgba(255,255,255,.6), transparent 70%),
+      linear-gradient(180deg, var(--sky) 0%, #8bd8f2 55%, var(--sky-pale) 100%);
   }
   .stage {
-    width:min(100%, 760px);
-    aspect-ratio:760 / 600;
-    border:1px solid var(--line);
-    background:#050607;
-    box-shadow:0 20px 60px rgba(0,0,0,.35);
+    width: min(100%, 780px);
+    aspect-ratio: 760 / 600;
+    background: #050607;
+    border: 6px solid var(--steel);
+    border-radius: 16px;
+    box-shadow: 0 4px 0 var(--steel-dk), 0 22px 50px rgba(29,84,120,.4);
+    overflow: hidden;
   }
-  object, embed {
-    display:block;
-    width:100%;
-    height:100%;
-  }
-  .login {
-    width:min(100%, 360px);
-    display:grid;
-    gap:12px;
-  }
-  .login h2 {
-    margin:0;
-    font-size:20px;
-  }
-  .login label {
-    display:grid;
-    gap:6px;
-    color:var(--muted);
-    font-size:12px;
-  }
-  .login input {
-    width:100%;
-    border:1px solid var(--line);
-    background:#1c2024;
-    color:var(--text);
-    border-radius:6px;
-    padding:10px 11px;
-    font:15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  }
-  .login input:focus {
-    outline:1px solid var(--accent);
-    border-color:var(--accent);
-  }
-  .login .msg {
-    min-height:18px;
-    color:var(--red);
-    font-size:12px;
-  }
-  .login button {
-    justify-self:start;
-    background:#1f5c3d;
-    border-color:#327c55;
-  }
-  .hidden { display:none; }
-  @media (max-height:680px) {
-    header { height:42px; }
-    main { padding:8px; }
-    .stage { width:min(100%, calc((100vh - 58px) * 1.2667)); }
+  object, embed { display: block; width: 100%; height: 100%; }
+  @media (max-height: 720px) {
+    main { padding: 10px; }
+    .stage { width: min(100%, calc((100vh - 92px) * 1.2667)); }
   }
 </style>
 <script>
@@ -138,24 +51,24 @@
     warnOnUnsupportedContent: false,
   };
 </script>
-<script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+<script src="/ruffle/ruffle.js"></script>
 </head>
 <body>
-<header>
-  <h1>Restaurant City</h1>
-  <span class="status" id="accountStatus">Checking login...</span>
-  <nav>
-    <button id="logoutButton" class="hidden" type="button">Switch User</button>
-    <a href="/__dash">Dashboard</a>
-    <a href="/admin">Database</a>
+<header class="rc-topbar">
+  <a class="rc-brand" href="/"><span class="rc-plate"></span><span class="rc-wordmark">Restaurant City</span></a>
+  <span class="game-status" id="accountStatus">Checking login…</span>
+  <div style="flex:1"></div>
+  <nav style="display:flex;gap:10px">
+    <a class="rc-btn ghost small" href="/">Home</a>
+    <button id="logoutButton" class="rc-btn small hidden" type="button">Log out</button>
   </nav>
 </header>
-<main id="main">
-</main>
+<main id="main"></main>
 <script>
 const main = document.getElementById("main");
 const statusEl = document.getElementById("accountStatus");
 const logoutButton = document.getElementById("logoutButton");
+let csrfToken = "";
 
 init();
 
@@ -163,47 +76,15 @@ async function init() {
   try {
     const session = await requestJson("/__api/session");
     if (session.loggedIn && session.account) {
+      csrfToken = session.csrfToken || "";
       showGame(session.account);
       return;
     }
   } catch {
-    // Fall through to login form.
+    // Fall through to login redirect.
   }
 
-  showLogin();
-}
-
-function showLogin(message = "") {
-  logoutButton.classList.add("hidden");
-  statusEl.textContent = "Login required";
-  main.innerHTML = `
-    <form class="login" id="loginForm" autocomplete="off">
-      <h2>Restaurant City</h2>
-      <label>
-        Username
-        <input id="usernameInput" name="username" maxlength="24" pattern="[A-Za-z0-9 _.-]{2,24}" required autofocus />
-      </label>
-      <button type="submit">Play</button>
-      <div class="msg" id="loginMessage">${escapeHtml(message)}</div>
-    </form>
-  `;
-
-  document.getElementById("loginForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const messageEl = document.getElementById("loginMessage");
-    const username = document.getElementById("usernameInput").value;
-    messageEl.textContent = "";
-
-    try {
-      const result = await requestJson("/__api/login", {
-        method: "POST",
-        body: JSON.stringify({ username }),
-      });
-      showGame(result.account);
-    } catch (error) {
-      messageEl.textContent = error instanceof Error ? error.message : String(error);
-    }
-  });
+  location.replace("/login?next=/game");
 }
 
 function showGame(account) {
@@ -222,8 +103,8 @@ function showGame(account) {
 }
 
 logoutButton.addEventListener("click", async () => {
-  await requestJson("/__api/logout", { method: "POST" });
-  showLogin();
+  await requestJson("/__api/logout", { method: "POST", headers: { "X-CSRF-Token": csrfToken } });
+  location.replace("/");
 });
 
 async function requestJson(url, options = {}) {

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Restaurant City legal</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  .legal-nav { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 22px; }
+  section { display: none; }
+  section.active { display: block; }
+  .rc-panel h1 { margin-top: 0; font-size: 28px; }
+  .rc-panel h2 { margin-top: 26px; font-size: 19px; color: var(--tomato-dk); }
+</style>
+</head>
+<body>
+<header class="rc-topbar">
+  <a class="rc-brand" href="/"><span class="rc-plate"></span><span class="rc-wordmark">Restaurant City</span></a>
+</header>
+
+<main class="rc-wrap">
+  <nav class="legal-nav">
+    <a class="rc-btn ghost small" href="/">Home</a>
+    <a class="rc-btn ghost small" href="/terms">Terms</a>
+    <a class="rc-btn ghost small" href="/privacy">Privacy</a>
+    <a class="rc-btn ghost small" href="/cookies">Cookies</a>
+    <a class="rc-btn ghost small" href="/community-guidelines">Community guidelines</a>
+  </nav>
+
+  <p class="rc-notice"><strong>Pre-production draft:</strong> replace the operator name, contact address, jurisdiction, age limit, retention periods, and service-specific disclosures with lawyer-reviewed text before public launch.</p>
+
+  <div class="rc-panel" style="margin-top:22px">
+    <section id="terms"><h1>Terms of Service</h1><p>By creating an account or using Restaurant City, you agree to follow these terms and the community guidelines.</p><h2>Accounts</h2><p>You must provide accurate account information, protect your PIN, and promptly report unauthorized access. You are responsible for activity on your account.</p><h2>Acceptable use</h2><p>Do not exploit bugs, automate gameplay without permission, interfere with the service, evade enforcement, impersonate others, or use the service unlawfully.</p><h2>Availability and enforcement</h2><p>The service may change, pause, or end. Accounts may be restricted or terminated for violations. Virtual items have no guaranteed monetary value unless expressly stated otherwise.</p><h2>Disclaimer</h2><p>The service is provided as available, subject to applicable law. Final warranty, liability, dispute, and governing-law terms must be added before launch.</p></section>
+    <section id="privacy"><h1>Privacy Policy</h1><p>We process account data (username, first and last name, hashed PIN), gameplay and profile state, session/security records, IP address, user agent, and operational logs to provide and secure the service.</p><h2>Use and sharing</h2><p>Data is used for authentication, gameplay, support, abuse prevention, and service reliability. It is shared only with necessary hosting/service providers, when legally required, or during a business transfer.</p><h2>Retention and rights</h2><p>Session records expire; account and gameplay data remain while the account is active and for a defined post-deletion period. Add the operator contact and legally required access, correction, deletion, and appeal process before launch.</p><h2>Children</h2><p>An age policy and any required parental-consent flow must be selected before public launch.</p></section>
+    <section id="cookies"><h1>Cookie Policy</h1><p>Restaurant City uses one essential, HttpOnly session cookie to keep you signed in and protect your account. It is not used for advertising. The cookie expires after 30 days or when you log out.</p></section>
+    <section id="community-guidelines"><h1>Community Guidelines</h1><p>Be respectful. Do not harass, threaten, discriminate, share others' personal information, impersonate people, spam, cheat, exploit vulnerabilities, or post illegal or harmful content. Report security issues privately rather than abusing or publishing them.</p><p>Violations may lead to content removal, temporary restrictions, or account termination.</p></section>
+  </div>
+
+  <footer class="rc-footer">
+    <span>© Restaurant City</span>
+    <a href="/terms">Terms</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/cookies">Cookies</a>
+    <a href="/community-guidelines">Community guidelines</a>
+  </footer>
+</main>
+<script>const id=location.pathname.slice(1);document.querySelector(`#${CSS.escape(id)}`)?.classList.add('active');</script>
+</body>
+</html>

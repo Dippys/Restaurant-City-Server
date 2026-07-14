@@ -311,6 +311,7 @@ const msgEl = document.getElementById('topMsg');
 const panelEl = document.getElementById('panel');
 const tabsEl = document.getElementById('tabs');
 const summaryEl = document.getElementById('summary');
+let csrfToken = '';
 
 function setMsg(text, type = '') {
   msgEl.textContent = text;
@@ -326,6 +327,7 @@ async function api(path, options = {}) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(options.method && !['GET', 'HEAD'].includes(options.method) ? { 'X-CSRF-Token': csrfToken } : {}),
       ...(options.headers || {}),
     },
   });
@@ -1256,7 +1258,10 @@ document.getElementById('resetDb').onclick = async () => {
   }
 };
 
-load().catch((error) => setMsg(error.message, 'err'));
+api('/__api/session').then((session) => {
+  csrfToken = session.csrfToken || '';
+  return load();
+}).catch((error) => setMsg(error.message, 'err'));
 </script>
 </body>
 </html>

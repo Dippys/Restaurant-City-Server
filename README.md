@@ -11,7 +11,8 @@ Flash client (`game.swf`) runs offline. It does four things:
   editing the database.
 
 Stack: Node.js + TypeScript on the built-in `http` module (no web framework),
-Prisma 7 over SQLite via the better-sqlite3 adapter.
+Prisma 7 over SQLite via the better-sqlite3 adapter, with a pinned local Ruffle
+runtime for the browser game page.
 
 ## Requirements
 
@@ -40,9 +41,12 @@ or open <http://localhost:8090/game> and use the launcher page.
 
 | URL | Page |
 |---|---|
-| <http://localhost:8090/> or `/__dash` | Live request dashboard |
-| <http://localhost:8090/game> | Client launcher |
-| <http://localhost:8090/admin> | Database editor |
+| <http://localhost:8090/> | Public home page |
+| <http://localhost:8090/login> and `/signup` | Account access |
+| <http://localhost:8090/game> | Authenticated client launcher |
+| <http://localhost:8090/account> | Name and PIN settings |
+| `/terms`, `/privacy`, `/cookies`, `/community-guidelines` | Legal/community drafts |
+| `/__dash` and `/admin` | Administrator-only tools |
 
 ## Configuration
 
@@ -54,6 +58,9 @@ All optional, via environment variables:
 | `HOST` | `0.0.0.0` | Bind address (`0.0.0.0` exposes it on the LAN) |
 | `MAX_LOG_ENTRIES` | `500` | Size of the in-memory request buffer |
 | `RC_DB_PATH` | `server/dev.db` | SQLite file location |
+| `RC_ADMIN_USERNAME` | empty | Username promoted to admin when first registered |
+| `RC_PIN_PEPPER` | empty | Optional stable server secret mixed into PIN hashes |
+| `RC_TRUST_PROXY` | `false` | Trust forwarded IP/protocol headers only behind your proxy |
 
 ## How it works
 
@@ -85,10 +92,11 @@ and assembles the reply; `src/rpc/responders.ts` implements each call.
 
 ### Sessions
 
-There are no passwords. A username is turned into a stable PlayFish UID with an
-FNV-1a hash and stored in the `rc_username` cookie; logging in creates the
-profile row if it doesn't exist. Requests without the cookie fall back to a
-default `Player` account. See `src/session.ts`.
+Accounts require a unique username, first and last name, and a 6-12 digit PIN.
+PINs are salted and hashed with scrypt. The browser receives a random HttpOnly,
+SameSite session token; only its SHA-256 hash is stored. Sessions expire after
+30 days and state-changing browser APIs require a CSRF token. Unauthenticated
+RPC requests are rejected. See `src/session.ts` and `src/db/auth-store.ts`.
 
 ### Persistence
 
@@ -105,19 +113,23 @@ Pages and control routes served outside the RPC/asset paths:
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/`, `/__dash`, `/dashboard` | GET | Dashboard UI |
+| `/` | GET | Public home page |
+| `/login`, `/signup`, `/account` | GET | Account pages |
+| `/terms`, `/privacy`, `/cookies`, `/community-guidelines` | GET | Policy pages |
+| `/__dash`, `/dashboard` | GET | Admin-only dashboard UI |
 | `/game`, `/play` | GET | Client launcher page |
 | `/admin`, `/database` | GET | Database editor UI |
 | `/__events` | GET | SSE stream of captured requests |
 | `/__api/requests` | GET | JSON snapshot of the capture buffer |
-| `/__api/clear` | GET | Clear the capture buffer |
-| `/__api/reindex` | GET | Rescan asset files |
+| `/__api/clear` | POST | Admin-only: clear the capture buffer |
+| `/__api/reindex` | POST | Admin-only: rescan asset files |
 | `/__api/session` | GET | Current logged-in account |
-| `/__api/login` | POST | Set username, create profile |
-| `/__api/logout` | POST | Clear the session cookie |
+| `/__api/login`, `/__api/signup` | POST | Authenticate or create an account |
+| `/__api/account` | PATCH | Update names/PIN after PIN re-verification |
+| `/__api/logout` | POST | Revoke the current session |
 | `/__api/profile-image/:uid/:type.png` | GET | Render a stored ARGB image as PNG |
 | `/__api/db/...` | GET/POST/PATCH/DELETE | Admin CRUD used by the editor |
-| `/crossdomain.xml` | GET | Permissive Flash cross-domain policy |
+| `/crossdomain.xml` | GET | Same-origin-only Flash policy |
 
 ## Project layout
 
@@ -155,6 +167,35 @@ Pages and control routes served outside the RPC/asset paths:
 | `npm run check` | Type-check only (`tsc --noEmit`) |
 | `npm run db:push` | Apply the schema to `dev.db` |
 | `npm run db:generate` | Regenerate the Prisma client |
+
+## Production checklist
+
+The application security controls are implemented, but deployment security is
+also required:
+
+1. Put the Node server behind an HTTPS reverse proxy and never expose the
+   dashboard/admin routes through a separate unauthenticated proxy rule.
+2. Set a long random `RC_PIN_PEPPER` before the first public account is created,
+   store it in the deployment secret manager, and do not rotate it without a
+   PIN migration plan.
+3. Set `RC_ADMIN_USERNAME` for the initial operator account before registering
+   it. Remove the variable afterward; roles remain in the database.
+4. Set `RC_TRUST_PROXY=true` only when the server is reachable solely through a
+   trusted proxy. The proxy must replace (not append untrusted) forwarded
+   protocol and client-IP headers.
+5. Back up `dev.db` off-host, test restores, restrict filesystem permissions,
+   and use a production database strategy before running multiple Node
+   instances. SQLite is a single-host deployment choice.
+6. Replace the clearly marked policy drafts with operator-, jurisdiction-,
+   retention-, and age-policy-specific text reviewed for the launch region.
+7. Decide how existing pre-authentication profiles are assigned to their real
+   owners before opening public signup; a matching legacy username currently
+   reconnects to that existing game profile.
+
+There is intentionally no PIN-by-email reset yet because the system does not
+collect verified email addresses. Account recovery must be an operator-assisted
+identity check or a separately designed verified recovery system; do not add an
+insecure security-question reset.
 
 ## Implemented RPC calls
 
