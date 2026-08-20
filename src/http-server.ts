@@ -274,6 +274,25 @@ async function handleRequest(
     }
   }
 
+  // SEO: robots + sitemap live at the site root (see deploy/README.md).
+  if (pathname === '/robots.txt') {
+    const fullPath = path.join(config.serverRoot, 'public', 'robots.txt');
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      sendStaticFile(res, fullPath, 'text/plain; charset=utf-8', entry, 'public/robots.txt');
+      requestLog.record(entry);
+      return;
+    }
+  }
+
+  if (pathname === '/sitemap.xml') {
+    const fullPath = path.join(config.serverRoot, 'public', 'sitemap.xml');
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      sendStaticFile(res, fullPath, 'application/xml; charset=utf-8', entry, 'public/sitemap.xml');
+      requestLog.record(entry);
+      return;
+    }
+  }
+
   const assetMatch = pathname.match(/^\/assets\/([A-Za-z0-9._-]+\.(?:png|jpg|jpeg|gif|svg|webp))$/);
   if (assetMatch) {
     const filename = assetMatch[1];
@@ -291,7 +310,11 @@ async function handleRequest(
   const ruffleMatch = pathname.match(/^\/ruffle\/([A-Za-z0-9._-]+)$/);
   if (ruffleMatch) {
     const filename = ruffleMatch[1];
-    const fullPath = path.join(config.serverRoot, 'node_modules', '@ruffle-rs', 'ruffle', filename);
+    // Pinned Ruffle runtime is vendored under public/ruffle (see ../docs/release.md);
+    // the npm package is only a fallback for stale installs.
+    const vendoredPath = path.join(config.serverRoot, 'public', 'ruffle', filename);
+    const npmPath = path.join(config.serverRoot, 'node_modules', '@ruffle-rs', 'ruffle', filename);
+    const fullPath = fs.existsSync(vendoredPath) ? vendoredPath : npmPath;
     if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
       const mimeType = filename.endsWith('.wasm') ? 'application/wasm' : filename.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'application/octet-stream';
       sendStaticFile(res, fullPath, mimeType, entry, `ruffle/${filename}`);
@@ -791,7 +814,7 @@ function applySecurityHeaders(res: ServerResponse): void {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src 'self'; worker-src 'self' blob:; img-src 'self' data:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src 'self'; worker-src 'self' blob:; img-src 'self' data:; frame-src 'self' https://discord.com https://*.discord.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'");
 }
 
 const authAttempts = new Map<string, { count: number; resetAt: number }>();

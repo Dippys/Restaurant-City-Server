@@ -3,14 +3,24 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Restaurant City - Play</title>
+<title>Play Restaurant City Reborn — Restaurant City online (Playfish 2010)</title>
+<meta name="description" content="Play Restaurant City online free — the classic 2010 Playfish game is back. Build your restaurant, cook, decorate and visit friends in your browser. No download, no plugins.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://rc-reborn.uk/game">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Restaurant City Reborn">
+<meta property="og:url" content="https://rc-reborn.uk/game">
+<meta property="og:title" content="Play Restaurant City Reborn — Restaurant City online (Playfish 2010)">
+<meta property="og:description" content="Play the classic 2010 Playfish game Restaurant City online free — build, cook, decorate and visit friends. Preserved and playable in your browser.">
+<meta property="og:image" content="https://rc-reborn.uk/assets/building.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="/theme.css" />
 <style>
   html, body { height: 100%; }
   body {
     margin: 0;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto 1fr auto;
     overflow: hidden;
     background-attachment: scroll;
   }
@@ -39,7 +49,7 @@
   object, embed { display: block; width: 100%; height: 100%; }
   @media (max-height: 720px) {
     main { padding: 10px; }
-    .stage { width: min(100%, calc((100vh - 92px) * 1.2667)); }
+    .stage { width: min(100%, calc((100vh - 150px) * 1.2667)); }
   }
 </style>
 <script>
@@ -55,7 +65,7 @@
 </head>
 <body>
 <header class="rc-topbar">
-  <a class="rc-brand" href="/"><span class="rc-plate"></span><span class="rc-wordmark">Restaurant City</span></a>
+  <a class="rc-brand" href="/"><span class="rc-plate"></span><span class="rc-wordmark">Restaurant City Reborn</span></a>
   <span class="game-status" id="accountStatus">Checking login…</span>
   <div style="flex:1"></div>
   <nav style="display:flex;gap:10px">
@@ -64,6 +74,15 @@
   </nav>
 </header>
 <main id="main"></main>
+<footer class="rc-footer" style="margin-top:0; padding:8px 20px 10px; border-top:1px solid rgba(255,255,255,.55);">
+  <span>© Restaurant City Reborn</span>
+  <a href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
+  <a href="/terms">Terms</a>
+  <a href="/privacy">Privacy</a>
+  <a href="/cookies">Cookies</a>
+  <a href="/community-guidelines">Community guidelines</a>
+  <span class="rc-footer-note">Non-commercial educational project — for preservation and study. Restaurant City and all related assets are the property of their original owners (Playfish / Electronic Arts). All rights reserved to their respective owners.</span>
+</footer>
 <script>
 const main = document.getElementById("main");
 const statusEl = document.getElementById("accountStatus");

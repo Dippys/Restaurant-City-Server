@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /__api/
+Disallow: /__dash
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /database
+Disallow: /__events
+Disallow: /account
+
+Sitemap: https://rc-reborn.uk/sitemap.xml

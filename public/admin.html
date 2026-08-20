@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Restaurant City Admin</title>
+<title>RC Reborn · Admin</title>
+<meta name="robots" content="noindex, nofollow">
 <style>
   :root {
     --bg:#101112;
@@ -1263,5 +1264,16 @@ api('/__api/session').then((session) => {
   return load();
 }).catch((error) => setMsg(error.message, 'err'));
 </script>
+<footer style="display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; padding:14px 16px 40px; border-top:1px solid var(--line); color:var(--muted); font-size:12px;">
+  <span>© Restaurant City Reborn</span>
+  <span style="display:flex; gap:14px; margin-left:auto;">
+    <a href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none;">Discord</a>
+    <a href="/terms" style="color:var(--accent); text-decoration:none;">Terms</a>
+    <a href="/privacy" style="color:var(--accent); text-decoration:none;">Privacy</a>
+    <a href="/cookies" style="color:var(--accent); text-decoration:none;">Cookies</a>
+    <a href="/community-guidelines" style="color:var(--accent); text-decoration:none;">Community guidelines</a>
+  </span>
+  <span style="flex-basis:100%;">Non-commercial educational project — for preservation and study. Restaurant City and all related assets are the property of their original owners (Playfish / Electronic Arts). All rights reserved to their respective owners.</span>
+</footer>
 </body>
 </html>

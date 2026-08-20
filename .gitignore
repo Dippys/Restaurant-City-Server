@@ -6,3 +6,6 @@ dev.db
 dev.db-journal
 prisma/dev.db
 prisma/dev.db-journal
+public/swf/*
+public/data/*
+public/ruffle/*

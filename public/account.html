@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Your account - Restaurant City</title>
+<title>Your account — Restaurant City Reborn</title>
+<meta name="description" content="Manage your Restaurant City Reborn account: update your name or change your PIN.">
+<meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/theme.css">
 <style>
   .rc-btn.block { width: 100%; margin-top: 4px; }
@@ -13,7 +15,7 @@
 </head>
 <body>
 <header class="rc-topbar">
-  <a class="rc-brand" href="/"><span class="rc-plate"></span><span class="rc-wordmark">Restaurant City</span></a>
+  <a class="rc-brand" href="/"><span class="rc-plate"></span><span class="rc-wordmark">Restaurant City Reborn</span></a>
   <div style="flex:1"></div>
   <nav style="display:flex;gap:10px">
     <a class="rc-btn ghost small" href="/">Home</a>
@@ -36,6 +38,16 @@
       <div id="msg" class="rc-msg" aria-live="polite"></div>
     </form>
   </div>
+
+  <footer class="rc-footer">
+    <span>© Restaurant City Reborn</span>
+    <a href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
+    <a href="/terms">Terms</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/cookies">Cookies</a>
+    <a href="/community-guidelines">Community guidelines</a>
+    <span class="rc-footer-note">Non-commercial educational project — for preservation and study. Restaurant City and all related assets are the property of their original owners (Playfish / Electronic Arts). All rights reserved to their respective owners.</span>
+  </footer>
 </main>
 <script>
 let csrf='';fetch('/__api/session').then(r=>r.json()).then(s=>{if(!s.loggedIn)return location.replace('/login?next=/account');csrf=s.csrfToken;username.textContent=s.account.username;form.firstName.value=s.account.firstName||'';form.lastName.value=s.account.lastName||''});form.addEventListener('submit',async e=>{e.preventDefault();msg.textContent='';msg.className='rc-msg';const data=Object.fromEntries(new FormData(form));try{const r=await fetch('/__api/account',{method:'PATCH',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(data)});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Request failed');msg.textContent='Account updated.';msg.className='rc-msg ok';form.currentPin.value='';form.newPin.value=''}catch(err){msg.textContent=err.message||String(err);msg.className='rc-msg error'}});

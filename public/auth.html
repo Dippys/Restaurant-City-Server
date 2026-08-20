@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Restaurant City account</title>
+<title>Restaurant City Reborn — Log in or create an account</title>
+<meta name="description" content="Log in to Restaurant City Reborn and get back to your kitchen, or create a free account and start building your restaurant today.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://rc-reborn.uk/login">
 <link rel="stylesheet" href="/theme.css">
 <style>
   .auth-wrap { max-width: 460px; margin: 0 auto; padding: 20px 20px 60px; }
@@ -19,7 +22,7 @@
 <div class="auth-wrap">
   <div class="auth-head">
     <img src="/assets/chef.png" alt="">
-    <a href="/" style="text-decoration:none"><h1 class="rc-logo">Restaurant <span class="thin">City</span></h1></a>
+    <a href="/" style="text-decoration:none"><h1 class="rc-logo">Restaurant <span class="thin">City Reborn</span></h1></a>
   </div>
 
   <div class="rc-panel">
@@ -59,6 +62,16 @@
       <p class="switch">Already registered? <a href="/login">Log in</a>.</p>
     </form>
   </div>
+
+  <footer class="rc-footer">
+    <span>© Restaurant City Reborn</span>
+    <a href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
+    <a href="/terms">Terms</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/cookies">Cookies</a>
+    <a href="/community-guidelines">Community guidelines</a>
+    <span class="rc-footer-note">Non-commercial educational project — for preservation and study. Restaurant City and all related assets are the property of their original owners (Playfish / Electronic Arts). All rights reserved to their respective owners.</span>
+  </footer>
 </div>
 <script>
 const signup=location.pathname==='/signup', loginForm=document.querySelector('#loginForm'), signupForm=document.querySelector('#signupForm'); if(signup){loginForm.classList.add('hidden');signupForm.classList.remove('hidden')}

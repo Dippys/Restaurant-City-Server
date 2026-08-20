@@ -42,15 +42,11 @@ export class StaticFileIndex {
 
   reindex(): void {
     const next = new Map<string, string>();
-    this.addDirectory(next, this.config.rcRoot);
-    this.addDirectory(next, this.config.binXmlRoot);
-    this.addOriginalAssetSwfs(next, this.config.originalAssetRoot);
-    this.addRebuiltAssetSwfs(next, this.config.rebuiltAssetRoot);
-
-    if (fs.existsSync(this.config.rebuiltSwf)) {
-      next.set('game.swf', this.config.rebuiltSwf);
-    }
-
+    // Self-contained (ADR-0011): the fuzzy index covers only the served
+    // asset store under server/public/ — swf/ (game + asset SWFs) and
+    // data/ (game-data .bin/.xml plus the decompressed .xml views).
+    this.addDirectory(next, this.config.assetSwfRoot);
+    this.addDirectory(next, this.config.assetDataRoot);
     this.files = next;
   }
 
@@ -80,34 +76,6 @@ export class StaticFileIndex {
       try {
         if (fs.statSync(fullPath).isFile()) {
           target.set(normaliseAssetName(fullPath), fullPath);
-        }
-      } catch {
-        // Ignore files that disappear during reindex.
-      }
-    }
-  }
-
-  private addOriginalAssetSwfs(target: Map<string, string>, dir: string): void {
-    this.addSwfs(target, dir, false);
-  }
-
-  private addRebuiltAssetSwfs(target: Map<string, string>, dir: string): void {
-    this.addSwfs(target, dir, true);
-  }
-
-  private addSwfs(target: Map<string, string>, dir: string, includeGameSwf: boolean): void {
-    let entries: string[];
-    try {
-      entries = fs.readdirSync(dir);
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry);
-      try {
-        if ((includeGameSwf || entry.toLowerCase() !== 'game.swf') && path.extname(entry).toLowerCase() === '.swf' && fs.statSync(fullPath).isFile()) {
-          target.set(normaliseAssetName(entry), fullPath);
         }
       } catch {
         // Ignore files that disappear during reindex.

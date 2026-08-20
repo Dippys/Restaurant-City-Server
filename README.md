@@ -1,7 +1,8 @@
-# Restaurant City local server
+# Restaurant City Reborn — local server
 
-A self-hosted replacement for PlayFish's dead backend, so the Restaurant City
-Flash client (`game.swf`) runs offline. It does four things:
+A self-contained backend for **Restaurant City Reborn** (the revival of
+Playfish's 2010 Flash game), so the Restaurant City client (`game.swf`) runs
+in a modern browser via Ruffle. It does four things:
 
 - **Serves the game's assets** (SWF, XML, `.bin`) from this repo.
 - **Answers the game's binary RPC calls** with real responses.
@@ -45,8 +46,16 @@ or open <http://localhost:8090/game> and use the launcher page.
 | <http://localhost:8090/login> and `/signup` | Account access |
 | <http://localhost:8090/game> | Authenticated client launcher |
 | <http://localhost:8090/account> | Name and PIN settings |
-| `/terms`, `/privacy`, `/cookies`, `/community-guidelines` | Legal/community drafts |
+| `/terms`, `/privacy`, `/cookies`, `/community-guidelines` | Policy pages (see `public/legal.html`) |
+| `/robots.txt`, `/sitemap.xml` | SEO (canonical `https://rc-reborn.uk`) |
 | `/__dash` and `/admin` | Administrator-only tools |
+
+## Deployment
+
+Production hosting (Ubuntu + nginx + HTTPS + systemd) is covered in
+[`deploy/README.md`](../deploy/README.md) — the nginx site config and the
+systemd unit live in [`deploy/`](../deploy/). Behind nginx, set
+`RC_TRUST_PROXY=true` (see the production checklist below).
 
 ## Configuration
 
@@ -66,21 +75,35 @@ All optional, via environment variables:
 
 ### Asset serving
 
+The server is **self-contained** (ADR-0011): every served asset lives under
+`public/` and nothing outside `server/` is read at runtime.
+
+| Path | Contents |
+|---|---|
+| `public/swf/` | The served SWFs — **decompiled/rebuilt versions**: `game.swf` (rebuilt client, crash fixes applied) + the 9 processed asset SWFs |
+| `public/data/` | The game-data files (`<name>[1].bin`, e.g. `lang_en[1].bin`) plus the decompressed `.xml` views (`recipe.xml`, `ingredient.xml` are read directly by the recipe catalog at boot) |
+| `public/ruffle/` | Vendored Ruffle runtime (see below) |
+| `public/*.html`, `assets/` | Pages and dashboard art |
+
 `StaticFileIndex` builds an in-memory map of asset name → file path at startup
 (rescan any time via `/__api/reindex`). Names are matched loosely: basename
 only, lowercased, with browser download suffixes stripped — so a request for
-`/lang_en.bin` resolves `bin-xml/lang_en[1].bin`.
+`/lang_en.bin` resolves `public/data/lang_en[1].bin` and `/game.swf` resolves
+`public/swf/game.swf`.
 
-Sources are indexed in this order, later ones winning on name collisions:
+The raw 2010 originals are preserved read-only under the workspace
+`original/` (archive only — not read by the server). The boot banner reports
+that the rebuilt `game.swf` is active.
 
-1. Repo root — top-level files including the original `game.swf`.
-2. `bin-xml/` — game data (`.bin`, `.xml`).
-3. `backup/` — original `.swf` assets (excluding `game.swf`).
-4. `decompiled/bin/` — rebuilt `.swf` assets (including `game.swf`).
-5. `decompiled/game/bin/game.swf` — forced as `game.swf` if present.
+### Ruffle
 
-Net effect: a rebuilt `decompiled/game/bin/game.swf` is served in preference to
-the original at the repo root. The boot banner reports which one is active.
+The browser game page (`/game`) mounts the original SWF through the
+[Ruffle](https://ruffle.rs) Flash emulator. The runtime (v0.3.0, the
+`@ruffle-rs/ruffle` selfhosted package) is vendored under `public/ruffle/` so
+the release is self-contained; `http-server.ts` falls back to the npm package
+if the vendored copy is missing. To upgrade Ruffle, bump
+`package.json` → `npm install` → copy the new package files into
+`public/ruffle/` and update `docs/release.md`.
 
 ### RPC
 
@@ -154,7 +177,7 @@ Pages and control routes served outside the RPC/asset paths:
 | `src/db/admin-store.ts` | Queries behind the `/__api/db` editor |
 | `prisma/schema.prisma` | SQLite schema |
 | `prisma.config.ts` | Prisma 7 datasource config |
-| `public/` | `index.html` (dashboard), `game.html`, `admin.html` |
+| `public/` | Self-contained asset store + pages: `swf/` (served SWFs), `data/` (game-data `.bin`/`.xml` + decompressed views), `ruffle/` (vendored Ruffle), `assets/` (dashboard art), `index.html`/`game.html`/`admin.html`/… |
 | `server.js` | Shim that runs `dist/server.js`, or tells you to build |
 
 ## Scripts
@@ -186,8 +209,10 @@ also required:
 5. Back up `dev.db` off-host, test restores, restrict filesystem permissions,
    and use a production database strategy before running multiple Node
    instances. SQLite is a single-host deployment choice.
-6. Replace the clearly marked policy drafts with operator-, jurisdiction-,
-   retention-, and age-policy-specific text reviewed for the launch region.
+6. The policy pages (`public/legal.html`: terms, privacy, cookies, community
+   guidelines) are final as shipped, naming the Restaurant City Project as
+   operator with in-service contact and England & Wales governing law. Have
+   local counsel review them for the jurisdiction where you publicly deploy.
 7. Decide how existing pre-authentication profiles are assigned to their real
    owners before opening public signup; a matching legacy username currently
    reconnects to that existing game profile.

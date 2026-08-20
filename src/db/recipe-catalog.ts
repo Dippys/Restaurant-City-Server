@@ -21,7 +21,7 @@ function recipeMap(): Map<string, RecipeEntry> {
 
   const ingredientIdsByName = readIngredientIdsByName();
   const recipes = new Map<string, RecipeEntry>();
-  const recipeXml = readDataFile('decompiled/bins/recipe/recipe.xml');
+  const recipeXml = readDataFile('public/data/recipe.xml');
 
   for (const attrs of readItemAttributes(recipeXml)) {
     const id = Number.parseInt(attrs.id ?? '', 10);
@@ -45,7 +45,7 @@ function recipeMap(): Map<string, RecipeEntry> {
 
 function readIngredientIdsByName(): Map<string, number> {
   const ingredients = new Map<string, number>();
-  const ingredientXml = readDataFile('decompiled/bins/ingredient/ingredient.xml');
+  const ingredientXml = readDataFile('public/data/ingredient.xml');
 
   for (const attrs of readItemAttributes(ingredientXml)) {
     const id = Number.parseInt(attrs.id ?? '', 10);

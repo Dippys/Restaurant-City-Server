@@ -6,9 +6,8 @@ export interface ServerConfig {
   readonly host: string;
   readonly serverRoot: string;
   readonly rcRoot: string;
-  readonly binXmlRoot: string;
-  readonly rebuiltAssetRoot: string;
-  readonly originalAssetRoot: string;
+  readonly assetSwfRoot: string;
+  readonly assetDataRoot: string;
   readonly rebuiltSwf: string;
   readonly maxLogEntries: number;
 }
@@ -26,10 +25,11 @@ export function loadConfig(): ServerConfig {
     host: process.env.HOST || '0.0.0.0',
     serverRoot,
     rcRoot,
-    binXmlRoot: path.join(rcRoot, 'bin-xml'),
-    rebuiltAssetRoot: path.join(rcRoot, 'decompiled', 'bin'),
-    originalAssetRoot: path.join(rcRoot, 'backup'),
-    rebuiltSwf: path.join(rcRoot, 'decompiled', 'game', 'bin', 'game.swf'),
+    // Self-contained: every served asset lives under server/public/ (ADR-0011).
+    assetSwfRoot: path.join(serverRoot, 'public', 'swf'),
+    assetDataRoot: path.join(serverRoot, 'public', 'data'),
+    // The game.swf we ship is the rebuilt client (crash fixes applied).
+    rebuiltSwf: path.join(serverRoot, 'public', 'swf', 'game.swf'),
     maxLogEntries: Number(process.env.MAX_LOG_ENTRIES) || 500,
   };
 }

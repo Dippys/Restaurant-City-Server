@@ -1,5 +1,5 @@
 // Ingredient catalog extracted verbatim from the client data file
-// decompiled/bins/ingredient/ingredient.xml. The hash is the opaque token the
+// server/public/data/ingredient.xml. The hash is the opaque token the
 // client sends for trades/quiz rewards (it is NOT derivable from the numeric id).
 // rarity 1..5; the no* flags mark ingredients excluded from each reward channel.
 export interface IngredientEntry {

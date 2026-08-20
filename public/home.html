@@ -3,7 +3,50 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Restaurant City</title>
+<title>Restaurant City Reborn — Play Restaurant City (Playfish 2010) Online Free</title>
+<meta name="description" content="Restaurant City Reborn brings the classic 2010 Playfish Facebook game back to life in your browser. Build your restaurant, cook new recipes, decorate and visit friends — free to play, no download, preserved with love. Join the community on Discord.">
+<meta name="keywords" content="Restaurant City, Restaurant City Reborn, RC Reborn, Playfish, Restaurant City online, play Restaurant City, Restaurant City 2010, Restaurant City Facebook game, flash game revival, cooking game, restaurant game, Playfish games">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#1d5478">
+<link rel="canonical" href="https://rc-reborn.uk/">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Restaurant City Reborn">
+<meta property="og:url" content="https://rc-reborn.uk/">
+<meta property="og:title" content="Restaurant City Reborn — Play the classic 2010 Playfish game online">
+<meta property="og:description" content="Restaurant City Reborn revives the beloved 2010 Playfish game in your browser. Build, cook, decorate and visit friends — free, no download, forever preserved.">
+<meta property="og:image" content="https://rc-reborn.uk/assets/building.png">
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Restaurant City Reborn — Play the classic 2010 Playfish game online">
+<meta name="twitter:description" content="Restaurant City Reborn revives the beloved 2010 Playfish game in your browser. Build, cook, decorate and visit friends — free, no download.">
+<meta name="twitter:image" content="https://rc-reborn.uk/assets/building.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "name": "Restaurant City Reborn",
+      "alternateName": "RC Reborn",
+      "url": "https://rc-reborn.uk/"
+    },
+    {
+      "@type": "VideoGame",
+      "name": "Restaurant City Reborn",
+      "alternateName": "RC Reborn",
+      "url": "https://rc-reborn.uk/",
+      "description": "Restaurant City Reborn revives the classic 2010 Playfish Facebook game in the browser: build your restaurant, cook new recipes, decorate your dining room and visit friends. Free to play, no download.",
+      "genre": "Simulation",
+      "gamePlatform": "Web Browser",
+      "applicationCategory": "Game",
+      "image": "https://rc-reborn.uk/assets/building.png",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
+      "sameAs": [ "https://discord.gg/Ppuwb826eC" ]
+    }
+  ]
+}
+</script>
 <link rel="stylesheet" href="/theme.css">
 <style>
   .home-hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 28px; align-items: center; padding: 26px 0 10px; }
@@ -23,22 +66,29 @@
   .feature p { margin: 0; font-size: 13px; color: var(--ink-soft); }
   .skyline { margin-top: 40px; width: 100%; display: block; opacity: .9; }
   .home-welcome { font-weight: 800; color: #fff; }
-  @media (max-width: 720px) { .home-hero { grid-template-columns: 1fr; } .hero-art { order: -1; } }
+  .community { display: grid; grid-template-columns: 1.1fr .9fr; gap: 28px; align-items: center; margin-top: 40px; background: var(--paper-2); border: 3px solid var(--line-dk); border-radius: var(--radius-sm); padding: 26px; box-shadow: var(--shadow-sm); }
+  .community h2 { margin: 0 0 8px; font-size: 24px; }
+  .community p { margin: 0 0 18px; font-size: 15px; color: var(--ink-soft); max-width: 46ch; }
+  .discord-widget { justify-self: center; width: 100%; max-width: 350px; }
+  .discord-widget iframe { width: 100%; height: 420px; border: none; border-radius: 12px; background: #2c2f33; box-shadow: 0 8px 22px rgba(29,84,120,.25); }
+  @media (max-width: 720px) { .home-hero { grid-template-columns: 1fr; } .hero-art { order: -1; } .community { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <header class="rc-topbar">
   <a class="rc-brand" href="/">
     <span class="rc-plate"></span>
-    <span class="rc-wordmark">Restaurant City</span>
+    <span class="rc-wordmark">Restaurant City Reborn</span>
   </a>
   <div style="flex:1"></div>
   <nav id="guest" style="display:flex;gap:10px;align-items:center">
+    <a class="rc-btn ghost small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
     <a class="rc-btn ghost small" href="/login">Log in</a>
     <a class="rc-btn gold small" href="/signup">Create account</a>
   </nav>
   <nav id="member" class="hidden" style="display:flex;gap:12px;align-items:center">
     <span class="home-welcome" id="welcome"></span>
+    <a class="rc-btn ghost small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
     <a class="rc-btn ghost small" href="/account">Account</a>
     <a class="rc-btn green small" href="/game">Play</a>
   </nav>
@@ -48,8 +98,8 @@
   <section class="home-hero">
     <div class="col">
       <span class="rc-eyebrow">Your restaurant awaits</span>
-      <h1 class="rc-logo">Restaurant <span class="thin">City</span></h1>
-      <p class="lead rc-muted">Build your restaurant, cook up new recipes, decorate your dining room, and visit your friends' kitchens. Your progress is saved between sessions.</p>
+      <h1 class="rc-logo">Restaurant <span class="thin">City Reborn</span></h1>
+      <p class="lead rc-muted">Restaurant City is back. Build your restaurant, cook up new recipes, decorate your dining room, and visit your friends' kitchens — the classic 2010 Playfish game, preserved and playable in your browser. Your progress is saved between sessions.</p>
       <div class="food-strip" aria-hidden="true">
         <img src="/assets/food-pizza.png" alt="">
         <img src="/assets/food-chicken.png" alt="">
@@ -59,14 +109,14 @@
       </div>
       <div class="home-actions">
         <span class="cta-wrap">
-          <a class="rc-btn green" href="/game">▶ Play Restaurant City</a>
+          <a class="rc-btn green" href="/game">▶ Play Restaurant City Reborn</a>
           <img class="chef" src="/assets/chef.png" alt="">
         </span>
         <a class="rc-btn ghost" href="/signup">New player? Sign up</a>
       </div>
     </div>
     <div class="hero-art">
-      <img src="/assets/building.png" alt="A Restaurant City building">
+      <img src="/assets/building.png" alt="A Restaurant City restaurant building">
     </div>
   </section>
 
@@ -79,12 +129,25 @@
 
   <img class="skyline" src="/assets/skyline.png" alt="">
 
+  <section class="community">
+    <div>
+      <h2>Join the community on Discord</h2>
+      <p>Hang out with fellow chefs, share your restaurants, get help, report bugs, and follow Restaurant City Reborn news. The project lives on Discord — come say hi!</p>
+      <a class="rc-btn blue" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Join the Restaurant City Reborn Discord</a>
+    </div>
+    <div class="discord-widget">
+      <iframe src="https://discord.com/widget?id=1540043179686887476&theme=dark" width="350" height="420" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts" title="Restaurant City Reborn Discord server"></iframe>
+    </div>
+  </section>
+
   <footer class="rc-footer">
-    <span>© Restaurant City</span>
+    <span>© Restaurant City Reborn</span>
+    <a href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
     <a href="/terms">Terms</a>
     <a href="/privacy">Privacy</a>
     <a href="/cookies">Cookies</a>
     <a href="/community-guidelines">Community guidelines</a>
+    <span class="rc-footer-note">Non-commercial educational project — for preservation and study. Restaurant City and all related assets are the property of their original owners (Playfish / Electronic Arts). All rights reserved to their respective owners.</span>
   </footer>
 </main>
 

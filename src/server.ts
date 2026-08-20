@@ -6,11 +6,11 @@ const { httpServer, staticFiles } = createServer(config);
 
 httpServer.listen(config.port, config.host, () => {
   console.log('====================================================================');
-  console.log(' Restaurant City - local server');
+  console.log(' Restaurant City Reborn - local server');
   console.log('====================================================================');
   console.log(` Listening      : http://localhost:${config.port}`);
   console.log(` Dashboard      : http://localhost:${config.port}/__dash`);
-  console.log(` Static files   : ${staticFiles.size} indexed (RC root + bin-xml)`);
+  console.log(` Static files   : ${staticFiles.size} indexed (self-contained: server/public)`);
   console.log(` game.swf serves: ${staticFiles.servesRebuiltGameSwf() ? 'REBUILT (localhost-wired)' : 'original'}`);
   console.log('');
   console.log(' Launch the client so it loads FROM this server:');
