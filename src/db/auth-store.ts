@@ -93,6 +93,12 @@ async function createSession(account: { id: string; username: string; firstName:
     id: randomBytes(16).toString('hex'), tokenHash: hashSessionToken(rawToken), csrfToken, accountId: account.id,
     expiresAt: new Date(Date.now() + SESSION_MS), ipAddress: ip.slice(0, 100), userAgent: userAgent.slice(0, 300),
   } });
+
+  // Hard kick: only the newest session for an account stays valid. A fresh
+  // login elsewhere immediately invalidates every older session, so the other
+  // device's next request gets 401 and its game instance dies.
+  await prisma.session.deleteMany({ where: { accountId: account.id, id: { not: session.id } } }).catch(() => undefined);
+
   return { account: toActiveAccount(account, csrfToken, session.id), rawToken };
 }
 

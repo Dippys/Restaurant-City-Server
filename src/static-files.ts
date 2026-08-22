@@ -63,6 +63,14 @@ export class StaticFileIndex {
     };
   }
 
+  /** Full index snapshot (name -> workspace-relative path), for the admin dashboard. */
+  entries(): ReadonlyArray<{ readonly name: string; readonly path: string }> {
+    return [...this.files.entries()].map(([name, fullPath]) => ({
+      name,
+      path: path.relative(this.config.rcRoot, fullPath),
+    }));
+  }
+
   private addDirectory(target: Map<string, string>, dir: string): void {
     let entries: string[];
     try {

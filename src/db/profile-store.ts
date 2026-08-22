@@ -15,6 +15,7 @@ import {
   defaultProfileName,
 } from './defaults';
 import type { ActiveAccount } from '../session';
+import { hiredFriendRosterNetworkUids, ownerFirst } from '../rpc/friend-roster';
 
 export type StoredProfile = UserProfile & {
   ownedItems: OwnedItem[];
@@ -173,20 +174,31 @@ export async function getProfiles(networkUids: readonly string[], activeNetworkU
   });
 }
 
-// Online mode: every account on the server is a mutual friend of every other,
-// alongside the seeded NPCs. Returns all real player + NPC profiles except the
-// caller and the reserved system uids (default player '0', system sender '1').
+// Your Street roster: owner first, then distinct enabled account-backed players
+// currently stored as the owner's employees. Hire candidates use RPC 39.
 export async function getAllFriends(activeNetworkUid = PLAYER_NETWORK_UID): Promise<StoredProfile[]> {
   await ensureStarterFriends();
-  await ensureProfile(activeNetworkUid);
-
-  return prisma.userProfile.findMany({
+  const owner = await ensureProfile(activeNetworkUid);
+  const hiredUids = owner.employees.map((employee) => employee.networkUid);
+  const enabledAccounts = await prisma.account.findMany({
     where: {
-      networkUid: { notIn: [activeNetworkUid, PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID] },
+      disabled: false,
+      networkUid: { in: [activeNetworkUid, ...hiredUids] },
+    },
+    select: { networkUid: true },
+  });
+  const rosterUids = hiredFriendRosterNetworkUids(
+    enabledAccounts.map((account) => account.networkUid),
+    hiredUids,
+    activeNetworkUid,
+  );
+  const profiles = await prisma.userProfile.findMany({
+    where: {
+      networkUid: { in: rosterUids },
     },
     include: profileInclude,
-    orderBy: { networkUid: 'asc' },
   });
+  return ownerFirst(profiles, activeNetworkUid);
 }
 
 export async function ensureLoginAccount(account: ActiveAccount): Promise<StoredProfile> {
@@ -195,6 +207,12 @@ export async function ensureLoginAccount(account: ActiveAccount): Promise<Stored
 }
 
 export async function ensureStarterFriends(): Promise<void> {
+  // Production communities use real account-backed profiles. Keep the legacy
+  // six-NPC seed available only for explicit local/demo deployments; otherwise
+  // a maintenance purge would recreate deleted profile-only bots on next read.
+  if (process.env.RC_SEED_STARTER_FRIENDS !== 'true') {
+    return;
+  }
   for (const friend of STARTER_FRIENDS) {
     const existing = await prisma.userProfile.findUnique({
       where: { id: profileKey(friend.networkUid) },
@@ -454,20 +472,6 @@ async function ensureProfile(networkUid: string, options: EnsureProfileOptions =
       return ensureProfile(safeNetworkUid, options);
     }
 
-    if (shouldSeedStarterItems(existing, Boolean(options.seedStarterItems))) {
-      await prisma.ownedItem.createMany({
-        data: seedOwnedItems(safeNetworkUid, starterSeeds()).map((item) => ({
-          ...item,
-          userProfileId: id,
-        })),
-      });
-
-      return prisma.userProfile.findUniqueOrThrow({
-        where: { id },
-        include: profileInclude,
-      });
-    }
-
     if (await repairProfileState(safeNetworkUid, existing, Boolean(options.seedStarterItems))) {
       return ensureProfile(safeNetworkUid, options);
     }
@@ -604,34 +608,20 @@ async function repairProfileState(networkUid: string, profile: StoredProfile, se
   return repaired;
 }
 
-async function repairProfileStateInTransaction(
+export async function repairProfileStateInTransaction(
   tx: any,
   networkUid: string,
   profileId: string,
   seedStarterItems: boolean,
   loadedProfile?: StoredProfile,
 ): Promise<boolean> {
-  const ownedItems = loadedProfile?.ownedItems ?? await tx.ownedItem.findMany({ where: { userProfileId: profileId } });
   const floors = loadedProfile?.floors ?? await tx.restaurantFloor.findMany({ where: { userProfileId: profileId } });
   const gardenPlots = loadedProfile?.gardenPlots ?? await tx.gardenPlot.findMany({ where: { userProfileId: profileId } });
   const profileLevel = loadedProfile?.userLevel
     ?? (await tx.userProfile.findUnique({ where: { id: profileId }, select: { userLevel: true } }))?.userLevel
     ?? 1;
   let repaired = false;
-  let nextServerId = ownedItems.reduce((min: number, item: OwnedItem) => Math.min(min, item.serverId), 0) - 1;
-
   if (seedStarterItems) {
-    const starterRepair = await addMissingStarterOwnedItems(
-      tx,
-      networkUid,
-      profileId,
-      ownedItems,
-      starterSeeds(),
-      nextServerId,
-    );
-    nextServerId = starterRepair.nextServerId;
-    repaired ||= starterRepair.repaired;
-
     // Learned recipes are permanent, so an empty menu means this profile predates
     // food seeding (or was created before starter food existed). Backfill the
     // original starter menu, ingredients, and demand without ever re-granting to a
@@ -710,78 +700,6 @@ async function repairProfileStateInTransaction(
   return repaired;
 }
 
-async function addStarterOwnedItems(
-  tx: any,
-  networkUid: string,
-  profileId: string,
-  seeds: readonly OwnedItemSeed[],
-  nextServerId: number,
-): Promise<number> {
-  for (const seed of seeds) {
-    await tx.ownedItem.create({
-      data: {
-        id: ownedItemKey(networkUid, nextServerId),
-        userProfileId: profileId,
-        serverId: nextServerId,
-        globalItemId: seed.id,
-        positionX: seed.x,
-        positionY: seed.y,
-        data: seed.data ?? 0,
-        roomIndex: seed.roomIndex ?? 0,
-        employeeNetwork: 0,
-        employeeNetworkUid: '',
-        employeePlayfishUid: 0,
-      },
-    });
-    nextServerId -= 1;
-  }
-
-  return nextServerId;
-}
-
-async function addMissingStarterOwnedItems(
-  tx: any,
-  networkUid: string,
-  profileId: string,
-  ownedItems: readonly OwnedItem[],
-  seeds: readonly OwnedItemSeed[],
-  nextServerId: number,
-): Promise<{ nextServerId: number; repaired: boolean }> {
-  const existingCounts = new Map<number, number>();
-  for (const item of ownedItems) {
-    existingCounts.set(item.globalItemId, (existingCounts.get(item.globalItemId) ?? 0) + 1);
-  }
-
-  let repaired = false;
-  for (const seed of seeds) {
-    const remaining = existingCounts.get(seed.id) ?? 0;
-    if (remaining > 0) {
-      existingCounts.set(seed.id, remaining - 1);
-      continue;
-    }
-
-    await tx.ownedItem.create({
-      data: {
-        id: ownedItemKey(networkUid, nextServerId),
-        userProfileId: profileId,
-        serverId: nextServerId,
-        globalItemId: seed.id,
-        positionX: seed.x,
-        positionY: seed.y,
-        data: seed.data ?? 0,
-        roomIndex: seed.roomIndex ?? 0,
-        employeeNetwork: 0,
-        employeeNetworkUid: '',
-        employeePlayfishUid: 0,
-      },
-    });
-    nextServerId -= 1;
-    repaired = true;
-  }
-
-  return { nextServerId, repaired };
-}
-
 function defaultFloorTiles(): number[] {
   return Array.from({ length: FLOOR_TILE_COUNT }, () => 0);
 }
@@ -797,16 +715,6 @@ function hasValidFloorTiles(value: string): boolean {
 
 function itemType(globalItemId: number): number {
   return Math.floor(globalItemId / 1000000);
-}
-
-function shouldSeedStarterItems(profile: StoredProfile, seedStarterItems: boolean): boolean {
-  return (
-    seedStarterItems &&
-    profile.ownedItems.length === 0 &&
-    profile.userLevel === 1 &&
-    profile.credits === 0 &&
-    profile.gourmetPoint === 0
-  );
 }
 
 function needsProfileRepair(profile: StoredProfile): boolean {

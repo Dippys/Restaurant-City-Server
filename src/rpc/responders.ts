@@ -20,6 +20,8 @@ import {
 import type { OwnedItemData, StoredProfile } from '../db/profile-store';
 import { getAllFriends as getAllFriendProfiles, getPlayerProfile, getProfiles, savePlayerProfile } from '../db/profile-store';
 import { parseSaveProfile } from './save-profile-parser';
+import { filterOwnedItemsByContext, ITEM_CONTEXT_RESTAURANT_FACADE } from './item-context';
+import { safeGardenIngredientId } from './garden-plot';
 import type { ActiveAccount } from '../session';
 import {
   bookmarkCount,
@@ -27,6 +29,7 @@ import {
   cashBalance,
   firstVisitFriend,
   gourmetStreetUsers,
+  hireCandidates,
   ingredientMarketItems,
   initSession,
   mailItemIds,
@@ -124,7 +127,7 @@ function writePlot(plot: StoredProfile['gardenPlots'][number]): Buffer {
 
   return Buffer.concat([
     writeU8(plot.plotId),
-    writeVarint(plot.ingredientId),
+    writeVarint(safeGardenIngredientId(plot.ingredientId)),
     writeVarint(Math.min(GARDEN_GROW_TIME_SECONDS, baseGrowth + elapsedSincePlanted)),
     writeVarint(Math.max(0, baseWetness - elapsedSinceWatered)),
   ]);
@@ -197,6 +200,13 @@ function writeProfile(profile: StoredProfile, includeFullState: boolean): Buffer
   ]);
 }
 
+function writeProfileForItemContext(profile: StoredProfile, itemContext: number): Buffer {
+  return writeProfile({
+    ...profile,
+    ownedItems: filterOwnedItemsByContext(profile.ownedItems, itemContext),
+  }, true);
+}
+
 function boundedInt(value: number, min: number, max: number, fallback: number): number {
   if (!Number.isInteger(value) || value < min || value > max) {
     return fallback;
@@ -235,9 +245,13 @@ async function getAllFriends(_request: ParsedRequest | ParsedSubRequest, account
 }
 
 async function getUsers(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
-  const requestedIds = readRequestedUserIds(requestBody(request));
+  const body = requestBody(request);
+  const itemContext = body[0] ?? 0;
+  const requestedIds = readRequestedUserIds(body);
   const users = await getProfiles(requestedIds.map(String), account.networkUid);
-  return writeArray(users.map((profile) => writeProfile(profile, true)));
+  // RpcGetFriendsDetails appends each context response. Returning every owned
+  // item here would add interior placements during both facade and visit loads.
+  return writeArray(users.map((profile) => writeProfileForItemContext(profile, itemContext)));
 }
 
 async function readBookmarkCountForAccount(_request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
@@ -361,13 +375,19 @@ async function firstTimeVisitFriendResponder(request: ParsedRequest | ParsedSubR
 async function getRandomStreetUsers(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
   const [count] = readVarint(requestBody(request), 0);
   const users = await streetUsers(account, count);
-  return writeArray(users.map((profile) => writeProfile(profile, true)));
+  return writeArray(users.map((profile) => writeProfileForItemContext(profile, ITEM_CONTEXT_RESTAURANT_FACADE)));
 }
 
 async function getGourmetStreetUsers(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
   const [count] = readVarint(requestBody(request), 0);
   const users = await gourmetStreetUsers(account, count);
-  return writeArray(users.map((profile) => writeProfile(profile, true)));
+  return writeArray(users.map((profile) => writeProfileForItemContext(profile, ITEM_CONTEXT_RESTAURANT_FACADE)));
+}
+
+async function getHireCandidates(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
+  const [count] = readVarint(requestBody(request), 0);
+  const users = await hireCandidates(account, count);
+  return writeArray(users.map((profile) => writeProfile(profile, false)));
 }
 
 async function swapIngredientResponder(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
@@ -694,6 +714,7 @@ export const responders: Readonly<Record<number, RpcResponder>> = {
   36: firstTimeVisitFriendResponder,
   37: getRandomStreetUsers,
   38: getGourmetStreetUsers,
+  39: getHireCandidates,
   40: purchaseCoinsWithPfCash,
   41: purchaseCashItem,
   42: purchaseCashItemIngredients,

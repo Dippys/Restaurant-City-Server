@@ -38,6 +38,7 @@ import {
   upsertAdminPurchasableItem,
 } from './db/admin-store';
 import { ensureLoginAccount } from './db/profile-store';
+import { activeGameInstance, claimGameInstance } from './game-instances';
 import { loginAccount, purgeExpiredSessions, registerAccount, revokeSession, updateAccountSettings } from './db/auth-store';
 import { latestStoredImage } from './db/rpc-store';
 import { RequestLog } from './request-log';
@@ -97,6 +98,17 @@ async function handleRequest(
 
   const entry = createEntry(requestLog.nextId(), req, url, pathname, body);
 
+  // Stamp the authenticated player (best-effort) so the dashboard can show who
+  // caused each request. Anonymous requests stay unstamped.
+  try {
+    const account = await accountFromRequest(req);
+    if (account) {
+      entry.account = { username: account.username, networkUid: account.networkUid };
+    }
+  } catch {
+    // ignore — the entry just stays anonymous
+  }
+
   if (pathname === '/') {
     serveHtml(config, res, 'home.html');
     return;
@@ -112,11 +124,11 @@ async function handleRequest(
     return;
   }
 
-  if (pathname === '/__dash' || pathname === '/dashboard') {
+  if (pathname === '/__dash' || pathname === '/dashboard' || pathname === '/database') {
+    // All admin surfaces were consolidated into the single /admin dashboard.
     if (!(await requireAdmin(req, res))) return;
-    const html = fs.readFileSync(path.join(config.serverRoot, 'public', 'index.html'));
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(html);
+    res.writeHead(302, { Location: '/admin' });
+    res.end();
     return;
   }
 
@@ -134,12 +146,26 @@ async function handleRequest(
     return;
   }
 
-  if (pathname === '/admin' || pathname === '/database') {
+  if (pathname === '/admin') {
     if (!(await requireAdmin(req, res))) return;
     const html = fs.readFileSync(path.join(config.serverRoot, 'public', 'admin.html'));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
     return;
+  }
+
+  // Admin SPA modules (compiled from src/admin by tsconfig.admin.json).
+  const adminAsset = pathname.match(/^\/admin\/([A-Za-z0-9_./-]+\.(?:js|css|map))$/);
+  if (adminAsset) {
+    const filename = adminAsset[1];
+    const fullPath = path.join(config.serverRoot, 'public', 'admin', filename);
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      const ext = path.extname(filename).toLowerCase();
+      const mimeType = ext === '.js' ? 'text/javascript; charset=utf-8' : ext === '.css' ? 'text/css; charset=utf-8' : 'application/json; charset=utf-8';
+      sendStaticFile(res, fullPath, mimeType, entry, `admin/${filename}`);
+      requestLog.record(entry);
+      return;
+    }
   }
 
   if (pathname === '/__events') {
@@ -175,6 +201,40 @@ async function handleRequest(
     return;
   }
 
+  if (pathname === '/__api/admin/overview' && req.method === 'GET') {
+    if (!(await requireAdmin(req, res))) return;
+    const requests = requestLog.snapshot();
+    sendJson(res, {
+      ok: true,
+      staticFiles: staticFiles.size,
+      servesRebuiltGameSwf: staticFiles.servesRebuiltGameSwf(),
+      requestBuffer: requests.length,
+      maxLogEntries: config.maxLogEntries,
+      rpcCount: requests.filter((entry) => entry.kind === 'rpc').length,
+      notFoundCount: requests.filter((entry) => entry.status === 404).length,
+      onlineUsers: listOnlineUsers(),
+      uptimeSeconds: Math.floor(process.uptime()),
+      dbSizeBytes: dbFileSize(config),
+      serverTime: new Date().toISOString(),
+    });
+    return;
+  }
+
+  if (pathname === '/__api/admin/assets' && req.method === 'GET') {
+    if (!(await requireAdmin(req, res))) return;
+    const files = staticFiles.entries().map(({ name, path: relativePath }) => {
+      let size = 0;
+      try {
+        size = fs.statSync(path.join(config.rcRoot, relativePath)).size;
+      } catch {
+        size = 0;
+      }
+      return { name, path: relativePath, size };
+    });
+    sendJson(res, { ok: true, files, servesRebuiltGameSwf: staticFiles.servesRebuiltGameSwf() });
+    return;
+  }
+
   if (pathname === '/__api/session' && req.method === 'GET') {
     const account = await accountFromRequest(req);
     sendJson(res, {
@@ -183,6 +243,33 @@ async function handleRequest(
       account: publicAccount(account),
       csrfToken: account?.csrfToken || null,
     });
+    return;
+  }
+
+  // Game instance claim: the newest instance of a player's game wins; older
+  // instances detect the swap via polling and stop themselves (hard kick).
+  if (pathname === '/__api/game/claim' && req.method === 'POST') {
+    const account = await requireMutation(req, res);
+    if (!account) return;
+    const input = parseJsonBody<{ instanceId?: string }>(body);
+    const instanceId = String(input.instanceId || '').trim();
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(instanceId)) {
+      sendJson(res, { ok: false, error: 'Invalid instance id.' }, 400);
+      return;
+    }
+    const displaced = claimGameInstance(account.networkUid, instanceId);
+    sendJson(res, { ok: true, active: instanceId, displaced });
+    return;
+  }
+
+  if (pathname === '/__api/game/claim' && req.method === 'GET') {
+    const account = await accountFromRequest(req);
+    if (!account) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Not logged in.' }));
+      return;
+    }
+    sendJson(res, { ok: true, active: activeGameInstance(account.networkUid) });
     return;
   }
 
@@ -205,6 +292,10 @@ async function handleRequest(
 
   if (pathname === '/__api/signup' && req.method === 'POST') {
     try {
+      if (await accountFromRequest(req)) {
+        sendJson(res, { ok: false, error: 'You are already logged in. Log out first to create another account.' }, 400);
+        return;
+      }
       const input = parseJsonBody<{ username?: string }>(body);
       enforceSignupRateLimit(req);
       const result = await registerAccount(parseJsonBody(body), clientIp(req), String(req.headers['user-agent'] || ''));
@@ -745,6 +836,15 @@ function serveHtml(config: ServerConfig, res: ServerResponse, filename: string):
   res.end(html);
 }
 
+function dbFileSize(config: ServerConfig): number {
+  const dbPath = process.env.RC_DB_PATH || path.join(config.serverRoot, 'dev.db');
+  try {
+    return fs.statSync(dbPath).size;
+  } catch {
+    return 0;
+  }
+}
+
 function publicAccount(account: ActiveAccount | null): Omit<ActiveAccount, 'csrfToken' | 'sessionId'> | null {
   if (!account) return null;
   const { csrfToken: _csrfToken, sessionId: _sessionId, ...safe } = account;
@@ -814,7 +914,7 @@ function applySecurityHeaders(res: ServerResponse): void {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src 'self'; worker-src 'self' blob:; img-src 'self' data:; frame-src 'self' https://discord.com https://*.discord.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src 'self' https://static.cloudflareinsights.com; worker-src 'self' blob:; img-src 'self' data:; frame-src 'self' https://discord.com https://*.discord.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self' https://discord.gg https://discord.com https://*.discord.com");
 }
 
 const authAttempts = new Map<string, { count: number; resetAt: number }>();

@@ -13,7 +13,7 @@ in a modern browser via Ruffle. It does four things:
 
 Stack: Node.js + TypeScript on the built-in `http` module (no web framework),
 Prisma 7 over SQLite via the better-sqlite3 adapter, with a pinned local Ruffle
-runtime for the browser game page.
+fork for the browser game page.
 
 ## Requirements
 
@@ -48,7 +48,8 @@ or open <http://localhost:8090/game> and use the launcher page.
 | <http://localhost:8090/account> | Name and PIN settings |
 | `/terms`, `/privacy`, `/cookies`, `/community-guidelines` | Policy pages (see `public/legal.html`) |
 | `/robots.txt`, `/sitemap.xml` | SEO (canonical `https://rc-reborn.uk`) |
-| `/__dash` and `/admin` | Administrator-only tools |
+| `/admin` | **The single admin dashboard** (overview, live traffic, players, economy, game tools, assets) |
+| `/__dash`, `/dashboard`, `/database` | Redirect to `/admin` (legacy aliases) |
 
 ## Deployment
 
@@ -70,6 +71,7 @@ All optional, via environment variables:
 | `RC_ADMIN_USERNAME` | empty | Username promoted to admin when first registered |
 | `RC_PIN_PEPPER` | empty | Optional stable server secret mixed into PIN hashes |
 | `RC_TRUST_PROXY` | `false` | Trust forwarded IP/protocol headers only behind your proxy |
+| `RC_SEED_STARTER_FRIENDS` | `false` | Set `true` only for local/demo servers that need the six legacy NPC profiles |
 
 ## How it works
 
@@ -93,17 +95,22 @@ only, lowercased, with browser download suffixes stripped — so a request for
 
 The raw 2010 originals are preserved read-only under the workspace
 `original/` (archive only — not read by the server). The boot banner reports
-that the rebuilt `game.swf` is active.
+that the rebuilt `game.swf` is active. Note: the served `game.swf` carries a
+**domain lock** — it only boots on `rc-reborn.uk` (+ localhost for dev); see
+`docs/release.md` → "Domain lock".
 
 ### Ruffle
 
 The browser game page (`/game`) mounts the original SWF through the
-[Ruffle](https://ruffle.rs) Flash emulator. The runtime (v0.3.0, the
-`@ruffle-rs/ruffle` selfhosted package) is vendored under `public/ruffle/` so
-the release is self-contained; `http-server.ts` falls back to the npm package
-if the vendored copy is missing. To upgrade Ruffle, bump
-`package.json` → `npm install` → copy the new package files into
-`public/ruffle/` and update `docs/release.md`.
+[Ruffle](https://ruffle.rs) Flash emulator. The runtime is built from the local
+`../ruffle/` fork on branch `rc-reborn/restaurant-lag`, based on upstream
+commit `19df9521b385a9449c63ba7da764fcd58692dbd8`, and vendored under
+`public/ruffle/` so the release is self-contained. This fork implements the
+AVM2 `System.gc()` boundary used when old restaurant worlds are detached;
+active friend-visit/QTE scenes retain a separate performance cost.
+`http-server.ts` falls back to the npm package only if the vendored copy is
+missing. Build and upgrade instructions, source rationale, and pinned hashes
+are in `../docs/release.md`.
 
 ### RPC
 
@@ -139,13 +146,15 @@ Pages and control routes served outside the RPC/asset paths:
 | `/` | GET | Public home page |
 | `/login`, `/signup`, `/account` | GET | Account pages |
 | `/terms`, `/privacy`, `/cookies`, `/community-guidelines` | GET | Policy pages |
-| `/__dash`, `/dashboard` | GET | Admin-only dashboard UI |
+| `/__dash`, `/dashboard`, `/database` | GET | Redirect to the single `/admin` dashboard (legacy aliases) |
 | `/game`, `/play` | GET | Client launcher page |
-| `/admin`, `/database` | GET | Database editor UI |
+| `/admin` | GET | **The single admin dashboard** (overview, live traffic, players, economy, game tools, assets; `src/admin/` is its typed TS source, compiled to `public/admin/`) |
 | `/__events` | GET | SSE stream of captured requests |
 | `/__api/requests` | GET | JSON snapshot of the capture buffer |
 | `/__api/clear` | POST | Admin-only: clear the capture buffer |
 | `/__api/reindex` | POST | Admin-only: rescan asset files |
+| `/__api/admin/overview` | GET | Admin: server health (asset count, buffer stats, online players, uptime, DB size) |
+| `/__api/admin/assets` | GET | Admin: indexed asset list (served name → file → size) |
 | `/__api/session` | GET | Current logged-in account |
 | `/__api/login`, `/__api/signup` | POST | Authenticate or create an account |
 | `/__api/account` | PATCH | Update names/PIN after PIN re-verification |
@@ -177,7 +186,7 @@ Pages and control routes served outside the RPC/asset paths:
 | `src/db/admin-store.ts` | Queries behind the `/__api/db` editor |
 | `prisma/schema.prisma` | SQLite schema |
 | `prisma.config.ts` | Prisma 7 datasource config |
-| `public/` | Self-contained asset store + pages: `swf/` (served SWFs), `data/` (game-data `.bin`/`.xml` + decompressed views), `ruffle/` (vendored Ruffle), `assets/` (dashboard art), `index.html`/`game.html`/`admin.html`/… |
+| `public/` | Self-contained asset store + pages: `swf/` (served SWFs), `data/` (game-data `.bin`/`.xml` + decompressed views), `ruffle/` (vendored Ruffle), `assets/` (site art), `admin/` (compiled admin dashboard JS), `index.html`/`game.html`/`admin.html`/… |
 | `server.js` | Shim that runs `dist/server.js`, or tells you to build |
 
 ## Scripts
@@ -190,6 +199,34 @@ Pages and control routes served outside the RPC/asset paths:
 | `npm run check` | Type-check only (`tsc --noEmit`) |
 | `npm run db:push` | Apply the schema to `dev.db` |
 | `npm run db:generate` | Regenerate the Prisma client |
+
+### Purge inactive accounts
+
+`scripts/purge-inactive-users.cjs` removes non-admin accounts whose newest
+registration, login, or session activity is older than 30 days. It also removes
+profiles that have no matching account, while always preserving the permanent
+Restaurant City system profile at UID `1`. Run the dry run first from `server/`:
+
+```bash
+node scripts/purge-inactive-users.cjs
+```
+
+Review every deletion and employee reassignment, stop the game server, then
+apply the same plan:
+
+```bash
+node scripts/purge-inactive-users.cjs --apply
+```
+
+Apply mode creates a timestamped `dev.db.before-inactive-purge-*.bak` beside
+the database, recalculates the plan under a SQLite write lock, reassigns stale
+workers and their furniture references, and only then deletes accounts and
+profiles. Replacement workers are active account-backed profiles and are unique
+inside each restaurant. The same person may work in different restaurants.
+Admins are never deleted. If a unique replacement is unavailable or furniture
+contains a stale assignment without a matching employee row, the entire
+transaction aborts. Use `--days N` or `--database PATH` when needed; `RC_DB_PATH`
+is honored.
 
 ## Production checklist
 
@@ -241,9 +278,37 @@ insecure security-question reset.
 | 36 | `firstTimeVisitFriend` | | 255 | `batchOperation` (envelope) |
 | 37 | `getRandomStreetUsers` | | | |
 | 38 | `getGourmetStreetUsers` | | | |
+| 39 | `getHireCandidates` | | | |
 | 40 | `purchaseCoinsWithPfCash` | | | |
 | 41 | `purchaseCashItem` | | | |
 | 42 | `purchaseCashItemIngredients` | | | |
+
+`getUsers` honors the leading AS3 `itemContext` mask when serializing owned
+placements. In particular, facade (`2`) and restaurant-interior (`4`) requests
+return disjoint item sets; the client appends both responses during a friend
+visit (ADR-0012 in `../client-html5/docs/adr/`).
+
+`getRandomStreetUsers` and `getGourmetStreetUsers` have no context byte, but
+their stock AS3 handlers consume the returned placements as facade context.
+Both responders therefore return only type-2 building placements; interior
+items arrive later through `getUsers` context `4` (ADR-0016).
+
+`getAllFriends` includes the active player first, followed only by distinct,
+enabled account-backed profiles currently present in the owner's employee
+rows. The Flash client needs the self entry to substitute its canonical
+`GameWorld.gameUser`, render the owner's street building, and enable building
+decoration. This response is the exact Your Street roster.
+
+Random Street selects a fresh shuffled set of at most 10 enabled accounts after
+excluding the owner and employee/friend UIDs. Gourmet Street returns at most 10
+other enabled players with level ≥10 and gourmet points ≥100,000.
+`getHireCandidates` independently returns up to 50 freshly shuffled non-hired
+players for the patched SWF Hire loader. See ADR-0017.
+
+When a full profile contains a garden ingredient that is unknown or has no
+`plantClassName` in `public/data/ingredient.xml`, the responder writes the
+existing empty-plot sentinel `0`. This keeps legacy/corrupt profiles visitable
+without changing their stored database rows. See ADR-0018.
 
 Unimplemented message types return an empty body, which the client treats as a
 failed call.

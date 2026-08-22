@@ -4,1276 +4,178 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>RC Reborn · Admin</title>
-<meta name="robots" content="noindex, nofollow">
+<meta name="robots" content="noindex, nofollow" />
 <style>
   :root {
-    --bg:#101112;
-    --side:#151719;
-    --surface:#1b1e20;
-    --surface2:#24282b;
-    --line:#343a3f;
-    --text:#edf1f3;
-    --muted:#9aa3aa;
-    --accent:#62b47d;
-    --accent2:#d4ad5f;
-    --red:#df7474;
-    --blue:#6aa9d8;
+    --bg:#101112; --side:#151719; --surface:#1b1e20; --surface2:#24282b;
+    --line:#343a3f; --text:#edf1f3; --muted:#9aa3aa; --accent:#62b47d;
+    --accent2:#d4ad5f; --red:#df7474; --blue:#6aa9d8;
     --mono:'Cascadia Code','Consolas','SF Mono',Menlo,monospace;
   }
   * { box-sizing:border-box; }
+  html, body { height:100%; }
   body {
-    margin:0;
-    background:var(--bg);
-    color:var(--text);
-    font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    margin:0; background:var(--bg); color:var(--text);
+    font:13px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    display:grid; grid-template-columns:220px 1fr;
   }
-  header {
-    min-height:52px;
-    display:flex;
-    align-items:center;
-    gap:12px;
-    padding:8px 16px;
-    background:#17191b;
-    border-bottom:1px solid var(--line);
-    position:sticky;
-    top:0;
-    z-index:4;
+  /* ---- sidebar ---- */
+  #rc-side {
+    background:var(--side); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; gap:18px; padding:18px 14px;
+    position:sticky; top:0; height:100vh; overflow:auto;
   }
-  h1 { margin:0; font-size:16px; font-weight:700; }
-  h2 { margin:0; font-size:15px; }
-  h3 {
-    margin:0 0 10px;
-    color:var(--muted);
-    font-size:12px;
-    font-weight:700;
-    letter-spacing:0;
-    text-transform:uppercase;
+  #rc-side .rc-brand { display:flex; align-items:center; gap:9px; font-weight:800; font-size:15px; letter-spacing:.2px; }
+  #rc-side .rc-plate {
+    width:18px; height:18px; border-radius:5px; flex:none;
+    background:linear-gradient(135deg,var(--accent),#3e7c57);
+    box-shadow:0 2px 6px rgba(98,180,125,.4);
   }
-  nav.top { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
-  a, button {
-    min-height:34px;
-    color:var(--text);
-    background:var(--surface2);
-    border:1px solid var(--line);
-    border-radius:6px;
-    padding:7px 10px;
-    font:12px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    text-decoration:none;
-    cursor:pointer;
-    white-space:nowrap;
+  #rc-nav { display:flex; flex-direction:column; gap:2px; }
+  #rc-nav a {
+    color:var(--muted); text-decoration:none; padding:8px 10px; border-radius:8px;
+    font-weight:600; font-size:13.5px; border:1px solid transparent;
   }
-  button:hover, a:hover { border-color:var(--accent); }
-  button.primary { border-color:#477b58; background:#213326; }
-  button.danger:hover { border-color:var(--red); color:#fff; }
-  button[disabled] { opacity:.45; cursor:not-allowed; }
-  main {
-    display:grid;
-    grid-template-columns:minmax(280px, 360px) 1fr;
-    min-height:calc(100vh - 52px);
+  #rc-nav a:hover { color:var(--text); background:var(--surface); }
+  #rc-nav a.active { color:#fff; background:var(--surface2); border-color:var(--line); }
+  .rc-side-foot { margin-top:auto; display:flex; flex-direction:column; gap:8px; font-size:12px; }
+  .rc-side-foot a.rc-btn { text-decoration:none; text-align:center; }
+  .rc-dim { color:var(--muted); font-weight:500; }
+  /* ---- main ---- */
+  #rc-view { padding:22px 26px 60px; overflow:auto; height:100vh; }
+  .rc-title { margin:0 0 4px; font-size:22px; font-weight:800; }
+  .rc-sub { margin:0 0 18px; color:var(--muted); }
+  .rc-err { color:var(--red); font-weight:700; }
+  .rc-toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:12px 0 16px; }
+  .rc-stat { color:var(--muted); font-size:12px; }
+  /* ---- cards ---- */
+  .rc-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:18px; }
+  .rc-card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .rc-card-label { color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.6px; }
+  .rc-card-value { font-size:24px; font-weight:800; margin-top:4px; }
+  .rc-card-sub { color:var(--muted); font-size:12px; margin-top:2px; }
+  /* ---- panels ---- */
+  .rc-panel { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:18px; overflow-wrap:anywhere; min-width:0; }
+  .rc-panel h2 { margin:0 0 12px; font-size:15px; }
+  .rc-panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  .rc-panel-head h2 { margin:0; }
+  .rc-grid { columns:420px 2; column-gap:18px; }
+  .rc-grid > .rc-panel { break-inside:avoid; margin-bottom:18px; min-width:0; }
+  /* ---- buttons ---- */
+  .rc-btn {
+    background:var(--surface2); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:7px 12px; cursor:pointer; font-size:12.5px; font-weight:600;
   }
-  aside {
-    min-width:0;
-    background:var(--side);
-    border-right:1px solid var(--line);
-    padding:12px;
+  .rc-btn:hover { border-color:var(--accent); }
+  .rc-btn.primary { background:var(--accent); border-color:var(--accent); color:#08120b; }
+  .rc-btn.primary:hover { filter:brightness(1.08); }
+  .rc-btn.danger { background:transparent; border-color:var(--red); color:var(--red); }
+  .rc-btn.danger:hover { background:var(--red); color:#1a0b0b; }
+  .rc-btn.small { padding:4px 9px; font-size:11.5px; border-radius:6px; }
+  .rc-btn.icon { padding:4px 9px; }
+  .rc-btn:disabled { opacity:.5; cursor:not-allowed; }
+  .rc-row-actions { display:inline-flex; gap:6px; white-space:nowrap; flex-wrap:wrap; }
+  /* ---- forms ---- */
+  .rc-form { display:flex; flex-direction:column; gap:10px; min-width:320px; }
+  .rc-form label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); font-weight:600; }
+  .rc-form label.rc-check { flex-direction:row; align-items:center; gap:8px; }
+  .rc-input, .rc-form select, .rc-form textarea {
+    background:var(--surface2); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:7px 10px; font-size:13px; font-family:inherit;
   }
-  section.workspace {
-    min-width:0;
-    padding:14px;
+  .rc-form textarea { resize:vertical; }
+  .rc-note { font-size:11px; color:var(--muted); font-weight:500; }
+  .rc-msg { min-height:18px; font-size:12.5px; font-weight:600; }
+  .rc-msg.ok { color:var(--accent); }
+  .rc-msg.error { color:var(--red); }
+  .rc-form .rc-btn { align-self:flex-start; }
+  .rc-form .rc-btn.block { width:100%; align-self:stretch; }
+  /* ---- item combobox ---- */
+  .rc-combobox { position:relative; }
+  .rc-combobox-list { display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:60; background:var(--surface2); border:1px solid var(--line); border-radius:10px; max-height:280px; overflow:auto; box-shadow:0 14px 32px rgba(0,0,0,.5); }
+  .rc-combobox-list.open { display:block; }
+  .rc-combobox-item { display:flex; gap:10px; align-items:baseline; padding:7px 12px; cursor:pointer; font-size:12.5px; }
+  .rc-combobox-item.active, .rc-combobox-item:hover { background:rgba(98,180,125,.16); }
+  .rc-combobox-name { flex:1; word-break:break-word; }
+  .rc-combobox-id { font:600 11px var(--mono); color:var(--accent2); white-space:nowrap; }
+  .rc-combobox-cat { font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; }
+  .rc-combobox-empty { padding:10px 12px; color:var(--muted); font-size:12px; }
+  /* ---- tables ---- */
+  .rc-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .rc-table th { text-align:left; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  .rc-table td { padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:middle; overflow-wrap:anywhere; }
+  .rc-table tr:last-child td { border-bottom:none; }
+  .rc-table tr:hover td { background:rgba(255,255,255,.02); }
+  .rc-empty { color:var(--muted); text-align:center; padding:14px !important; }
+  .rc-mono { font-family:var(--mono); font-size:12px; }
+  /* ---- badges / chips ---- */
+  .rc-badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }
+  .rc-badge.ok { background:rgba(98,180,125,.16); color:var(--accent); }
+  .rc-badge.warn { background:rgba(212,173,95,.16); color:var(--accent2); }
+  .rc-badge.err { background:rgba(223,116,116,.16); color:var(--red); }
+  .rc-badge.muted { background:var(--surface2); color:var(--muted); }
+  .rc-badges { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  /* ---- profile ---- */
+  .rc-profile { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+  .rc-profile-id .rc-title { font-size:20px; }
+  /* ---- traffic ---- */
+  .rc-view-fill { display:flex; flex-direction:column; gap:10px; height:100%; min-height:0; }
+  .rc-view-fill .rc-title { margin-bottom:0; }
+  .rc-view-fill .rc-sub { margin-bottom:0; }
+  .rc-view-fill .rc-toolbar { margin:0; }
+  .rc-request-list { flex:1 1 auto; min-height:0; overflow-y:auto; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:8px; }
+  .rc-traffic-foot { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding-top:2px; }
+  .rc-request { background:var(--surface2); border:1px solid var(--line); border-radius:10px; overflow:hidden; flex:none; }
+  .rc-request-head { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; padding:10px 14px; cursor:pointer; }
+  .rc-request-head:hover { background:var(--surface2); }
+  .rc-method { font:700 12px var(--mono); padding:3px 10px; border-radius:6px; letter-spacing:.3px; }
+  .rc-method.ok { background:rgba(98,180,125,.15); color:var(--accent); }
+  .rc-method.warn { background:rgba(212,173,95,.15); color:var(--accent2); }
+  .rc-method.err { background:rgba(223,116,116,.15); color:var(--red); }
+  .rc-method.rpc { background:rgba(106,169,216,.15); color:var(--blue); }
+  .rc-status { font:700 12px var(--mono); color:var(--muted); }
+  .rc-user { font-size:11px; font-weight:700; color:var(--blue); background:rgba(106,169,216,.14); padding:2px 9px; border-radius:999px; white-space:nowrap; }
+  .rc-summary { flex:1 1 0; min-width:260px; font:12.5px var(--mono); line-height:1.45; word-break:break-all; }
+  .rc-time { color:var(--muted); font-size:11.5px; white-space:nowrap; }
+  .rc-size { color:var(--muted); font-size:11.5px; white-space:nowrap; }
+  .rc-request-detail { border-top:1px dashed var(--line); padding:10px 14px; background:rgba(255,255,255,.02); }
+  .rc-request-detail pre { margin:0; white-space:pre-wrap; word-break:break-all; font:13px/1.55 var(--mono); color:var(--text); max-height:60vh; overflow:auto; }
+  /* ---- images ---- */
+  .rc-thumbs { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; }
+  .rc-thumbs figure { margin:0; }
+  .rc-thumbs img { width:100%; height:110px; object-fit:contain; background:#0a0b0c; border:1px solid var(--line); border-radius:8px; }
+  .rc-thumbs figcaption { font-size:11px; color:var(--muted); margin-top:4px; }
+  /* ---- JSON ---- */
+  .rc-json { margin-top:8px; }
+  .rc-json summary { cursor:pointer; color:var(--muted); font-weight:600; }
+  .rc-json pre { max-height:220px; overflow:auto; font:11.5px var(--mono); color:var(--muted); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; }
+  /* ---- modal ---- */
+  .rc-modal-overlay {
+    position:fixed; inset:0; background:rgba(6,7,8,.66); backdrop-filter:blur(2px);
+    display:grid; place-items:center; z-index:50; padding:20px;
   }
-  .toolbar { display:flex; gap:8px; margin-bottom:10px; }
-  .toolbar input { flex:1; }
-  input, select, textarea {
-    width:100%;
-    min-width:0;
-    color:var(--text);
-    background:var(--surface2);
-    border:1px solid var(--line);
-    border-radius:6px;
-    padding:8px 9px;
-    font:13px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  }
-  textarea {
-    min-height:70px;
-    resize:vertical;
-    font-family:var(--mono);
-    font-size:12px;
-  }
-  input[type="checkbox"] {
-    width:18px;
-    height:18px;
-    padding:0;
-    accent-color:var(--accent);
-  }
-  input:focus, select:focus, textarea:focus {
-    outline:1px solid var(--accent);
-    border-color:var(--accent);
-  }
-  label {
-    display:grid;
-    gap:5px;
-    color:var(--muted);
-    font-size:11px;
-  }
-  .users { display:grid; gap:6px; }
-  .user-row {
-    width:100%;
-    text-align:left;
-    display:grid;
-    gap:2px;
-    padding:9px 10px;
-  }
-  .user-row.active { border-color:var(--accent); background:#1d2a21; }
-  .user-row strong { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .user-row span { color:var(--muted); font:11px var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .side-actions, .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
-  .msg { min-height:20px; color:var(--muted); font-size:12px; }
-  .msg.ok { color:var(--accent); }
-  .msg.err { color:var(--red); }
-  .tabs {
-    display:flex;
-    gap:6px;
-    flex-wrap:wrap;
-    padding-bottom:12px;
-    border-bottom:1px solid var(--line);
-    margin-bottom:12px;
-  }
-  .tab {
-    min-height:32px;
-    padding:6px 9px;
-    background:#191c1e;
-  }
-  .tab.active {
-    background:#253126;
-    border-color:var(--accent);
-    color:#fff;
-  }
-  .summary {
-    display:flex;
-    flex-wrap:wrap;
-    gap:8px;
-    margin:0 0 12px;
-  }
-  .pill {
-    border:1px solid var(--line);
-    border-radius:999px;
-    padding:4px 8px;
-    color:var(--muted);
-    background:#17191b;
-    font:11px var(--mono);
-  }
-  .grid {
-    display:grid;
-    grid-template-columns:repeat(4, minmax(130px, 1fr));
-    gap:10px;
-  }
-  .band {
-    padding-bottom:14px;
-    margin-bottom:14px;
-    border-bottom:1px solid var(--line);
-  }
-  .table-wrap {
-    width:100%;
-    overflow:auto;
-    border:1px solid var(--line);
-    border-radius:8px;
-  }
-  table {
-    width:100%;
-    min-width:780px;
-    border-collapse:collapse;
-    table-layout:fixed;
-  }
-  th, td {
-    border-bottom:1px solid var(--line);
-    padding:7px;
-    vertical-align:top;
-  }
-  tr:last-child td { border-bottom:0; }
-  th {
-    color:var(--muted);
-    font-size:11px;
-    text-align:left;
-    font-weight:700;
-    background:#17191b;
-    position:sticky;
-    top:0;
-    z-index:1;
-  }
-  td input, td select, td textarea { padding:6px 7px; }
-  .cell-check { display:flex; justify-content:center; padding-top:9px; }
-  .row-actions {
-    display:flex;
-    gap:6px;
-    flex-wrap:wrap;
-  }
-  .empty {
-    color:var(--muted);
-    padding:22px 0;
-  }
-  .readonly {
-    color:var(--muted);
-    font:12px var(--mono);
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
-  }
-  .preview {
-    max-width:96px;
-    max-height:64px;
-    border:1px solid var(--line);
-    border-radius:6px;
-    background:#0d0e0f;
-  }
-  .online-list {
-    display:grid;
-    gap:8px;
-    margin-top:10px;
-  }
-  .online-row {
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-    padding:9px 10px;
-    border:1px solid var(--line);
-    border-radius:8px;
-    background:#17191b;
-  }
-  .online-row strong { display:block; }
-  .online-row span { color:var(--muted); font:11px var(--mono); }
-  @media (max-width:1080px) {
-    main { grid-template-columns:1fr; }
-    aside { border-right:0; border-bottom:1px solid var(--line); }
-    .grid { grid-template-columns:repeat(2, minmax(130px, 1fr)); }
-  }
-  @media (max-width:620px) {
-    header { align-items:flex-start; flex-direction:column; }
-    nav.top { margin-left:0; }
-    .grid { grid-template-columns:1fr; }
-    a, button { min-height:32px; }
-  }
+  .rc-modal { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px 20px; max-width:560px; width:100%; max-height:86vh; overflow:auto; }
+  .rc-modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .rc-modal h2 { margin:0; font-size:16px; }
+  .rc-modal-msg { color:var(--muted); }
+  .rc-modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
+  /* ---- toast ---- */
+  #rc-toast-root { position:fixed; bottom:18px; right:18px; display:flex; flex-direction:column; gap:8px; z-index:100; }
+  .rc-toast { background:var(--surface2); border:1px solid var(--line); border-radius:10px; padding:10px 16px; font-size:13px; font-weight:600; box-shadow:0 8px 24px rgba(0,0,0,.4); animation:in .18s ease-out; }
+  .rc-toast.ok { border-color:var(--accent); }
+  .rc-toast.err { border-color:var(--red); }
+  .rc-toast.out { opacity:0; transition:opacity .4s; }
+  @keyframes in { from { transform:translateY(8px); opacity:0; } }
+  .rc-danger { border-color:var(--red); }
+  .rc-warn-banner { border-color:var(--accent2); }
+  .rc-warn-banner p { margin:6px 0 0; color:var(--muted); font-size:12.5px; }
+  .rc-chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  @media (max-width:720px) { body { grid-template-columns:1fr; } #rc-side { position:static; height:auto; } #rc-view { height:auto; } }
 </style>
 </head>
 <body>
-<header>
-  <h1>Restaurant City Admin</h1>
-  <span class="msg" id="topMsg"></span>
-  <nav class="top">
-    <a href="/game">Game</a>
-    <a href="/__dash">Dashboard</a>
-  </nav>
-</header>
-<main>
-  <aside>
-    <div class="toolbar">
-      <input id="filter" placeholder="Filter users" />
-      <button id="refresh">Refresh</button>
-    </div>
-    <div class="users" id="users"></div>
-    <div class="side-actions">
-      <button id="newUser">New User</button>
-      <button class="danger" id="resetDb">Reset DB</button>
-    </div>
-  </aside>
-  <section class="workspace">
-    <div class="tabs" id="tabs"></div>
-    <div class="summary" id="summary"></div>
-    <div id="panel"></div>
-  </section>
-</main>
-
-<script>
-const TABS = [
-  ['profile', 'Profile'],
-  ['items', 'Items'],
-  ['inventory', 'Inventory'],
-  ['ingredients', 'Ingredients'],
-  ['garden', 'Garden'],
-  ['floors', 'Floors'],
-  ['employees', 'Employees'],
-  ['mail', 'Mail'],
-  ['activity', 'Activity'],
-  ['alerts', 'Alerts'],
-  ['economy', 'Economy'],
-];
-
-const state = {
-  users: [],
-  online: [],
-  catalog: [],
-  economy: { pricepoints: [], purchasableItems: [], ingredientMarketItems: [] },
-  selected: null,
-  activeTab: 'profile',
-};
-
-const usersEl = document.getElementById('users');
-const msgEl = document.getElementById('topMsg');
-const panelEl = document.getElementById('panel');
-const tabsEl = document.getElementById('tabs');
-const summaryEl = document.getElementById('summary');
-let csrfToken = '';
-
-function setMsg(text, type = '') {
-  msgEl.textContent = text;
-  msgEl.className = `msg ${type}`;
-  if (text) setTimeout(() => {
-    msgEl.textContent = '';
-    msgEl.className = 'msg';
-  }, 3500);
-}
-
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.method && !['GET', 'HEAD'].includes(options.method) ? { 'X-CSRF-Token': csrfToken } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  const data = await response.json();
-  if (!response.ok || !data.ok) throw new Error(data.error || 'Request failed');
-  return data;
-}
-
-async function load() {
-  const selectedUid = state.selected?.networkUid || null;
-  const [catalog, users, economy, live] = await Promise.all([
-    api('/__api/db/catalog'),
-    api('/__api/db/users'),
-    api('/__api/db/economy'),
-    api('/__api/live/online'),
-  ]);
-  state.catalog = catalog.items;
-  state.users = users.users;
-  state.economy = economy.economy;
-  state.online = live.users;
-  state.selected = selectedUid ? state.users.find((user) => user.networkUid === selectedUid) || null : state.selected;
-  if (!state.selected && state.users.length) state.selected = state.users[0];
-  renderAll();
-}
-
-function renderAll() {
-  renderTabs();
-  renderUsers();
-  renderSummary();
-  renderPanel();
-}
-
-function renderTabs() {
-  tabsEl.textContent = '';
-  for (const [id, label] of TABS) {
-    const button = document.createElement('button');
-    button.className = `tab ${state.activeTab === id ? 'active' : ''}`;
-    button.textContent = label;
-    button.onclick = () => {
-      state.activeTab = id;
-      renderAll();
-    };
-    tabsEl.append(button);
-  }
-}
-
-function renderUsers() {
-  const filter = document.getElementById('filter').value.trim().toLowerCase();
-  usersEl.textContent = '';
-  const shown = state.users.filter((user) => (
-    !filter ||
-    user.networkUid.includes(filter) ||
-    user.restaurantName.toLowerCase().includes(filter) ||
-    user.firstName.toLowerCase().includes(filter) ||
-    user.fullName.toLowerCase().includes(filter)
-  ));
-
-  if (!shown.length) {
-    usersEl.append(empty('No users'));
-    return;
-  }
-
-  for (const user of shown) {
-    const button = document.createElement('button');
-    button.className = `user-row ${state.selected?.networkUid === user.networkUid ? 'active' : ''}`;
-    button.innerHTML = `<strong>${escapeHtml(user.restaurantName)}</strong><span>ID ${escapeHtml(user.networkUid)} | L${user.userLevel} | ${user.credits}c | ${user.ownedItems.length} items</span>`;
-    button.onclick = () => {
-      state.selected = user;
-      renderAll();
-    };
-    usersEl.append(button);
-  }
-}
-
-function renderSummary() {
-  summaryEl.textContent = '';
-  if (state.activeTab === 'economy') {
-    addPill(`pricepoints ${state.economy.pricepoints.length}`);
-    addPill(`cash items ${state.economy.purchasableItems.length}`);
-    addPill(`market ${state.economy.ingredientMarketItems.length}`);
-    return;
-  }
-  if (state.activeTab === 'alerts') {
-    addPill(`online ${state.online.length}`);
-    addPill(`pending ${state.online.reduce((sum, user) => sum + user.pendingEvents, 0)}`);
-    return;
-  }
-  const user = state.selected;
-  if (!user) {
-    addPill('new user');
-    return;
-  }
-  addPill(`ID ${user.networkUid}`);
-  addPill(`level ${user.userLevel}`);
-  addPill(`${user.credits} credits`);
-  addPill(`${user.cashBalance} cash`);
-  addPill(`${user.ownedItems.length} placed`);
-  addPill(`${user.ingredients.length} ingredients`);
-  addPill(`${user.mailsReceived.length} mail`);
-}
-
-function addPill(text) {
-  const span = document.createElement('span');
-  span.className = 'pill';
-  span.textContent = text;
-  summaryEl.append(span);
-}
-
-function renderPanel() {
-  panelEl.textContent = '';
-  if (state.activeTab === 'economy') {
-    renderEconomy();
-    return;
-  }
-  if (state.activeTab === 'alerts') {
-    renderAlerts();
-    return;
-  }
-  if (!state.selected) {
-    renderProfile(null);
-    return;
-  }
-  const renderers = {
-    profile: renderProfile,
-    items: renderItems,
-    inventory: renderInventory,
-    ingredients: renderIngredients,
-    garden: renderGarden,
-    floors: renderFloors,
-    employees: renderEmployees,
-    mail: renderMail,
-    activity: renderActivity,
-  };
-  renderers[state.activeTab](state.selected);
-}
-
-function renderProfile(user) {
-  const isNew = !user;
-  const defaults = {
-    networkUid: '',
-    playfishUid: 0,
-    firstName: 'Player',
-    fullName: 'Player One',
-    restaurantName: 'My Restaurant',
-    imageUrl: '',
-    largeImageUrl: '',
-    gender: 0,
-    credits: 0,
-    cashBalance: 250,
-    playCount: 1,
-    userLevel: 1,
-    gourmetPoint: 0,
-    nbVote: 0,
-    totalMark: 0,
-    trashPoint: 0,
-    demandPoint: 120,
-    musicPlay: 0,
-    bookmarkCount: 0,
-    activeFloorIndex: 0,
-    isInStreet: false,
-    saveVersion: 1,
-    lastSave: 0,
-    lastSurveyTime: 0,
-    consecutionCount: 0,
-  };
-  const data = user || defaults;
-  const form = document.createElement('form');
-  form.innerHTML = `
-    <div class="band"><h2>${isNew ? 'New User' : escapeHtml(data.restaurantName)}</h2></div>
-    <div class="grid">
-      ${profileInput('networkUid', 'User ID', data.networkUid, 'text', isNew ? '' : 'disabled')}
-      ${profileInput('playfishUid', 'Playfish UID', data.playfishUid, 'number')}
-      ${profileInput('firstName', 'First name', data.firstName)}
-      ${profileInput('fullName', 'Full name', data.fullName)}
-      ${profileInput('restaurantName', 'Restaurant', data.restaurantName)}
-      ${profileSelect('gender', 'Gender', data.gender, [['0','Female'], ['1','Male'], ['2','Other']])}
-      ${profileInput('credits', 'Credits', data.credits, 'number')}
-      ${profileInput('cashBalance', 'Cash balance', data.cashBalance, 'number')}
-      ${profileInput('playCount', 'Play count', data.playCount, 'number')}
-      ${profileInput('userLevel', 'Level', data.userLevel, 'number', 'min="1" max="99"')}
-      ${profileInput('gourmetPoint', 'Gourmet points', data.gourmetPoint, 'number')}
-      ${profileInput('nbVote', 'Vote count', data.nbVote, 'number')}
-      ${profileInput('totalMark', 'Total rating', data.totalMark, 'number')}
-      ${profileInput('trashPoint', 'Trash points', data.trashPoint, 'number')}
-      ${profileInput('demandPoint', 'Demand points', data.demandPoint, 'number')}
-      ${profileInput('musicPlay', 'Music play', data.musicPlay, 'number')}
-      ${profileInput('bookmarkCount', 'Bookmark count', data.bookmarkCount, 'number')}
-      ${profileInput('activeFloorIndex', 'Active floor', data.activeFloorIndex, 'number', 'min="0" max="8"')}
-      ${profileSelect('isInStreet', 'Location', String(data.isInStreet), [['false','Restaurant'], ['true','Street']])}
-      ${profileInput('saveVersion', 'Save version', data.saveVersion, 'number')}
-      ${profileInput('lastSave', 'Last save', data.lastSave, 'number')}
-      ${profileInput('lastSurveyTime', 'Last survey', data.lastSurveyTime, 'number')}
-      ${profileInput('consecutionCount', 'Consecution', data.consecutionCount, 'number')}
-      ${profileInput('imageUrl', 'Image URL', data.imageUrl)}
-      ${profileInput('largeImageUrl', 'Large image URL', data.largeImageUrl)}
-    </div>
-    <div class="actions">
-      <button class="primary" type="submit">Save User</button>
-      <button class="danger" type="button" id="deleteUser" ${isNew ? 'disabled' : ''}>Delete User</button>
-    </div>
-  `;
-  form.onsubmit = async (event) => {
-    event.preventDefault();
-    try {
-      const payload = profilePayload(form);
-      if (isNew) {
-        await api('/__api/db/users', { method: 'POST', body: JSON.stringify(payload) });
-      } else {
-        await api(`/__api/db/users/${encodeURIComponent(user.networkUid)}`, { method: 'PATCH', body: JSON.stringify(payload) });
-      }
-      setMsg('Saved', 'ok');
-      await load();
-      if (isNew) state.selected = state.users.find((entry) => entry.networkUid === payload.networkUid) || state.selected;
-      renderAll();
-    } catch (error) {
-      setMsg(error.message, 'err');
-    }
-  };
-  form.querySelector('#deleteUser').onclick = async () => {
-    if (!user || !confirm(`Delete user ${user.networkUid}?`)) return;
-    try {
-      await api(`/__api/db/users/${encodeURIComponent(user.networkUid)}`, { method: 'DELETE' });
-      state.selected = null;
-      setMsg('Deleted', 'ok');
-      await load();
-    } catch (error) {
-      setMsg(error.message, 'err');
-    }
-  };
-  panelEl.append(form);
-}
-
-function profileInput(name, labelText, value, type = 'text', extra = '') {
-  return `<label>${labelText}<input name="${name}" type="${type}" value="${escapeAttr(value ?? '')}" ${extra}></label>`;
-}
-
-function profileSelect(name, labelText, value, options) {
-  return `<label>${labelText}<select name="${name}">${options.map(([optionValue, label]) => `<option value="${escapeAttr(optionValue)}" ${String(value) === String(optionValue) ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></label>`;
-}
-
-function profilePayload(form) {
-  const formData = new FormData(form);
-  const get = (name) => String(formData.get(name) ?? '');
-  const num = (name) => Number(get(name));
-  return {
-    networkUid: get('networkUid'),
-    playfishUid: num('playfishUid'),
-    firstName: get('firstName'),
-    fullName: get('fullName'),
-    restaurantName: get('restaurantName'),
-    imageUrl: get('imageUrl'),
-    largeImageUrl: get('largeImageUrl'),
-    gender: num('gender'),
-    credits: num('credits'),
-    cashBalance: num('cashBalance'),
-    playCount: num('playCount'),
-    userLevel: num('userLevel'),
-    gourmetPoint: num('gourmetPoint'),
-    nbVote: num('nbVote'),
-    totalMark: num('totalMark'),
-    trashPoint: num('trashPoint'),
-    demandPoint: num('demandPoint'),
-    musicPlay: num('musicPlay'),
-    bookmarkCount: num('bookmarkCount'),
-    activeFloorIndex: num('activeFloorIndex'),
-    isInStreet: get('isInStreet') === 'true',
-    saveVersion: num('saveVersion'),
-    lastSave: num('lastSave'),
-    lastSurveyTime: num('lastSurveyTime'),
-    consecutionCount: num('consecutionCount'),
-  };
-}
-
-function renderItems(user) {
-  renderResourceTable({
-    title: 'Placed Items',
-    rows: user.ownedItems,
-    resource: 'items',
-    idKey: 'serverId',
-    addDefaults: { globalItemId: state.catalog[0]?.id || 3040001, positionX: 0, positionY: 0, data: 0, roomIndex: user.activeFloorIndex, employeeNetwork: 0, employeeNetworkUid: '', employeePlayfishUid: 0 },
-    columns: [
-      readonlyColumn('serverId', 'Server', 90),
-      itemColumn('globalItemId', 'Item', 230),
-      numberColumn('positionX', 'X', 82, -1000, 1000),
-      numberColumn('positionY', 'Y', 82, -1000, 1000),
-      numberColumn('data', 'Data', 82, 0, 255),
-      numberColumn('roomIndex', 'Room', 82, 0, 8),
-      numberColumn('employeeNetwork', 'Emp Net', 82, 0, 99),
-      textColumn('employeeNetworkUid', 'Emp UID', 130),
-      numberColumn('employeePlayfishUid', 'Emp PF', 100, 0, 2147483647),
-    ],
-  });
-}
-
-function renderInventory(user) {
-  renderResourceTable({
-    title: 'Inventory',
-    rows: user.inventoryItems,
-    resource: 'inventory',
-    idKey: 'globalItemId',
-    addDefaults: { globalItemId: 3040001, number: 1, isSelected: false },
-    columns: [
-      numberColumn('globalItemId', 'Item ID', 130, 1, 9999999),
-      numberColumn('number', 'Count', 110, 0, 999999999),
-      boolColumn('isSelected', 'Selected', 92),
-    ],
-  });
-}
-
-function renderIngredients(user) {
-  renderResourceTable({
-    title: 'Ingredients',
-    rows: user.ingredients,
-    resource: 'ingredients',
-    idKey: 'globalItemId',
-    addDefaults: { globalItemId: 4000000, number: 1, isLocked: false },
-    columns: [
-      numberColumn('globalItemId', 'Ingredient ID', 150, 1, 9999999),
-      numberColumn('number', 'Count', 110, 0, 999999999),
-      boolColumn('isLocked', 'Locked', 92),
-    ],
-  });
-}
-
-function renderGarden(user) {
-  renderResourceTable({
-    title: 'Garden Plots',
-    rows: user.gardenPlots,
-    resource: 'garden',
-    idKey: 'plotId',
-    addDefaults: { plotId: nextNumeric(user.gardenPlots, 'plotId'), ingredientId: 0, plantWetTime: 0, timeToDry: 0 },
-    columns: [
-      numberColumn('plotId', 'Plot', 90, 0, 99),
-      numberColumn('ingredientId', 'Ingredient', 140, 0, 9999999),
-      numberColumn('plantWetTime', 'Growth seconds', 150, 0, 2147483647),
-      numberColumn('timeToDry', 'Wet seconds', 140, 0, 2147483647),
-    ],
-  });
-}
-
-function renderFloors(user) {
-  renderResourceTable({
-    title: 'Floors',
-    rows: user.floors,
-    resource: 'floors',
-    idKey: 'floorIndex',
-    addDefaults: { floorIndex: nextNumeric(user.floors, 'floorIndex'), tilesJson: JSON.stringify(Array.from({ length: 800 }, () => 0)) },
-    columns: [
-      numberColumn('floorIndex', 'Floor', 90, 0, 8),
-      textAreaColumn('tilesJson', 'Tiles JSON', 620),
-    ],
-  });
-}
-
-function renderEmployees(user) {
-  renderResourceTable({
-    title: 'Employees',
-    rows: user.employees,
-    resource: 'employees',
-    idKey: 'networkUid',
-    addDefaults: { network: 2, networkUid: '', playfishUid: 0, happiness: 14400000, task: 0, notify: false },
-    columns: [
-      numberColumn('network', 'Network', 90, 0, 99),
-      textColumn('networkUid', 'User ID', 140),
-      numberColumn('playfishUid', 'Playfish UID', 140, 0, 2147483647),
-      numberColumn('happiness', 'Work time', 130, 0, 14400000),
-      numberColumn('task', 'Task', 90, 0, 255),
-      boolColumn('notify', 'Notify', 90),
-    ],
-  });
-}
-
-function renderMail(user) {
-  const wrap = document.createElement('div');
-  const form = document.createElement('form');
-  form.className = 'band';
-  form.innerHTML = `
-    <h3>Create Mail</h3>
-    <div class="grid">
-      ${profileInput('senderNetworkUid', 'Sender ID', '0')}
-      ${profileInput('globalItemIds', 'Gift IDs', '')}
-      ${profileInput('itemId', 'Item ID', 0, 'number')}
-      ${profileInput('message', 'Message', '')}
-      ${profileInput('type', 'Type', 1, 'number')}
-      ${profileInput('sendDate', 'Send date', Math.floor(Date.now() / 1000), 'number')}
-    </div>
-    <div class="actions"><button class="primary" type="submit">Create Mail</button></div>
-  `;
-  form.onsubmit = async (event) => {
-    event.preventDefault();
-    const data = new FormData(form);
-    try {
-      await userApi(user, 'mails', null, 'POST', {
-        senderNetworkUid: String(data.get('senderNetworkUid') || '0'),
-        globalItemIds: parseNumberList(String(data.get('globalItemIds') || '')),
-        itemId: Number(data.get('itemId') || 0),
-        message: String(data.get('message') || ''),
-        type: Number(data.get('type') || 1),
-        sendDate: Number(data.get('sendDate') || 0),
-      });
-      setMsg('Mail created', 'ok');
-      await load();
-    } catch (error) {
-      setMsg(error.message, 'err');
-    }
-  };
-  wrap.append(form);
-  panelEl.append(wrap);
-  renderResourceTable({
-    title: 'Received Mail',
-    rows: user.mailsReceived.map((mail) => ({ ...mail, globalItemIds: mail.globalItemIdsJson })),
-    resource: 'mails',
-    idKey: 'id',
-    addDefaults: null,
-    columns: [
-      readonlyColumn('id', 'ID', 80),
-      readonlyColumn('senderNetworkUid', 'Sender', 120),
-      textColumn('globalItemIds', 'Gift IDs JSON', 160),
-      numberColumn('itemId', 'Item ID', 110, 0, 9999999),
-      textColumn('message', 'Message', 260),
-      boolColumn('read', 'Read', 80),
-      boolColumn('deleted', 'Deleted', 90),
-      numberColumn('sendDate', 'Send date', 130, 0, 2147483647),
-      numberColumn('deleteTime', 'Delete', 90, 0, 255),
-      numberColumn('type', 'Type', 80, 0, 255),
-    ],
-    payloadMapper: (payload) => ({ ...payload, globalItemIds: parseJsonArray(payload.globalItemIds) }),
-  });
-}
-
-function renderActivity(user) {
-  const container = document.createElement('div');
-  panelEl.append(container);
-  renderReadOnlyTable(container, 'Visits', user.visits, [
-    ['friendNetworkUid', 'Friend', 130],
-    ['firstVisitedAt', 'First', 120],
-    ['lastVisitedAt', 'Last', 120],
-    ['giftIngredientId', 'Gift', 110],
-    ['visitsTodayDate', 'Today', 120],
-    ['visitsTodayCount', 'Count', 80],
-  ]);
-  renderReadOnlyTable(container, 'Rankings Received', user.rankingsReceived, [
-    ['targetNetworkUid', 'Target', 130],
-    ['rating', 'Rating', 80],
-    ['updatedAt', 'Updated', 180],
-  ]);
-  renderReadOnlyTable(container, 'Stored Images', user.storedImages, [
-    ['id', 'ID', 80],
-    ['imageType', 'Type', 80],
-    ['width', 'Width', 80],
-    ['height', 'Height', 80],
-    ['createdAt', 'Created', 180],
-  ], (row) => `/__api/profile-image/${encodeURIComponent(user.networkUid)}/${row.imageType}.png`);
-  const form = document.createElement('form');
-  form.className = 'band';
-  form.innerHTML = `
-    <h3>Create Event</h3>
-    <div class="grid">
-      ${profileInput('eventType', 'Type', 251, 'number')}
-      ${profileInput('createdAtUnix', 'Created', Math.floor(Date.now() / 1000), 'number')}
-      ${profileInput('eventText', 'Text', '')}
-    </div>
-    <div class="actions"><button class="primary" type="submit">Create Event</button></div>
-  `;
-  form.onsubmit = async (event) => {
-    event.preventDefault();
-    const data = new FormData(form);
-    try {
-      await userApi(user, 'events', null, 'POST', {
-        eventType: Number(data.get('eventType') || 0),
-        createdAtUnix: Number(data.get('createdAtUnix') || 0),
-        eventText: String(data.get('eventText') || ''),
-      });
-      setMsg('Event created', 'ok');
-      await load();
-    } catch (error) {
-      setMsg(error.message, 'err');
-    }
-  };
-  panelEl.append(form);
-  renderResourceTable({
-    title: 'Game Events',
-    rows: user.gameEvents,
-    resource: 'events',
-    idKey: 'id',
-    addDefaults: null,
-    saveEnabled: false,
-    columns: [
-      readonlyColumn('id', 'ID', 80),
-      readonlyColumn('eventType', 'Type', 80),
-      readonlyColumn('eventText', 'Text', 420),
-      readonlyColumn('createdAtUnix', 'Unix', 120),
-      readonlyColumn('createdAt', 'Created', 180),
-    ],
-  });
-}
-
-function renderAlerts() {
-  const onlineOptions = state.online.map((user) => (
-    `<option value="${escapeAttr(user.networkUid)}">${escapeHtml(user.username)} (${escapeHtml(user.networkUid)})</option>`
-  )).join('');
-  const form = document.createElement('form');
-  form.className = 'band';
-  form.innerHTML = `
-    <h2>Live Alerts</h2>
-    <div class="grid">
-      <label>Target
-        <select name="scope" id="alertScope">
-          <option value="global">All online users</option>
-          <option value="single">One online user</option>
-        </select>
-      </label>
-      <label>User
-        <select name="networkUid" id="alertUser" ${state.online.length ? '' : 'disabled'}>
-          ${onlineOptions || '<option value="">No online users</option>'}
-        </select>
-      </label>
-      ${profileInput('title', 'Title', 'Restaurant City')}
-    </div>
-    <label style="margin-top:10px">Message
-      <textarea name="message" maxlength="500" placeholder="Type the alert text"></textarea>
-    </label>
-    <div class="actions">
-      <button class="primary" type="submit" ${state.online.length ? '' : 'disabled'}>Send Alert</button>
-      <button type="button" id="refreshOnline">Refresh Online</button>
-    </div>
-  `;
-  form.querySelector('#refreshOnline').onclick = () => refreshOnline().catch((error) => setMsg(error.message, 'err'));
-  form.onsubmit = async (event) => {
-    event.preventDefault();
-    const data = new FormData(form);
-    try {
-      const result = await api('/__api/live/alert', {
-        method: 'POST',
-        body: JSON.stringify({
-          scope: String(data.get('scope') || 'global'),
-          networkUid: String(data.get('networkUid') || ''),
-          title: String(data.get('title') || ''),
-          message: String(data.get('message') || ''),
-        }),
-      });
-      state.online = result.users;
-      setMsg(`Queued alert for ${result.delivered} user${result.delivered === 1 ? '' : 's'}`, 'ok');
-      renderAll();
-    } catch (error) {
-      setMsg(error.message, 'err');
-    }
-  };
-  panelEl.append(form);
-
-  const list = document.createElement('div');
-  list.className = 'online-list';
-  if (!state.online.length) {
-    list.append(empty('No online users. Open /game with a user and wait for the poll loop.'));
-  } else {
-    for (const user of state.online) {
-      const row = document.createElement('div');
-      row.className = 'online-row';
-      row.innerHTML = `
-        <div><strong>${escapeHtml(user.username)}</strong><span>ID ${escapeHtml(user.networkUid)} | PF ${user.playfishUid}</span></div>
-        <span>${user.pendingEvents} queued | ${user.inflightEvents} waiting ack</span>
-      `;
-      list.append(row);
-    }
-  }
-  panelEl.append(list);
-}
-
-async function refreshOnline() {
-  const live = await api('/__api/live/online');
-  state.online = live.users;
-  renderAll();
-}
-
-function renderEconomy() {
-  renderEconomyTable('Pricepoints', 'pricepoints', state.economy.pricepoints, 'id', [
-    numberColumn('productType', 'Product', 100, 0, 9999999),
-    numberColumn('payoutParameter', 'Payout', 110, 0, 999999999),
-    numberColumn('paymentProvider', 'Provider', 110, 0, 9999999),
-    numberColumn('price', 'Price', 90, 0, 999999999),
-    textColumn('currency', 'Currency', 100),
-    numberColumn('currencyScale', 'Scale', 80, 0, 9),
-    textColumn('clientData', 'Client data', 180),
-    textColumn('token', 'Token', 180),
-    boolColumn('enabled', 'Enabled', 90),
-  ], { productType: 1, payoutParameter: 1000, paymentProvider: 10, price: 99, currency: 'USD', currencyScale: 2, clientData: '', token: 'coins_1000', enabled: true });
-
-  renderEconomyTable('Purchasable Items', 'purchasable-items', state.economy.purchasableItems, 'id', [
-    numberColumn('skuId', 'SKU', 120, 1, 9999999),
-    numberColumn('price', 'Price', 100, 0, 999999999),
-    textColumn('currency', 'Currency', 100),
-    textColumn('token', 'Token', 220),
-    boolColumn('enabled', 'Enabled', 90),
-  ], { skuId: 3040001, price: 1, currency: 'PFC', token: 'cash_item_3040001', enabled: true });
-
-  renderEconomyTable('Ingredient Market', 'ingredient-market', state.economy.ingredientMarketItems, 'id', [
-    numberColumn('ingredientId', 'Ingredient', 140, 1, 9999999),
-    numberColumn('price', 'Price', 100, 0, 999999999),
-    boolColumn('enabled', 'Enabled', 90),
-  ], { ingredientId: 4000000, price: 1000, enabled: true });
-}
-
-function renderResourceTable(config) {
-  const user = state.selected;
-  const host = document.createElement('div');
-  host.className = 'band';
-  const heading = document.createElement('h3');
-  heading.textContent = config.title;
-  host.append(heading);
-  if (config.addDefaults) host.append(addRowForm(config, async (payload) => {
-    await userApi(user, config.resource, null, 'POST', payload);
-  }));
-  host.append(tableForRows(config.rows, config.columns, config.idKey, async (id, payload) => {
-    const clean = config.payloadMapper ? config.payloadMapper(payload) : payload;
-    await userApi(user, config.resource, id, 'PATCH', clean);
-  }, async (id) => {
-    await userApi(user, config.resource, id, 'DELETE');
-  }, config.saveEnabled !== false));
-  panelEl.append(host);
-}
-
-function renderEconomyTable(title, resource, rows, idKey, columns, addDefaults) {
-  const host = document.createElement('div');
-  host.className = 'band';
-  const heading = document.createElement('h3');
-  heading.textContent = title;
-  host.append(heading);
-  host.append(addRowForm({ columns, addDefaults }, async (payload) => {
-    await api(`/__api/db/economy/${resource}`, { method: 'POST', body: JSON.stringify(payload) });
-  }));
-  host.append(tableForRows(rows, [readonlyColumn(idKey, 'ID', 70), ...columns], idKey, async (id, payload) => {
-    delete payload[idKey];
-    await api(`/__api/db/economy/${resource}/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
-  }, async (id) => {
-    await api(`/__api/db/economy/${resource}/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  }, true));
-  panelEl.append(host);
-}
-
-function tableForRows(rows, columns, idKey, onSave, onDelete, saveEnabled) {
-  if (!rows.length) return empty('Empty');
-  const wrap = document.createElement('div');
-  wrap.className = 'table-wrap';
-  const table = document.createElement('table');
-  const thead = document.createElement('thead');
-  const headRow = document.createElement('tr');
-  for (const column of columns) {
-    const th = document.createElement('th');
-    th.textContent = column.label;
-    th.style.width = `${column.width || 120}px`;
-    headRow.append(th);
-  }
-  const actionHead = document.createElement('th');
-  actionHead.style.width = '150px';
-  headRow.append(actionHead);
-  thead.append(headRow);
-  table.append(thead);
-  const tbody = document.createElement('tbody');
-  for (const row of rows) {
-    const tr = document.createElement('tr');
-    for (const column of columns) {
-      const td = document.createElement('td');
-      td.append(cellControl(column, row[column.key]));
-      tr.append(td);
-    }
-    const actions = document.createElement('td');
-    const actionWrap = document.createElement('div');
-    actionWrap.className = 'row-actions';
-    if (saveEnabled) {
-      const save = document.createElement('button');
-      save.textContent = 'Save';
-      save.onclick = async () => {
-        try {
-          await onSave(row[idKey], rowPayload(tr, columns));
-          setMsg('Saved', 'ok');
-          await load();
-        } catch (error) {
-          setMsg(error.message, 'err');
-        }
-      };
-      actionWrap.append(save);
-    }
-    const del = document.createElement('button');
-    del.className = 'danger';
-    del.textContent = 'Delete';
-    del.onclick = async () => {
-      if (!confirm(`Delete ${row[idKey]}?`)) return;
-      try {
-        await onDelete(row[idKey]);
-        setMsg('Deleted', 'ok');
-        await load();
-      } catch (error) {
-        setMsg(error.message, 'err');
-      }
-    };
-    actionWrap.append(del);
-    actions.append(actionWrap);
-    tr.append(actions);
-    tbody.append(tr);
-  }
-  table.append(tbody);
-  wrap.append(table);
-  return wrap;
-}
-
-function addRowForm(config, onSubmit) {
-  const form = document.createElement('form');
-  form.className = 'band';
-  const grid = document.createElement('div');
-  grid.className = 'grid';
-  for (const column of config.columns.filter((item) => !item.readonly)) {
-    const label = document.createElement('label');
-    label.textContent = column.label;
-    label.append(cellControl(column, config.addDefaults[column.key]));
-    grid.append(label);
-  }
-  const actions = document.createElement('div');
-  actions.className = 'actions';
-  const button = document.createElement('button');
-  button.className = 'primary';
-  button.type = 'submit';
-  button.textContent = 'Add';
-  actions.append(button);
-  form.append(grid, actions);
-  form.onsubmit = async (event) => {
-    event.preventDefault();
-    try {
-      await onSubmit(rowPayload(form, config.columns));
-      setMsg('Added', 'ok');
-      form.reset();
-      await load();
-    } catch (error) {
-      setMsg(error.message, 'err');
-    }
-  };
-  return form;
-}
-
-function cellControl(column, value) {
-  if (column.readonly) {
-    const span = document.createElement('div');
-    span.className = 'readonly';
-    span.title = String(value ?? '');
-    span.textContent = String(value ?? '');
-    span.dataset.field = column.key;
-    span.dataset.type = 'readonly';
-    return span;
-  }
-  if (column.type === 'bool') {
-    const wrap = document.createElement('div');
-    wrap.className = 'cell-check';
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = Boolean(value);
-    input.dataset.field = column.key;
-    input.dataset.type = column.type;
-    wrap.append(input);
-    return wrap;
-  }
-  if (column.type === 'select') {
-    const select = document.createElement('select');
-    select.dataset.field = column.key;
-    select.dataset.type = column.type;
-    for (const option of column.options()) {
-      select.append(new Option(option.label, String(option.value)));
-    }
-    select.value = String(value ?? '');
-    return select;
-  }
-  if (column.type === 'textarea') {
-    const textarea = document.createElement('textarea');
-    textarea.value = String(value ?? '');
-    textarea.dataset.field = column.key;
-    textarea.dataset.type = column.type;
-    return textarea;
-  }
-  const input = document.createElement('input');
-  input.type = column.type || 'text';
-  input.value = String(value ?? '');
-  input.dataset.field = column.key;
-  input.dataset.type = column.type || 'text';
-  if (column.min !== undefined) input.min = String(column.min);
-  if (column.max !== undefined) input.max = String(column.max);
-  input.step = '1';
-  return input;
-}
-
-function rowPayload(root, columns) {
-  const payload = {};
-  for (const column of columns) {
-    if (column.readonly) continue;
-    const control = root.querySelector(`[data-field="${cssEscape(column.key)}"]`);
-    if (!control) continue;
-    if (column.type === 'bool') {
-      const input = control.matches('input') ? control : control.querySelector('input');
-      payload[column.key] = Boolean(input?.checked);
-    } else if (column.type === 'number') {
-      payload[column.key] = Number(control.value);
-    } else {
-      payload[column.key] = control.value;
-    }
-  }
-  return payload;
-}
-
-async function userApi(user, resource, id, method, payload = {}) {
-  const idPart = id === null ? '' : `/${encodeURIComponent(id)}`;
-  return api(`/__api/db/users/${encodeURIComponent(user.networkUid)}/${resource}${idPart}`, {
-    method,
-    body: method === 'DELETE' ? undefined : JSON.stringify(payload),
-  });
-}
-
-function renderReadOnlyTable(host, title, rows, columns, imageUrl) {
-  const section = document.createElement('div');
-  section.className = 'band';
-  const heading = document.createElement('h3');
-  heading.textContent = title;
-  section.append(heading);
-  if (!rows.length) {
-    section.append(empty('Empty'));
-    host.append(section);
-    return;
-  }
-  const wrap = document.createElement('div');
-  wrap.className = 'table-wrap';
-  const table = document.createElement('table');
-  table.innerHTML = `<thead><tr>${columns.map(([, label, width]) => `<th style="width:${width || 120}px">${escapeHtml(label)}</th>`).join('')}${imageUrl ? '<th style="width:120px"></th>' : ''}</tr></thead>`;
-  const tbody = document.createElement('tbody');
-  for (const row of rows) {
-    const tr = document.createElement('tr');
-    for (const [key] of columns) {
-      const td = document.createElement('td');
-      const div = document.createElement('div');
-      div.className = 'readonly';
-      div.textContent = String(row[key] ?? '');
-      div.title = div.textContent;
-      td.append(div);
-      tr.append(td);
-    }
-    if (imageUrl) {
-      const td = document.createElement('td');
-      const img = document.createElement('img');
-      img.className = 'preview';
-      img.src = imageUrl(row);
-      img.alt = '';
-      td.append(img);
-      tr.append(td);
-    }
-    tbody.append(tr);
-  }
-  table.append(tbody);
-  wrap.append(table);
-  section.append(wrap);
-  host.append(section);
-}
-
-function readonlyColumn(key, label, width) { return { key, label, width, readonly: true }; }
-function textColumn(key, label, width) { return { key, label, width, type: 'text' }; }
-function textAreaColumn(key, label, width) { return { key, label, width, type: 'textarea' }; }
-function numberColumn(key, label, width, min, max) { return { key, label, width, type: 'number', min, max }; }
-function boolColumn(key, label, width) { return { key, label, width, type: 'bool' }; }
-function itemColumn(key, label, width) {
-  return {
-    key,
-    label,
-    width,
-    type: 'select',
-    options: () => state.catalog.map((item) => ({ value: item.id, label: `${item.label} (${item.id})` })),
-  };
-}
-
-function nextNumeric(rows, key) {
-  const used = new Set(rows.map((row) => Number(row[key])));
-  let next = 0;
-  while (used.has(next)) next += 1;
-  return next;
-}
-
-function parseNumberList(value) {
-  return value.split(/[\s,]+/).map((item) => Number(item)).filter(Number.isFinite);
-}
-
-function parseJsonArray(value) {
-  try {
-    const parsed = JSON.parse(value || '[]');
-    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
-  } catch {
-    return parseNumberList(value);
-  }
-}
-
-function empty(text) {
-  const div = document.createElement('div');
-  div.className = 'empty';
-  div.textContent = text;
-  return div;
-}
-
-function cssEscape(value) {
-  return String(value).replace(/["\\]/g, '\\$&');
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"]/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[char]));
-}
-
-function escapeAttr(value) {
-  return escapeHtml(value).replace(/'/g, '&#39;');
-}
-
-document.getElementById('newUser').onclick = () => {
-  state.selected = null;
-  state.activeTab = 'profile';
-  renderAll();
-};
-document.getElementById('refresh').onclick = () => load().catch((error) => setMsg(error.message, 'err'));
-document.getElementById('filter').oninput = renderUsers;
-document.getElementById('resetDb').onclick = async () => {
-  if (!confirm('Reset the local database?')) return;
-  try {
-    await api('/__api/db/reset', { method: 'POST', body: '{}' });
-    state.selected = null;
-    setMsg('Database reset', 'ok');
-    await load();
-  } catch (error) {
-    setMsg(error.message, 'err');
-  }
-};
-
-api('/__api/session').then((session) => {
-  csrfToken = session.csrfToken || '';
-  return load();
-}).catch((error) => setMsg(error.message, 'err'));
-</script>
-<footer style="display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; padding:14px 16px 40px; border-top:1px solid var(--line); color:var(--muted); font-size:12px;">
-  <span>© Restaurant City Reborn</span>
-  <span style="display:flex; gap:14px; margin-left:auto;">
-    <a href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none;">Discord</a>
-    <a href="/terms" style="color:var(--accent); text-decoration:none;">Terms</a>
-    <a href="/privacy" style="color:var(--accent); text-decoration:none;">Privacy</a>
-    <a href="/cookies" style="color:var(--accent); text-decoration:none;">Cookies</a>
-    <a href="/community-guidelines" style="color:var(--accent); text-decoration:none;">Community guidelines</a>
-  </span>
-  <span style="flex-basis:100%;">Non-commercial educational project — for preservation and study. Restaurant City and all related assets are the property of their original owners (Playfish / Electronic Arts). All rights reserved to their respective owners.</span>
-</footer>
+<aside id="rc-side"></aside>
+<main id="rc-view"></main>
+<script type="module" src="/admin/main.js"></script>
 </body>
 </html>

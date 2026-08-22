@@ -2,6 +2,11 @@ import type { IncomingHttpHeaders } from 'node:http';
 
 export type RequestKind = 'http' | 'rpc';
 
+export interface AccountStamp {
+  readonly username: string;
+  readonly networkUid: string;
+}
+
 export interface RpcSubSummary {
   readonly name: string;
   readonly answered: string;
@@ -33,4 +38,6 @@ export interface CapturedRequest {
   respLen?: number;
   respHex?: string;
   rpc?: RpcSummary;
+  /** Authenticated player behind this request (admin dashboard display). */
+  account?: AccountStamp | null;
 }

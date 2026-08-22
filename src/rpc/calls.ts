@@ -15,6 +15,7 @@ export const CALL_TYPES: Readonly<Record<number, string>> = {
   36: 'firstTimeVisitFriend',
   37: 'getRandomStreetUsers',
   38: 'getGourmetStreetUsers',
+  39: 'getHireCandidates',
   40: 'purchaseCoinsWithPfCash',
   41: 'purchaseCashItem',
   42: 'purchaseCashItemIngredients',

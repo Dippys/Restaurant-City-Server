@@ -4,10 +4,7 @@ import {
   PLAYER_NETWORK_UID,
   SYSTEM_NETWORK_UID,
   SYSTEM_SENDER,
-  STARTER_FRIENDS,
-  NPC_NETWORK_UIDS,
   DAILY_INGREDIENT_POOL,
-  type FriendProfileSeed,
 } from './defaults';
 import { dailyBonusIngredientIds } from './ingredient-catalog';
 import type { ActiveAccount } from '../session';
@@ -47,10 +44,6 @@ function yesterdayKey(): string {
 
 function pick<T>(items: readonly T[]): T {
   return items[Math.floor(Math.random() * items.length)] as T;
-}
-
-function npcSeed(networkUid: string): FriendProfileSeed | undefined {
-  return STARTER_FRIENDS.find((friend) => friend.networkUid === networkUid);
 }
 
 function itemType(itemId: number): number {
@@ -154,17 +147,13 @@ async function grantExists(recipientProfileId: string, kind: string, dayKey: str
   return found !== null;
 }
 
-// Delivers a single gift-ingredient mail from an NPC friend. Reused by the daily
-// pass and by trade/gift reciprocation when a player mails an NPC.
-export async function sendNpcGift(recipient: ActiveAccount, npcNetworkUid?: string): Promise<void> {
-  const uid = npcNetworkUid && npcSeed(npcNetworkUid) ? npcNetworkUid : pick(NPC_NETWORK_UIDS);
-  const seed = npcSeed(uid);
-  if (!seed) {
-    return;
-  }
+// Delivers a server-generated gift ingredient. UID 1 is permanent, unlike the
+// legacy profile-only NPC friends that production cleanup is allowed to purge.
+export async function sendNpcGift(recipient: ActiveAccount, _npcNetworkUid?: string): Promise<void> {
+  await ensureSystemProfile();
   const giftIngredient = dailyBonusIngredientIds(1)[0] ?? pick(DAILY_INGREDIENT_POOL);
   await deliverMail({
-    sender: { networkUid: seed.networkUid, playfishUid: seed.playfishUid },
+    sender: SYSTEM_SENDER,
     recipient,
     type: MAIL_TYPE_GIFT,
     globalItemIds: [giftIngredient],

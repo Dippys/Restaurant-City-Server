@@ -218,6 +218,14 @@ h1, h2, h3 { color: var(--steel-dk); line-height: 1.15; }
 }
 .rc-note { color: var(--muted); font-size: 13px; font-weight: 600; }
 
+/* PIN fields: unmistakably numeric — big, centred, spaced-out digits. */
+.rc-pin-input {
+  font-size: 20px; letter-spacing: .5em; text-align: center;
+  font-weight: 800; color: var(--ink-dkr);
+}
+.rc-pin-input::placeholder { letter-spacing: .22em; font-weight: 600; opacity: .55; }
+.rc-pin-label { color: var(--ink-soft); font-weight: 700; }
+
 .rc-check { display: flex; gap: 9px; align-items: flex-start; font-weight: 600; color: var(--ink-soft); font-size: 14px; }
 .rc-check input { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--cyan); }
 

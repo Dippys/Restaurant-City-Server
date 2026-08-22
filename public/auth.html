@@ -20,9 +20,12 @@
 </head>
 <body>
 <div class="auth-wrap">
-  <div class="auth-head">
-    <img src="/assets/chef.png" alt="">
-    <a href="/" style="text-decoration:none"><h1 class="rc-logo">Restaurant <span class="thin">City Reborn</span></h1></a>
+  <div class="auth-head" style="display:flex;align-items:center;justify-content:space-between;gap:14px">
+    <div style="text-align:center">
+      <img src="/assets/chef.png" alt="">
+      <a href="/" style="text-decoration:none"><h1 class="rc-logo">Restaurant <span class="thin">City Reborn</span></h1></a>
+    </div>
+    <a class="rc-btn ghost small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
   </div>
 
   <div class="rc-panel">
@@ -32,8 +35,8 @@
       <label>Username
         <input class="rc-input" name="username" minlength="3" maxlength="24" autocomplete="username" required>
       </label>
-      <label>PIN
-        <input class="rc-input" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" autocomplete="current-password" required>
+      <label><span class="rc-pin-label">🔒 PIN — numbers only</span>
+        <input class="rc-input rc-pin-input" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" autocomplete="current-password" placeholder="6–12 digits" required>
       </label>
       <button class="rc-btn green block">Log in</button>
       <div class="rc-msg error" aria-live="polite"></div>
@@ -52,10 +55,10 @@
       <label>Username
         <input class="rc-input" name="username" minlength="3" maxlength="24" pattern="[A-Za-z0-9_.-]{3,24}" autocomplete="username" required>
       </label>
-      <label>PIN
-        <input class="rc-input" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" autocomplete="new-password" required>
+      <label><span class="rc-pin-label">🔒 PIN — numbers only</span>
+        <input class="rc-input rc-pin-input" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" autocomplete="new-password" placeholder="6–12 digits" required>
       </label>
-      <p class="rc-note">Use 6–12 digits. Avoid birthdays, repeated digits, or a PIN you use elsewhere.</p>
+      <p class="rc-note">Numbers only, 6–12 digits. Avoid birthdays, repeated digits, or a PIN you use elsewhere.</p>
       <label class="rc-check"><input name="accept" type="checkbox" required> <span>I agree to the <a href="/terms">Terms</a> and acknowledge the <a href="/privacy">Privacy Policy</a>.</span></label>
       <button class="rc-btn gold block">Create account</button>
       <div class="rc-msg error" aria-live="polite"></div>
@@ -74,6 +77,15 @@
   </footer>
 </div>
 <script>
+// Already signed in? No reason to be here — send them to the game.
+fetch('/__api/session').then(r=>r.json()).then(s=>{ if(s.loggedIn) location.replace('/game'); }).catch(()=>{});
+// PIN fields accept digits only (keyboard + paste sanitised).
+for (const field of document.querySelectorAll('.rc-pin-input')) {
+  field.addEventListener('keydown', (event) => {
+    if (event.key.length === 1 && !/[0-9]/.test(event.key) && !event.ctrlKey && !event.metaKey) event.preventDefault();
+  });
+  field.addEventListener('input', () => { field.value = field.value.replace(/\D/g, ''); });
+}
 const signup=location.pathname==='/signup', loginForm=document.querySelector('#loginForm'), signupForm=document.querySelector('#signupForm'); if(signup){loginForm.classList.add('hidden');signupForm.classList.remove('hidden')}
 const next=new URLSearchParams(location.search).get('next'); const safeNext=next&&next.startsWith('/')&&!next.startsWith('//')?next:'/game';
 for(const [form,path] of [[loginForm,'/__api/login'],[signupForm,'/__api/signup']]) form.addEventListener('submit',async e=>{e.preventDefault();const error=form.querySelector('.error');error.textContent='';const button=form.querySelector('button');button.disabled=true;const data=Object.fromEntries(new FormData(form));delete data.accept;try{const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Request failed');location.replace(safeNext)}catch(err){error.textContent=err.message||String(err);button.disabled=false}});

@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Play Restaurant City Reborn — Restaurant City online (Playfish 2010)</title>
+<link rel="icon" href="/assets/chef.png" />
 <meta name="description" content="Play Restaurant City online free — the classic 2010 Playfish game is back. Build your restaurant, cook, decorate and visit friends in your browser. No download, no plugins.">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://rc-reborn.uk/game">
@@ -45,8 +46,46 @@
     border-radius: 16px;
     box-shadow: 0 4px 0 var(--steel-dk), 0 22px 50px rgba(29,84,120,.4);
     overflow: hidden;
+    display: grid;
+    place-items: center;
   }
-  object, embed { display: block; width: 100%; height: 100%; }
+  .stage:fullscreen, .stage:-webkit-full-screen {
+    width: 100% !important; height: 100% !important;
+    border: none; border-radius: 0; box-shadow: none;
+    display: grid; place-items: center;
+  }
+  .stage-inner { display: block; }
+  object, embed { display: block; width: 100% !important; height: 100% !important; border: 0; }
+  /* Whatever element Ruffle mounts inside the box (it replaces <object> with
+     ruffle-object/ruffle-player and hosts the canvas in shadow DOM) — glue it
+     to the box so zoom/resize changes are followed after load. */
+  .stage-inner > * { display: block; width: 100% !important; height: 100% !important; }
+  .stage canvas { display: block; width: 100% !important; height: 100% !important; }
+  .stage ruffle-player, .stage-inner ruffle-player { display: block; width: 100% !important; height: 100% !important; }
+  /* The in-game full-screen button fullscreens Ruffle's element directly —
+     give it a black stage so its letterbox bars look like ours. */
+  .stage ruffle-player:fullscreen, .stage ruffle-player:-webkit-full-screen {
+    background: #050607;
+    width: 100% !important; height: 100% !important;
+  }
+  /* Mobile: dynamic viewport height so the browser URL bar never eats the game. */
+  @supports (height: 100dvh) {
+    html, body { height: 100dvh; }
+  }
+  /* Mobile landscape: reclaim vertical space for the game. */
+  @media (max-width: 820px) and (orientation: landscape), (max-height: 500px) {
+    .rc-topbar { padding: 8px 12px 14px; gap: 8px; }
+    .rc-wordmark { font-size: 15px; }
+    .rc-brand .rc-plate { width: 24px; height: 24px; border-width: 2px; }
+    .rc-btn.small { padding: 4px 8px; font-size: 11px; }
+    .game-status { font-size: 11px; }
+    main { padding: 6px; }
+    .rc-footer { margin-top: 0; padding: 6px 12px; font-size: 12px; gap: 10px; }
+    .rc-footer .rc-footer-note { display: none; }
+  }
+  @media (max-width: 700px) {
+    .rc-topbar { flex-wrap: wrap; }
+  }
   @media (max-height: 720px) {
     main { padding: 10px; }
     .stage { width: min(100%, calc((100vh - 150px) * 1.2667)); }
@@ -59,9 +98,32 @@
     unmuteOverlay: "hidden",
     splashScreen: false,
     warnOnUnsupportedContent: false,
+    allowFullscreen: true,
+  };
+  // Ground-truth fullscreen state + control for the game's fullscreen button.
+  // Ruffle's virtual stage.displayState can lag the browser, so the page makes
+  // the enter/exit decisions from document.fullscreenElement.
+  window.rcIsFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  window.rcExitFullscreen = () => {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) exit.call(document);
+  };
+  window.rcToggleFullscreen = () => {
+    if (window.rcIsFullscreen()) {
+      window.rcExitFullscreen();
+    } else {
+      // Fullscreen Ruffle's own element (like its native button would), so the
+      // player reports fullscreen internally; fall back to the stage.
+      const target =
+        document.querySelector("ruffle-object, ruffle-player, .stage-inner > *") ||
+        document.querySelector(".stage") ||
+        document.documentElement;
+      const request = target.requestFullscreen || target.webkitRequestFullscreen;
+      if (request) request.call(target, { navigationUI: "hide" });
+    }
   };
 </script>
-<script src="/ruffle/ruffle.js"></script>
+<script src="/ruffle/ruffle.js?v=20260821-rc-noop-goto-fix"></script>
 </head>
 <body>
 <header class="rc-topbar">
@@ -69,6 +131,7 @@
   <span class="game-status" id="accountStatus">Checking login…</span>
   <div style="flex:1"></div>
   <nav style="display:flex;gap:10px">
+    <a class="rc-btn ghost small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
     <a class="rc-btn ghost small" href="/">Home</a>
     <button id="logoutButton" class="rc-btn small hidden" type="button">Log out</button>
   </nav>
@@ -88,6 +151,8 @@ const main = document.getElementById("main");
 const statusEl = document.getElementById("accountStatus");
 const logoutButton = document.getElementById("logoutButton");
 let csrfToken = "";
+const instanceId = crypto.randomUUID();
+let claimTimer = null;
 
 init();
 
@@ -96,7 +161,18 @@ async function init() {
     const session = await requestJson("/__api/session");
     if (session.loggedIn && session.account) {
       csrfToken = session.csrfToken || "";
+      // Claim this game instance: only the newest instance may run (hard kick).
+      try {
+        await requestJson("/__api/game/claim", {
+          method: "POST",
+          headers: { "X-CSRF-Token": csrfToken },
+          body: JSON.stringify({ instanceId }),
+        });
+      } catch {
+        // Claim failed — play anyway; the poll below still guards us.
+      }
       showGame(session.account);
+      startClaimWatch();
       return;
     }
   } catch {
@@ -109,16 +185,229 @@ async function init() {
 function showGame(account) {
   statusEl.textContent = `Playing as ${account.username}`;
   logoutButton.classList.remove("hidden");
-  main.innerHTML = `
-    <div class="stage">
-      <object data="/game.swf?account=${encodeURIComponent(account.networkUid)}" type="application/x-shockwave-flash" width="760" height="600">
-        <param name="movie" value="/game.swf?account=${escapeHtml(encodeURIComponent(account.networkUid))}" />
-        <param name="quality" value="high" />
-        <param name="allowScriptAccess" value="always" />
-        <embed src="/game.swf?account=${escapeHtml(encodeURIComponent(account.networkUid))}" width="760" height="600" quality="high" allowScriptAccess="always" />
-      </object>
+  main.innerHTML = "";
+
+  const swfUrl = `/game.swf?account=${encodeURIComponent(account.networkUid)}`;
+  const SWF_W = 760;
+  const SWF_H = 600;
+
+  const stage = document.createElement("div");
+  stage.className = "stage";
+  const inner = document.createElement("div");
+  inner.className = "stage-inner";
+  stage.append(inner);
+  main.append(stage);
+
+  // The SWF is created up front but NOT added to the page until the user has
+  // chosen how to play. Ruffle fixes its size at init, so we only initialise
+  // it once the final size (fullscreen or in-page) is known.
+  const object = document.createElement("object");
+  object.type = "application/x-shockwave-flash";
+  object.data = swfUrl;
+  const addParam = (name, value) => {
+    const param = document.createElement("param");
+    param.name = name;
+    param.value = value;
+    object.append(param);
+  };
+  addParam("movie", swfUrl);
+  addParam("quality", "high");
+  addParam("scale", "showall");
+  addParam("allowFullScreen", "true");
+  addParam("allowScriptAccess", "always");
+
+  const embed = document.createElement("embed");
+  embed.src = swfUrl;
+  embed.quality = "high";
+  embed.scale = "showall";
+  embed.allowFullScreen = "true";
+  embed.allowScriptAccess = "always";
+  object.append(embed);
+  // NOTE: object is intentionally not in the DOM yet — mount() adds it.
+
+  let mounted = false;
+  let overlay = null;
+
+  // Fit the game to whatever box it's in:
+  //  - in the page: the stage is sized to main, game fills it edge to edge;
+  //  - in fullscreen: the stage fills the screen (black), and the game box is
+  //    maximised and centred — leaving black borders left/right on landscape.
+  function fit() {
+    if (!mounted) return;
+    const isFullscreen = document.fullscreenElement === stage;
+    let availW;
+    let availH;
+    if (isFullscreen) {
+      availW = window.innerWidth;
+      availH = window.innerHeight;
+    } else {
+      const cs = getComputedStyle(main);
+      const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+      availW = Math.max(0, main.clientWidth - padX);
+      availH = Math.max(0, main.clientHeight - padY);
+    }
+    const scale = Math.min(availW / SWF_W, availH / SWF_H);
+    const w = Math.max(320, Math.floor(SWF_W * scale));
+    const h = Math.max(252, Math.floor(SWF_H * scale));
+    if (isFullscreen) {
+      inner.style.width = `${w}px`;
+      inner.style.height = `${h}px`;
+    } else {
+      stage.style.width = `${w}px`;
+      stage.style.height = `${h}px`;
+      inner.style.width = "100%";
+      inner.style.height = "100%";
+    }
+    object.setAttribute("width", String(w));
+    object.setAttribute("height", String(h));
+    embed.setAttribute("width", String(w));
+    embed.setAttribute("height", String(h));
+    // Ruffle replaces <object> with its own element (ruffle-object /
+    // ruffle-player) — update THAT live element so it stays in sync when the
+    // zoom/window changes after init.
+    const live = inner.querySelector("object, embed, ruffle-object, ruffle-player, canvas");
+    if (live) {
+      live.setAttribute("width", String(w));
+      live.setAttribute("height", String(h));
+    }
+  }
+
+  // Mount the SWF only now — Ruffle initialises at the final size.
+  function mount() {
+    if (mounted) return;
+    mounted = true;
+    if (overlay) overlay.remove();
+    overlay = null;
+    inner.append(object);
+    fit();
+  }
+
+  function showOverlay(html) {
+    if (overlay) overlay.remove();
+    overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;z-index:998;background:rgba(5,6,7,.97);display:grid;place-items:center;text-align:center;padding:24px;";
+    overlay.innerHTML = html;
+    document.body.append(overlay);
+    return overlay;
+  }
+
+  function showLandscapePopup() {
+    const ov = showOverlay(`
+      <div style="max-width:420px;color:#eafaff">
+        <h2 style="margin:0 0 12px;font-size:22px">Play in full screen</h2>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.5">The game looks best full screen on your phone. Tap below to go full screen and start cooking.</p>
+        <button id="fsGo" class="rc-btn green" style="display:block;width:100%;margin-bottom:10px;font-size:16px">▶ Enter full screen</button>
+        <a id="fsSkip" href="#" class="rc-btn ghost small" style="color:#a9c2ce">Play without full screen</a>
+      </div>`);
+    ov.querySelector("#fsGo").addEventListener("click", async () => {
+      try {
+        await stage.requestFullscreen?.();
+      } catch {
+        // fullscreen denied/unsupported — play in the page instead
+      }
+      mount();
+    });
+    ov.querySelector("#fsSkip").addEventListener("click", (event) => {
+      event.preventDefault();
+      mount();
+    });
+  }
+
+  window.addEventListener("resize", fit);
+  document.addEventListener("fullscreenchange", fit);
+
+  // Mobile: landscape gets the full-screen prompt, portrait asks them to
+  // rotate first (portrait play still works). Desktop plays straight away.
+  const isTouch = "ontouchstart" in window || window.matchMedia("(pointer: coarse)").matches;
+  const isMobile = isTouch && window.innerWidth <= 1024;
+  const isLandscape = () => window.innerWidth > window.innerHeight;
+
+  if (!isMobile) {
+    mount();
+    return;
+  }
+
+  if (isLandscape() && document.fullscreenEnabled) {
+    showLandscapePopup();
+    return;
+  }
+
+  // Portrait: ask them to rotate. Pressing OK after rotating swaps to the
+  // landscape (full screen) popup; skipping plays in portrait right away.
+  const ov = showOverlay(`
+    <div style="max-width:420px;color:#eafaff">
+      <h2 style="margin:0 0 12px;font-size:22px">Best played in landscape</h2>
+      <p style="margin:0 0 18px;font-size:14px;line-height:1.5">Please switch your phone to landscape now and press OK — the game will ask to go full screen. Or skip and play in portrait; it works, it's just smaller.</p>
+      <button id="landOk" class="rc-btn green" style="display:block;width:100%;margin-bottom:10px;font-size:16px">OK — I'm in landscape</button>
+      <button id="portraitSkip" class="rc-btn ghost" style="display:block;width:100%;font-size:14px">Skip — play in portrait</button>
+    </div>`);
+  ov.querySelector("#landOk").addEventListener("click", () => {
+    if (isLandscape() && document.fullscreenEnabled) {
+      showLandscapePopup();
+    } else {
+      mount(); // still portrait (or fullscreen unsupported) — play anyway
+    }
+  });
+  ov.querySelector("#portraitSkip").addEventListener("click", mount);
+
+  // Rotated while the portrait popup is up? Swap to the landscape popup.
+  window.addEventListener("orientationchange", () => {
+    if (!mounted && isLandscape() && document.fullscreenEnabled) {
+      showLandscapePopup();
+    }
+  });
+
+  // If they rotate to landscape while playing in portrait, Ruffle won't
+  // resize — point them at a reload for the full-screen path.
+  window.addEventListener("orientationchange", () => {
+    if (mounted && window.innerWidth > window.innerHeight) {
+      const banner = document.createElement("div");
+      banner.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:997;background:rgba(5,6,7,.96);color:#eafaff;text-align:center;padding:12px;font-size:13px;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;";
+      banner.innerHTML = `<span>Landscape detected — reload to play full screen.</span>`;
+      const reloadBtn = document.createElement("button");
+      reloadBtn.className = "rc-btn green small";
+      reloadBtn.textContent = "Reload";
+      reloadBtn.addEventListener("click", () => location.reload());
+      banner.append(reloadBtn);
+      document.body.append(banner);
+      setTimeout(() => banner.remove(), 8000);
+    }
+  });
+}
+
+// Every 8s, confirm this tab is still the active game instance. If a newer
+// instance claimed the account elsewhere, this copy is kicked: the player
+// stops and the user is offered to take back control.
+function startClaimWatch() {
+  claimTimer = setInterval(async () => {
+    try {
+      const status = await requestJson("/__api/game/claim");
+      if (status.active && status.active !== instanceId) {
+        kick();
+      }
+    } catch {
+      // transient errors are ignored; the next poll retries
+    }
+  }, 8000);
+}
+
+function kick() {
+  if (claimTimer) clearInterval(claimTimer);
+  main.innerHTML = ""; // stop the Flash player
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;z-index:999;background:rgba(8,20,28,.92);display:grid;place-items:center;text-align:center;padding:24px;";
+  overlay.innerHTML = `
+    <div style="max-width:460px;color:#eafaff">
+      <h2 style="margin:0 0 10px;font-size:24px">This game was opened somewhere else</h2>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.5">Restaurant City Reborn allows only one game instance per player. A newer instance took over this account, so this copy has been stopped to protect your progress.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <a class="rc-btn green" href="/game">Take over here</a>
+        <a class="rc-btn ghost" href="/">Go home</a>
+      </div>
     </div>
   `;
+  document.body.append(overlay);
 }
 
 logoutButton.addEventListener("click", async () => {

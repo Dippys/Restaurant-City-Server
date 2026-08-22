@@ -18,8 +18,10 @@
   <a class="rc-brand" href="/"><span class="rc-plate"></span><span class="rc-wordmark">Restaurant City Reborn</span></a>
   <div style="flex:1"></div>
   <nav style="display:flex;gap:10px">
+    <a class="rc-btn ghost small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
     <a class="rc-btn ghost small" href="/">Home</a>
     <a class="rc-btn green small" href="/game">Play</a>
+    <button id="logoutButton" class="rc-btn small" type="button">Log out</button>
   </nav>
 </header>
 
@@ -31,9 +33,9 @@
     <form id="form" class="rc-form">
       <label>First name<input class="rc-input" name="firstName" maxlength="50" required></label>
       <label>Last name<input class="rc-input" name="lastName" maxlength="50" required></label>
-      <label>Current PIN<input class="rc-input" name="currentPin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" autocomplete="current-password" required></label>
-      <label>New PIN (optional)<input class="rc-input" name="newPin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" autocomplete="new-password"></label>
-      <small class="rc-note">Changing your PIN signs out your other sessions.</small>
+      <label><span class="rc-pin-label">🔒 Current PIN — numbers only</span><input class="rc-input rc-pin-input" name="currentPin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" autocomplete="current-password" placeholder="6–12 digits" required></label>
+      <label><span class="rc-pin-label">🔒 New PIN (optional) — numbers only</span><input class="rc-input rc-pin-input" name="newPin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" autocomplete="new-password" placeholder="6–12 digits"></label>
+      <small class="rc-note">PINs are numbers only (6–12 digits). Changing your PIN signs out your other sessions.</small>
       <button class="rc-btn green block">Save changes</button>
       <div id="msg" class="rc-msg" aria-live="polite"></div>
     </form>
@@ -50,7 +52,21 @@
   </footer>
 </main>
 <script>
-let csrf='';fetch('/__api/session').then(r=>r.json()).then(s=>{if(!s.loggedIn)return location.replace('/login?next=/account');csrf=s.csrfToken;username.textContent=s.account.username;form.firstName.value=s.account.firstName||'';form.lastName.value=s.account.lastName||''});form.addEventListener('submit',async e=>{e.preventDefault();msg.textContent='';msg.className='rc-msg';const data=Object.fromEntries(new FormData(form));try{const r=await fetch('/__api/account',{method:'PATCH',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(data)});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Request failed');msg.textContent='Account updated.';msg.className='rc-msg ok';form.currentPin.value='';form.newPin.value=''}catch(err){msg.textContent=err.message||String(err);msg.className='rc-msg error'}});
+// PIN fields accept digits only (keyboard + paste sanitised).
+for (const field of document.querySelectorAll('.rc-pin-input')) {
+  field.addEventListener('keydown', (event) => {
+    if (event.key.length === 1 && !/[0-9]/.test(event.key) && !event.ctrlKey && !event.metaKey) event.preventDefault();
+  });
+  field.addEventListener('input', () => { field.value = field.value.replace(/\D/g, ''); });
+}
+let csrf='';fetch('/__api/session').then(r=>r.json()).then(s=>{if(!s.loggedIn)return location.replace('/login?next=/account');csrf=s.csrfToken;username.textContent=s.account.username;form.firstName.value=s.account.firstName||'';form.lastName.value=s.account.lastName||''});
+document.getElementById('logoutButton')?.addEventListener('click', async () => {
+  try {
+    await fetch('/__api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf } });
+  } catch {}
+  location.replace('/');
+});
+form.addEventListener('submit',async e=>{e.preventDefault();msg.textContent='';msg.className='rc-msg';const data=Object.fromEntries(new FormData(form));try{const r=await fetch('/__api/account',{method:'PATCH',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(data)});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Request failed');msg.textContent='Account updated.';msg.className='rc-msg ok';form.currentPin.value='';form.newPin.value=''}catch(err){msg.textContent=err.message||String(err);msg.className='rc-msg error'}});
 </script>
 </body>
 </html>

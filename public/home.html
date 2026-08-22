@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Restaurant City Reborn — Play Restaurant City (Playfish 2010) Online Free</title>
+<link rel="icon" href="/assets/chef.png" />
 <meta name="description" content="Restaurant City Reborn brings the classic 2010 Playfish Facebook game back to life in your browser. Build your restaurant, cook new recipes, decorate and visit friends — free to play, no download, preserved with love. Join the community on Discord.">
 <meta name="keywords" content="Restaurant City, Restaurant City Reborn, RC Reborn, Playfish, Restaurant City online, play Restaurant City, Restaurant City 2010, Restaurant City Facebook game, flash game revival, cooking game, restaurant game, Playfish games">
 <meta name="robots" content="index, follow">
@@ -91,6 +92,7 @@
     <a class="rc-btn ghost small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
     <a class="rc-btn ghost small" href="/account">Account</a>
     <a class="rc-btn green small" href="/game">Play</a>
+    <button id="logoutButton" class="rc-btn small" type="button">Log out</button>
   </nav>
 </header>
 
@@ -112,7 +114,7 @@
           <a class="rc-btn green" href="/game">▶ Play Restaurant City Reborn</a>
           <img class="chef" src="/assets/chef.png" alt="">
         </span>
-        <a class="rc-btn ghost" href="/signup">New player? Sign up</a>
+        <a class="rc-btn ghost" id="signupCta" href="/signup">New player? Sign up</a>
       </div>
     </div>
     <div class="hero-art">
@@ -152,13 +154,23 @@
 </main>
 
 <script>
+let csrfToken = '';
 fetch('/__api/session').then(r=>r.json()).then(s=>{
   if(s.loggedIn){
     guest.classList.add('hidden');
     member.classList.remove('hidden');
     welcome.textContent = `Hi, ${s.account.firstName || s.account.username}!`;
+    csrfToken = s.csrfToken || '';
+    const cta = document.getElementById('signupCta');
+    if (cta) cta.classList.add('hidden');
   }
 }).catch(()=>{});
+document.getElementById('logoutButton')?.addEventListener('click', async () => {
+  try {
+    await fetch('/__api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken } });
+  } catch {}
+  location.replace('/');
+});
 </script>
 </body>
 </html>

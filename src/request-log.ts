@@ -49,7 +49,8 @@ export class RequestLog {
 
     const bodyNote = entry.bodyLen ? ` body=${entry.bodyLen}B` : '';
     const matchNote = entry.matched ? ` -> ${entry.matched}` : '';
-    console.log(`[${entry.status}] ${entry.method} ${entry.path}${bodyNote}${matchNote}`);
+    const userNote = entry.account ? ` (${entry.account.username})` : '';
+    console.log(`[${entry.status}] ${entry.method} ${entry.path}${bodyNote}${matchNote}${userNote}`);
 
     if (entry.kind === 'rpc' && entry.rpc) {
       if (entry.rpc.subs?.length) {

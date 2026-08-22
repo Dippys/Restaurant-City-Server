@@ -1,21 +1,23 @@
 import type { Mail, Pricepoint, PurchasableItem } from '@prisma/client';
 import { prisma } from './client';
-import { FACEBOOK_NETWORK, PLAYER_NETWORK_UID, isNpcUid } from './defaults';
-import { getAllFriends, getPlayerProfile, getProfiles, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
+import { FACEBOOK_NETWORK, PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, isNpcUid } from './defaults';
+import { getPlayerProfile, getProfiles, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
 import { ensureDailyContent, sendNpcGift, grantMailItem } from './system-mail';
 import { resolveIngredientId, firstVisitIngredientId } from './ingredient-catalog';
+import { coinBundleForToken, ingredientCashCost, ownedItemCashCost } from './cash-catalog';
 import type { ActiveAccount } from '../session';
 import { pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
+import { selectGourmetStreetProfiles, selectHireCandidateProfiles, selectRandomStreetProfiles } from '../rpc/street-roster';
 
 const STATUS_OK = 0;
 const STATUS_NOT_ENOUGH_CASH = 1;
+const STATUS_INVALID_TOKEN = 4;
 
 // Client mail type ids (see com.playfish.rpc.cooking.RpcClient in the SWF).
 const MAIL_TYPE_GIFT = 4;
 const MAIL_TYPE_SECURECHANGE = 6;
 const MAIL_TYPE_SECUREECHANGE_OK = 8;
 const STARTING_CASH_BALANCE = 250;
-const DEFAULT_CASH_COST = 1;
 const GARDEN_WETNESS_PER_WATER_SECONDS = 3 * 60 * 60;
 const GARDEN_MAX_WETNESS_SECONDS = 9 * 60 * 60;
 const MAX_VISIT_ACTIVITY_GP = 15;
@@ -145,7 +147,11 @@ function shouldIncrementPlayCountOnInit(profile: StoredProfile): boolean {
 
 export async function purchaseCoinsWithCash(account: ActiveAccount, token: string): Promise<StatusBalance> {
   const profile = await ensureAccountProfile(account);
-  const cost = DEFAULT_CASH_COST;
+  const bundle = coinBundleForToken(token);
+  if (!bundle) {
+    return { status: STATUS_INVALID_TOKEN, balance: profile.cashBalance };
+  }
+  const cost = bundle.cashCost;
   if (profile.cashBalance < cost) {
     return { status: STATUS_NOT_ENOUGH_CASH, balance: profile.cashBalance };
   }
@@ -154,7 +160,7 @@ export async function purchaseCoinsWithCash(account: ActiveAccount, token: strin
   await prisma.$transaction([
     prisma.userProfile.update({
       where: { id: profileKey(account.networkUid) },
-      data: { cashBalance: nextBalance, credits: { increment: coinsFromToken(token) } },
+      data: { cashBalance: nextBalance, credits: { increment: bundle.coinPayout } },
     }),
     prisma.cashTransaction.create({
       data: cashTransactionData(account.networkUid, 'purchaseCoinsWithPfCash', token, -cost, nextBalance),
@@ -166,7 +172,10 @@ export async function purchaseCoinsWithCash(account: ActiveAccount, token: strin
 
 export async function purchaseCashOwnedItem(account: ActiveAccount, token: string, item: OwnedItemData): Promise<StatusBalance> {
   const profile = await ensureAccountProfile(account);
-  const cost = DEFAULT_CASH_COST;
+  const cost = ownedItemCashCost(token, item.globalItemId);
+  if (cost === null) {
+    return { status: STATUS_INVALID_TOKEN, balance: profile.cashBalance };
+  }
   if (profile.cashBalance < cost) {
     return { status: STATUS_NOT_ENOUGH_CASH, balance: profile.cashBalance };
   }
@@ -196,7 +205,10 @@ export async function purchaseCashOwnedItem(account: ActiveAccount, token: strin
 
 export async function purchaseCashIngredients(account: ActiveAccount, tokens: readonly string[]): Promise<StatusBalance> {
   const profile = await ensureAccountProfile(account);
-  const cost = Math.max(1, tokens.length) * DEFAULT_CASH_COST;
+  const cost = ingredientCashCost(tokens);
+  if (cost === null) {
+    return { status: STATUS_INVALID_TOKEN, balance: profile.cashBalance };
+  }
   if (profile.cashBalance < cost) {
     return { status: STATUS_NOT_ENOUGH_CASH, balance: profile.cashBalance };
   }
@@ -475,15 +487,35 @@ export async function firstVisitFriend(account: ActiveAccount, friend: NetworkUi
 }
 
 export async function streetUsers(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
-  const friends = await getAllFriends(account.networkUid);
-  return friends.slice(0, Math.max(0, count || friends.length));
+  const owner = await getPlayerProfile(account);
+  const friendNetworkUids = new Set(owner.employees.map((employee) => employee.networkUid));
+  const profiles = await enabledPlayerProfiles([account.networkUid, ...friendNetworkUids]);
+  return selectRandomStreetProfiles(profiles, account.networkUid, friendNetworkUids, count);
 }
 
 export async function gourmetStreetUsers(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
-  const friends = await getAllFriends(account.networkUid);
-  return [...friends]
-    .sort((a, b) => b.gourmetPoint - a.gourmetPoint)
-    .slice(0, Math.max(0, count || friends.length));
+  await getPlayerProfile(account);
+  const profiles = await enabledPlayerProfiles([account.networkUid]);
+  return selectGourmetStreetProfiles(profiles, account.networkUid, count);
+}
+
+export async function hireCandidates(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
+  const owner = await getPlayerProfile(account);
+  const friendNetworkUids = new Set(owner.employees.map((employee) => employee.networkUid));
+  const profiles = await enabledPlayerProfiles([account.networkUid, ...friendNetworkUids]);
+  return selectHireCandidateProfiles(profiles, account.networkUid, friendNetworkUids, count);
+}
+
+async function enabledPlayerProfiles(excludedNetworkUids: readonly string[]): Promise<StoredProfile[]> {
+  const excluded = [...new Set([PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, ...excludedNetworkUids])];
+  const accounts = await prisma.account.findMany({
+    where: {
+      disabled: false,
+      networkUid: { notIn: excluded },
+    },
+    select: { networkUid: true },
+  });
+  return getProfiles(accounts.map((account) => account.networkUid), '');
 }
 
 // A player (`account`) accepts an ingredient trade offered by `target`. The offer
@@ -830,10 +862,6 @@ function ownedItemWriteData(item: OwnedItemData) {
     employeeNetworkUid: item.employee.networkUid,
     employeePlayfishUid: item.employee.playfishUid,
   };
-}
-
-function coinsFromToken(token: string): number {
-  return itemIdFromToken(token, 1000);
 }
 
 function itemIdFromToken(token: string, fallback: number): number {

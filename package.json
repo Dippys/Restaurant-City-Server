@@ -8,8 +8,9 @@
   "scripts": {
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "build": "prisma generate && tsc -p tsconfig.json",
-    "check": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "build": "prisma generate && tsc -p tsconfig.json && tsc -p tsconfig.admin.json",
+    "check": "prisma generate && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.admin.json --noEmit",
+    "test": "npm run build && node --test test/*.test.cjs",
     "start": "npm run db:push && npm run build && node dist/server.js",
     "start:built": "node dist/server.js"
   },
@@ -21,7 +22,7 @@
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "@ruffle-rs/ruffle": "0.3.0",
+    "@ruffle-rs/ruffle": "0.5.0",
     "better-sqlite3": "^12.11.1"
   }
 }

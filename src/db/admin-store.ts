@@ -3,18 +3,17 @@ import { prisma } from './client';
 import {
   DEFAULT_NEW_PLAYER_DEMAND,
   FACEBOOK_NETWORK,
-  ITEM_CATALOG,
   PLAYER_NETWORK_UID,
   STARTER_BUILDING_ITEMS,
   STARTER_INGREDIENTS,
   STARTER_RECIPES,
   STARTER_RESTAURANT_ITEMS,
   defaultProfileName,
-  isKnownItemId,
   type OwnedItemSeed,
 } from './defaults';
 import { ensureEconomyCatalog } from './rpc-store';
 import { ensureStarterFriends } from './profile-store';
+import { fullCatalog, isCatalogItemId } from './item-catalog';
 
 const adminUserInclude = {
   ownedItems: { orderBy: { serverId: 'asc' as const } },
@@ -175,7 +174,7 @@ export async function listAdminUsers(): Promise<AdminUser[]> {
 }
 
 export function itemCatalog() {
-  return ITEM_CATALOG;
+  return fullCatalog();
 }
 
 export async function listEconomy() {
@@ -659,7 +658,7 @@ function validateProfileInput(input: ProfileInput, creating: boolean): Required<
 
 function validateOwnedItemInput(input: OwnedItemInput) {
   const globalItemId = boundedInt(input.globalItemId, 'globalItemId', 1, 9999999);
-  if (!isKnownItemId(globalItemId)) {
+  if (!isCatalogItemId(globalItemId)) {
     throw new Error('Choose an item from the catalog.');
   }
 
