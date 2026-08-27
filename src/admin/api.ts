@@ -3,6 +3,8 @@ import type {
   AdminUser,
   AlertResponse,
   AssetsResponse,
+  BulkMailInput,
+  BulkMailResponse,
   CatalogResponse,
   CapturedRequest,
   ClearResponse,
@@ -147,6 +149,13 @@ export const api = {
   // live
   online: () => request<OnlineResponse>('GET', '/__api/live/online'),
   alert: (input: { scope: string; networkUid?: string; title?: string; message: string }) => request<AlertResponse>('POST', '/__api/live/alert', input),
+  sendMail: (input: BulkMailInput) => request<BulkMailResponse>('POST', '/__api/live/mail', input),
+
+  socialLinks: () => request<{ ok: true; links: SocialLinkAdmin[] }>('GET', '/__api/admin/social-links'),
+  socialLink: (id: string) => request<{ ok: true; link: SocialLinkAdmin }>('GET', `/__api/admin/social-links/${enc(id)}`),
+  createSocialLink: (input: Record<string, unknown>) => request<{ ok: true; id: string; slug: string; url: string }>('POST', '/__api/admin/social-links', input),
+  patchSocialLink: (id: string, input: Record<string, unknown>) => request<{ ok: true; link: SocialLinkAdmin }>('PATCH', `/__api/admin/social-links/${enc(id)}`, input),
+  socialLifecycle: (id: string, operation: 'activate' | 'pause' | 'resume' | 'revoke' | 'expire' | 'duplicate') => request<{ ok: true; link: SocialLinkAdmin }>('POST', `/__api/admin/social-links/${enc(id)}/${operation}`),
 };
 
 // Keep EmployeeInput available for the update path without importing types twice.
@@ -160,3 +169,10 @@ export type EmployeeInputLike = {
 };
 
 export type { AdminUser };
+
+export interface SocialLinkAdmin {
+  id: string; slug: string; kind: string; status: string; title: string; description: string; imagePath: string;
+  notBefore?: string | null; expiresAt?: string | null; totalActionLimit?: number | null; perAccountLimit: number;
+  successfulActionCount: number; createdAt: string; updatedAt: string; actions?: Array<{ id: string; action: string; outcome: string; resultSummary: string; createdAt: string }>;
+  _count?: { actions: number; escrows: number };
+}

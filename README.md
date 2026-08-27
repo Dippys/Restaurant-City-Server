@@ -8,6 +8,8 @@ in a modern browser via Ruffle. It does four things:
 - **Answers the game's binary RPC calls** with real responses.
 - **Persists player state** (profile, inventory, garden, economy, mail, …) in a
   local SQLite database.
+- **Creates safe social links** with Discord previews, explicit claims,
+  transactional escrow, friendships, and administrator campaigns.
 - **Captures every request** to a live dashboard, and exposes a web UI for
   editing the database.
 
@@ -49,6 +51,7 @@ or open <http://localhost:8090/game> and use the launcher page.
 | `/terms`, `/privacy`, `/cookies`, `/community-guidelines` | Policy pages (see `public/legal.html`) |
 | `/robots.txt`, `/sitemap.xml` | SEO (canonical `https://rc-reborn.uk`) |
 | `/admin` | **The single admin dashboard** (overview, live traffic, players, economy, game tools, assets) |
+| `/s/<slug>` | Public crawler-safe social-link landing page |
 | `/__dash`, `/dashboard`, `/database` | Redirect to `/admin` (legacy aliases) |
 
 ## Deployment
@@ -67,11 +70,13 @@ All optional, via environment variables:
 | `PORT` | `8090` | Listen port |
 | `HOST` | `0.0.0.0` | Bind address (`0.0.0.0` exposes it on the LAN) |
 | `MAX_LOG_ENTRIES` | `500` | Size of the in-memory request buffer |
-| `RC_DB_PATH` | `server/dev.db` | SQLite file location |
+| `RC_DB_PATH` | `server/dev.db` locally; required in production | SQLite file location. Production must use a durable path outside the release directory, e.g. `/var/lib/rc-reborn/dev.db`. |
 | `RC_ADMIN_USERNAME` | empty | Username promoted to admin when first registered |
 | `RC_PIN_PEPPER` | empty | Optional stable server secret mixed into PIN hashes |
 | `RC_TRUST_PROXY` | `false` | Trust forwarded IP/protocol headers only behind your proxy |
 | `RC_SEED_STARTER_FRIENDS` | `false` | Set `true` only for local/demo servers that need the six legacy NPC profiles |
+| `RC_SOCIAL_DISABLED_KINDS` | empty | Comma-separated social-link kinds whose creation/actions are paused while public pages stay readable |
+| `RC_PUBLIC_ORIGIN` | request origin | Canonical HTTPS origin used for public link and Open Graph URLs |
 
 ## How it works
 
@@ -135,7 +140,21 @@ inventory, ingredients, garden plots, floors, employees, mail, friend visits,
 restaurant ranks, notifications, game events, stored images, cash transactions,
 and the economy tables (pricepoints, purchasable items, ingredient market).
 `saveProfile` (msgType 5) decodes the client's audit-change payload and applies
-it to these tables.
+it to these tables in one transaction. RPC `init` establishes an opaque
+per-launch save fence in the authenticated `Session` row. The server atomically
+accepts only the next version, treats an exact payload retry as already applied,
+and rejects a stale or conflicting version before any scalar, currency,
+placement, floor, or garden mutation (ADR-0031). Before owner-profile delivery, restart-local negative
+placement IDs are normalized to stable positive IDs. Impossible duplicate
+façade singletons are reconciled by keeping the newest active item and returning
+older ones to inventory (ADR-0024). A missing starter façade singleton is
+restored only when another item occupies its exact legacy negative slot and no
+same-group item remains in inventory (ADR-0025); mere absence and ordinary
+decorations are untouched. The identical proof also recovers the required
+interior Simple Door when its starter slot `-13` was overwritten (ADR-0026).
+Normalization updates both `OwnedItem.serverId` and its deterministic primary
+key (ADR-0027), leaving the SWF's freshly reused negative IDs available for new
+avatar/furniture saves instead of producing a Prisma unique-key failure.
 
 ## Endpoints
 
@@ -160,6 +179,14 @@ Pages and control routes served outside the RPC/asset paths:
 | `/__api/account` | PATCH | Update names/PIN after PIN re-verification |
 | `/__api/logout` | POST | Revoke the current session |
 | `/__api/profile-image/:uid/:type.png` | GET | Render a stored ARGB image as PNG |
+| `/__api/social-links` | POST | Create a validated player-template link |
+| `/__api/social-links/:slug` | GET | Public/viewer-specific link state |
+| `/__api/social-links/:slug/actions` | POST | Explicit authenticated action |
+| `/__api/social-links/:slug/cancel` | POST | Creator cancellation and escrow return |
+| `/__api/admin/social-links...` | GET/POST/PATCH | Campaign lifecycle, audit, and CSV export |
+| `/__api/live/online` | GET | Admin: current RPC 247 online-session roster |
+| `/__api/live/alert` | POST | Admin: enqueue a live popup for one or all online players |
+| `/__api/live/mail` | POST | Admin: type-safe mail fan-out to online, enabled, or selected players |
 | `/__api/db/...` | GET/POST/PATCH/DELETE | Admin CRUD used by the editor |
 | `/crossdomain.xml` | GET | Same-origin-only Flash policy |
 
@@ -243,7 +270,10 @@ also required:
 4. Set `RC_TRUST_PROXY=true` only when the server is reachable solely through a
    trusted proxy. The proxy must replace (not append untrusted) forwarded
    protocol and client-IP headers.
-5. Back up `dev.db` off-host, test restores, restrict filesystem permissions,
+5. Set `RC_DB_PATH` to durable storage outside the application release
+   directory (for example `/var/lib/rc-reborn/dev.db`). Deployment syncs must
+   exclude SQLite databases, WAL/SHM files, and backups. Back it up off-host,
+   test restores, restrict filesystem permissions,
    and use a production database strategy before running multiple Node
    instances. SQLite is a single-host deployment choice.
 6. The policy pages (`public/legal.html`: terms, privacy, cookies, community
@@ -253,6 +283,20 @@ also required:
 7. Decide how existing pre-authentication profiles are assigned to their real
    owners before opening public signup; a matching legacy username currently
    reconnects to that existing game profile.
+8. Set `RC_DISCORD_DAILY_INGREDIENTS_WEBHOOK` in the deployment secret manager
+   to enable the 12:00 UTC ingredient announcement. The server rotates exactly
+   three coin-market rows even without it; failed/pending Discord delivery is
+   retried after configuration. Never commit or log the webhook URL.
+
+Preview the deterministic announcement image after a build with:
+
+```bash
+npm run preview:daily-ingredients
+```
+
+The preview is written under ignored `test/.tmp/`. The live renderer uses the
+original `/public/assets/ingredients/<id>.png` art and the shipped ingredient
+names, so the image and profile market cannot disagree.
 
 There is intentionally no PIN-by-email reset yet because the system does not
 collect verified email addresses. Account recovery must be an operator-assisted
@@ -292,6 +336,13 @@ visit (ADR-0012 in `../client-html5/docs/adr/`).
 their stock AS3 handlers consume the returned placements as facade context.
 Both responders therefore return only type-2 building placements; interior
 items arrive later through `getUsers` context `4` (ADR-0016).
+
+`swapIngredient` resolves only shipped ingredient hashes and applies both real
+players' stock changes transactionally. Direct trades enforce the client rarity
+and unlocked-target rules. Secure accepts must match a live type-6 mail; mail
+consumption, both stock changes, and the type-8 confirmation commit together.
+Invalid, stale, replayed, or understocked trades return existing status `4`
+without changing RPC 17's one-byte response body (ADR-0024).
 
 `getAllFriends` includes the active player first, followed only by distinct,
 enabled account-backed profiles currently present in the owner's employee

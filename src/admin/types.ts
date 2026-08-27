@@ -387,3 +387,13 @@ export interface AlertResponse {
   delivered: number;
   users: OnlineUser[];
 }
+export interface BulkMailInput extends MailInput {
+  scope: 'online' | 'everyone' | 'specific';
+  recipientNetworkUids?: readonly string[];
+}
+export interface BulkMailResponse {
+  ok: true;
+  created: number;
+  liveNotified: number;
+  users: OnlineUser[];
+}

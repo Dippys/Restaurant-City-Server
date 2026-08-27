@@ -8,6 +8,7 @@ import * as users from './views/users.js';
 import * as economy from './views/economy.js';
 import * as game from './views/game.js';
 import * as assets from './views/assets.js';
+import * as socialLinks from './views/social-links.js';
 
 const NAV: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'overview', label: 'Overview' },
@@ -15,6 +16,7 @@ const NAV: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'users', label: 'Players' },
   { id: 'economy', label: 'Economy' },
   { id: 'game', label: 'Game tools' },
+  { id: 'social-links', label: 'Social links' },
   { id: 'assets', label: 'Assets' },
 ];
 
@@ -22,7 +24,7 @@ interface ViewModule {
   render(container: HTMLElement, params: string[]): Promise<void>;
 }
 
-const VIEWS: Record<string, ViewModule> = { overview, traffic, users, economy, game, assets };
+const VIEWS: Record<string, ViewModule> = { overview, traffic, users, economy, game, 'social-links': socialLinks, assets };
 
 function navId(): string {
   const id = (location.hash.match(/^#\/([a-z-]+)/) ?? [])[1] ?? 'overview';

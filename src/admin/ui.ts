@@ -240,9 +240,13 @@ export function renderForm(
       const attrs: Record<string, string | number | boolean> = { type: spec.type, class: 'rc-input' };
       if (spec.required) attrs.required = true;
       if (spec.placeholder) attrs.placeholder = spec.placeholder;
+      if (spec.min !== undefined) attrs.min = spec.min;
+      if (spec.max !== undefined) attrs.max = spec.max;
       control = h('input', attrs);
       control.value = String(current ?? spec.default ?? '');
     }
+
+    if (spec.required && (spec.type === 'select' || spec.type === 'textarea')) control.required = true;
 
     if (spec.type !== 'bool') {
       control.classList.add('rc-input');
@@ -343,7 +347,7 @@ export function itemTextToId(text: string): number {
 /** Parse a comma-separated list of names/ids (for mail attachments). */
 export function itemListTextToIds(text: string): number[] {
   return String(text ?? '')
-    .split(/[\s,]+/)
+    .split(/\s*,\s*/)
     .filter(Boolean)
     .map((token) => itemTextToId(token))
     .filter((id) => id > 0);

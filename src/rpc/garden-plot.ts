@@ -34,6 +34,19 @@ function shippedPlantableIngredientIds(): ReadonlySet<number> {
   return cachedPlantableIds;
 }
 
+/** Select a renderable plant for seedPlant, whose audit carries only plotId. */
+export function gardenIngredientForSeed(
+  seed: string,
+  plantableIds: ReadonlySet<number> = shippedPlantableIngredientIds(),
+): number {
+  const ids = [...plantableIds];
+  if (ids.length === 0) return 0;
+
+  const numeric = Number.parseInt(seed, 10);
+  const offset = Number.isFinite(numeric) ? Math.abs(numeric) % ids.length : 0;
+  return ids[offset] ?? ids[0] ?? 0;
+}
+
 /** Wire id 0 means an empty plot. It is safe even for corrupt legacy rows. */
 export function safeGardenIngredientId(
   ingredientId: number,

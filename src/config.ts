@@ -10,6 +10,7 @@ export interface ServerConfig {
   readonly assetDataRoot: string;
   readonly rebuiltSwf: string;
   readonly maxLogEntries: number;
+  readonly discordDailyIngredientsWebhook?: string;
 }
 
 export function loadConfig(): ServerConfig {
@@ -31,6 +32,7 @@ export function loadConfig(): ServerConfig {
     // The game.swf we ship is the rebuilt client (crash fixes applied).
     rebuiltSwf: path.join(serverRoot, 'public', 'swf', 'game.swf'),
     maxLogEntries: Number(process.env.MAX_LOG_ENTRIES) || 500,
+    discordDailyIngredientsWebhook: process.env.RC_DISCORD_DAILY_INGREDIENTS_WEBHOOK || undefined,
   };
 }
 

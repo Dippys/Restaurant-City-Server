@@ -198,9 +198,15 @@ export function renderForm(fields, values, onSubmit, submitLabel = 'Save', formC
                 attrs.required = true;
             if (spec.placeholder)
                 attrs.placeholder = spec.placeholder;
+            if (spec.min !== undefined)
+                attrs.min = spec.min;
+            if (spec.max !== undefined)
+                attrs.max = spec.max;
             control = h('input', attrs);
             control.value = String(current ?? spec.default ?? '');
         }
+        if (spec.required && (spec.type === 'select' || spec.type === 'textarea'))
+            control.required = true;
         if (spec.type !== 'bool') {
             control.classList.add('rc-input');
         }
@@ -302,7 +308,7 @@ export function itemTextToId(text) {
 /** Parse a comma-separated list of names/ids (for mail attachments). */
 export function itemListTextToIds(text) {
     return String(text ?? '')
-        .split(/[\s,]+/)
+        .split(/\s*,\s*/)
         .filter(Boolean)
         .map((token) => itemTextToId(token))
         .filter((id) => id > 0);

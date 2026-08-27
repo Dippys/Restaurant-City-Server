@@ -16,6 +16,7 @@ import {
 } from './defaults';
 import type { ActiveAccount } from '../session';
 import { hiredFriendRosterNetworkUids, ownerFirst } from '../rpc/friend-roster';
+import { gardenIngredientForSeed } from '../rpc/garden-plot';
 
 export type StoredProfile = UserProfile & {
   ownedItems: OwnedItem[];
@@ -73,6 +74,17 @@ export interface SaveAuditData {
   readonly openMailIds: readonly number[];
   readonly deleteMailIds: readonly number[];
   readonly visitedFriends: readonly NetworkUidData[];
+}
+
+export interface SaveFence {
+  readonly authSessionId?: string;
+  readonly rpcSessionToken?: string;
+  readonly payloadDigest?: string;
+}
+
+export interface SaveResult {
+  readonly status: 'saved' | 'duplicate' | 'stale';
+  readonly savedVersion: number;
 }
 
 export interface InventoryItemData {
@@ -148,17 +160,128 @@ export function playerNetworkUid(): string {
 }
 
 export async function getPlayerProfile(account?: ActiveAccount): Promise<StoredProfile> {
+  let profile: StoredProfile;
   if (account) {
-    return ensureProfile(account.networkUid, {
+    profile = await ensureProfile(account.networkUid, {
       firstName: account.username,
       fullName: account.username,
       playfishUid: account.playfishUid,
       restaurantName: `${account.username}'s Restaurant`,
       seedStarterItems: true,
     });
+  } else {
+    profile = await ensureProfile(PLAYER_NETWORK_UID, { seedStarterItems: true });
   }
 
-  return ensureProfile(PLAYER_NETWORK_UID, { seedStarterItems: true });
+  if (await prepareOwnedItemsForProfileDelivery(profile.networkUid)) {
+    return ensureProfile(profile.networkUid, { seedStarterItems: true });
+  }
+  return profile;
+}
+
+// Spec: decompiled/game/scripts/com/playfish/games/cooking/UserItem.as and
+// WorldCustomiseBuilding.as. Local negative IDs restart at -1 on each SWF load;
+// façade singleton groups replace their previous active item in the editor.
+const FACADE_SINGLETON_GROUPS = new Set([201, 202, 205, 206, 207]);
+const STARTER_FACADE_RECOVERY_SLOTS = STARTER_BUILDING_ITEMS
+  .map((seed, index) => ({ seed, legacyServerId: -(index + 1), group: Math.floor(seed.id / 10_000) }))
+  .filter((slot) => FACADE_SINGLETON_GROUPS.has(slot.group));
+const STARTER_RESTAURANT_DOOR_RECOVERY_SLOT = (() => {
+  const index = STARTER_RESTAURANT_ITEMS.findIndex((seed) => Math.floor(seed.id / 10_000) === 301);
+  const seed = STARTER_RESTAURANT_ITEMS[index];
+  if (!seed || index < 0) throw new Error('Starter restaurant Door is missing from defaults');
+  return {
+    seed,
+    legacyServerId: -(STARTER_BUILDING_ITEMS.length + index + 1),
+    group: 301,
+  };
+})();
+const COLLISION_RECOVERY_SLOTS = [...STARTER_FACADE_RECOVERY_SLOTS, STARTER_RESTAURANT_DOOR_RECOVERY_SLOT];
+
+export async function prepareOwnedItemsForProfileDelivery(networkUid: string): Promise<boolean> {
+  const profileId = profileKey(networkUid);
+  return prisma.$transaction(async (tx) => {
+    let changed = false;
+    const placed = await tx.ownedItem.findMany({
+      where: { userProfileId: profileId },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { serverId: 'desc' }],
+    });
+
+    const activeSingletonGroups = new Set<number>();
+    const duplicateIds: string[] = [];
+    for (const item of placed) {
+      const group = Math.floor(item.globalItemId / 10_000);
+      if (!FACADE_SINGLETON_GROUPS.has(group)) continue;
+      if (activeSingletonGroups.has(group)) duplicateIds.push(item.id);
+      else activeSingletonGroups.add(group);
+    }
+
+    for (const id of duplicateIds) {
+      const item = placed.find((candidate) => candidate.id === id);
+      if (!item) continue;
+      await tx.ownedItem.delete({ where: { id } });
+      await changeInventoryItem(tx, profileId, networkUid, { globalItemId: item.globalItemId, delta: 1 });
+      changed = true;
+    }
+
+    const duplicateSet = new Set(duplicateIds);
+    const survivingItems = placed.filter((item) => !duplicateSet.has(item.id));
+    const inventoryGroups = new Set((await tx.inventoryItem.findMany({
+      where: { userProfileId: profileId, number: { gt: 0 } },
+      select: { globalItemId: true },
+    })).map((item) => Math.floor(item.globalItemId / 10_000)));
+
+    // ADR-0025/0026: absence alone is not corruption. Recover only when another
+    // item occupies the exact negative slot originally assigned to this starter
+    // singleton/door and the player owns no replacement from that group.
+    const recoveries = COLLISION_RECOVERY_SLOTS.filter((slot) => {
+      const hasPlacedItem = survivingItems.some((item) => Math.floor(item.globalItemId / 10_000) === slot.group);
+      if (hasPlacedItem || inventoryGroups.has(slot.group)) return false;
+      const collision = survivingItems.find((item) => item.serverId === slot.legacyServerId);
+      return collision !== undefined && Math.floor(collision.globalItemId / 10_000) !== slot.group;
+    });
+
+    const negativeItems = survivingItems
+      .filter((item) => item.serverId < 0)
+      .sort((a, b) => b.serverId - a.serverId);
+    if (negativeItems.length > 0 || recoveries.length > 0) {
+      const maxPositive = await tx.ownedItem.findFirst({
+        where: { userProfileId: profileId, serverId: { gt: 0 } },
+        orderBy: { serverId: 'desc' },
+        select: { serverId: true },
+      });
+      let nextServerId = (maxPositive?.serverId ?? 0) + 1;
+      for (const item of negativeItems) {
+        await tx.ownedItem.update({
+          where: { id: item.id },
+          data: { id: ownedItemKey(networkUid, nextServerId), serverId: nextServerId },
+        });
+        nextServerId += 1;
+      }
+      for (const { seed } of recoveries) {
+        const serverId = nextServerId;
+        await tx.ownedItem.create({
+          data: {
+            id: ownedItemKey(networkUid, serverId),
+            userProfileId: profileId,
+            serverId,
+            globalItemId: seed.id,
+            positionX: seed.x,
+            positionY: seed.y,
+            data: seed.data ?? 0,
+            roomIndex: seed.roomIndex ?? 0,
+            employeeNetwork: 0,
+            employeeNetworkUid: '',
+            employeePlayfishUid: 0,
+          },
+        });
+        nextServerId += 1;
+      }
+      changed = true;
+    }
+
+    return changed;
+  });
 }
 
 export async function getProfiles(networkUids: readonly string[], activeNetworkUid = PLAYER_NETWORK_UID): Promise<StoredProfile[]> {
@@ -175,21 +298,27 @@ export async function getProfiles(networkUids: readonly string[], activeNetworkU
 }
 
 // Your Street roster: owner first, then distinct enabled account-backed players
-// currently stored as the owner's employees. Hire candidates use RPC 39.
+// who are hired employees or explicit ADR-0020 friends. Hiring remains separate.
 export async function getAllFriends(activeNetworkUid = PLAYER_NETWORK_UID): Promise<StoredProfile[]> {
   await ensureStarterFriends();
   const owner = await ensureProfile(activeNetworkUid);
   const hiredUids = owner.employees.map((employee) => employee.networkUid);
+  const activeAccount = await prisma.account.findUnique({ where: { networkUid: activeNetworkUid }, select: { id: true } });
+  const friendshipRows = activeAccount ? await prisma.friendship.findMany({
+    where: { OR: [{ accountAId: activeAccount.id }, { accountBId: activeAccount.id }] },
+    include: { accountA: { select: { id: true, networkUid: true } }, accountB: { select: { id: true, networkUid: true } } },
+  }) : [];
+  const friendUids = friendshipRows.map((friendship) => friendship.accountAId === activeAccount?.id ? friendship.accountB.networkUid : friendship.accountA.networkUid);
   const enabledAccounts = await prisma.account.findMany({
     where: {
       disabled: false,
-      networkUid: { in: [activeNetworkUid, ...hiredUids] },
+      networkUid: { in: [activeNetworkUid, ...hiredUids, ...friendUids] },
     },
     select: { networkUid: true },
   });
   const rosterUids = hiredFriendRosterNetworkUids(
     enabledAccounts.map((account) => account.networkUid),
-    hiredUids,
+    [...hiredUids, ...friendUids],
     activeNetworkUid,
   );
   const profiles = await prisma.userProfile.findMany({
@@ -268,14 +397,50 @@ async function repairStarterFriendProfile(seed: FriendProfileSeed, profile: Stor
   return true;
 }
 
-export async function savePlayerProfile(profile: SavedProfileData, audit: SaveAuditData): Promise<number> {
+export async function savePlayerProfile(
+  profile: SavedProfileData,
+  audit: SaveAuditData,
+  fence: SaveFence = {},
+): Promise<SaveResult> {
   const profileId = profileKey(profile.id.networkUid);
-  const current = await ensureProfile(profile.id.networkUid || PLAYER_NETWORK_UID);
-  const nextCredits = audit.newCredits ?? current.credits + audit.creditDelta;
-  const saneUserLevel = boundedIntOrFallback(profile.userLevel, current.userLevel, 1, 99);
-  const saneActiveFloorIndex = boundedIntOrFallback(profile.activeFloorIndex, current.activeFloorIndex, 0, 8);
+  await ensureProfile(profile.id.networkUid || PLAYER_NETWORK_UID);
 
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx): Promise<SaveResult> => {
+    if (fence.authSessionId) {
+      const claimed = await tx.session.updateMany({
+        where: {
+          id: fence.authSessionId,
+          rpcSessionToken: fence.rpcSessionToken || '__missing_rpc_session__',
+          rpcSaveVersion: audit.saveVersion - 1,
+        },
+        data: {
+          rpcSaveVersion: audit.saveVersion,
+          rpcSaveTime: audit.timeOnClient,
+          rpcSaveDigest: fence.payloadDigest || '',
+        },
+      });
+
+      if (claimed.count !== 1) {
+        const receipt = await tx.session.findUnique({ where: { id: fence.authSessionId } });
+        const sameRpcSession = receipt?.rpcSessionToken === fence.rpcSessionToken;
+        const duplicate = sameRpcSession
+          && receipt?.rpcSaveVersion === audit.saveVersion
+          && receipt?.rpcSaveTime === audit.timeOnClient
+          && receipt?.rpcSaveDigest === (fence.payloadDigest || '');
+        return {
+          status: duplicate ? 'duplicate' : 'stale',
+          savedVersion: sameRpcSession
+            ? (receipt?.rpcSaveVersion ?? 0)
+            : Math.max(0, audit.saveVersion),
+        };
+      }
+    }
+
+    const current = await tx.userProfile.findUniqueOrThrow({ where: { id: profileId } });
+    const nextCredits = audit.newCredits ?? current.credits + audit.creditDelta;
+    const saneUserLevel = boundedIntOrFallback(profile.userLevel, current.userLevel, 1, 99);
+    const saneActiveFloorIndex = boundedIntOrFallback(profile.activeFloorIndex, current.activeFloorIndex, 0, 8);
+
     await tx.userProfile.update({
       where: { id: profileId },
       data: {
@@ -437,9 +602,9 @@ export async function savePlayerProfile(profile: SavedProfileData, audit: SaveAu
     }
 
     await repairProfileStateInTransaction(tx, profile.id.networkUid, profileId, true);
-  });
 
-  return audit.saveVersion;
+    return { status: 'saved', savedVersion: audit.saveVersion };
+  });
 }
 
 interface EnsureProfileOptions {
@@ -924,7 +1089,7 @@ async function applyGardenChange(
     return;
   }
 
-  const ingredientId = change.ingredientId ?? defaultVisitIngredient(String(change.plotId));
+  const ingredientId = change.ingredientId ?? gardenIngredientForSeed(String(change.plotId));
   await tx.gardenPlot.upsert({
     where: { userProfileId_plotId: { userProfileId: profileId, plotId: change.plotId } },
     update: {
@@ -941,7 +1106,6 @@ async function applyGardenChange(
       timeToDry: GARDEN_WETNESS_PER_WATER_SECONDS,
     },
   });
-  await changeIngredient(tx, profileId, networkUid, { globalItemId: ingredientId, delta: -1 });
 }
 
 function nextWaterLevel(currentWetness: number, wateredAt: Date): number {

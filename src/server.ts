@@ -1,5 +1,6 @@
 import { loadConfig } from './config';
 import { createServer } from './http-server';
+import { startDailyIngredientScheduler } from './daily-ingredients/scheduler';
 
 const config = loadConfig();
 const { httpServer, staticFiles } = createServer(config);
@@ -16,4 +17,5 @@ httpServer.listen(config.port, config.host, () => {
   console.log(' Launch the client so it loads FROM this server:');
   console.log(`   "C:\\flex\\Player\\flashplayer_32_sa_debug.exe" http://localhost:${config.port}/game.swf`);
   console.log('====================================================================');
+  startDailyIngredientScheduler(config.serverRoot, config.discordDailyIngredientsWebhook);
 });

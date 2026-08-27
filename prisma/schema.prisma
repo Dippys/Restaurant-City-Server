@@ -22,19 +22,31 @@ model Account {
   updatedAt    DateTime  @updatedAt
   lastLoginAt  DateTime?
   sessions     Session[]
+  socialLinksCreated SocialLink[] @relation("SocialLinkCreator")
+  socialLinksAdministered SocialLink[] @relation("SocialLinkAdmin")
+  socialActions SocialLinkAction[]
+  escrowsOwned SocialLinkEscrow[]
+  friendRequestsSent FriendRequest[] @relation("FriendRequestSender")
+  friendRequestsReceived FriendRequest[] @relation("FriendRequestRecipient")
+  friendshipsA Friendship[] @relation("FriendshipA")
+  friendshipsB Friendship[] @relation("FriendshipB")
 }
 
 model Session {
-  id           String   @id
-  tokenHash    String   @unique
-  csrfToken    String
-  accountId    String
-  expiresAt    DateTime
-  lastSeenAt   DateTime @default(now())
-  createdAt    DateTime @default(now())
-  ipAddress    String   @default("")
-  userAgent    String   @default("")
-  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id             String   @id
+  tokenHash      String   @unique
+  csrfToken      String
+  accountId      String
+  expiresAt      DateTime
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  ipAddress      String   @default("")
+  userAgent      String   @default("")
+  rpcSessionToken String  @default("")
+  rpcSaveVersion Int      @default(0)
+  rpcSaveTime    Int      @default(0)
+  rpcSaveDigest  String   @default("")
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([accountId])
   @@index([expiresAt])
@@ -352,4 +364,124 @@ model IngredientMarketItem {
   ingredientId Int     @unique
   price        Int
   enabled      Boolean @default(true)
+}
+
+// One row per UTC market day makes the noon rotation and Discord delivery
+// restart-safe. The RPC continues to read IngredientMarketItem unchanged.
+model DailyIngredientRotation {
+  utcDate           String    @id
+  ingredientIdsJson String
+  pricesJson        String
+  rotatedAt         DateTime  @default(now())
+  announcedAt       DateTime?
+  attemptCount      Int       @default(0)
+  lastError         String    @default("")
+}
+
+// ADR-0020: additive web social-link state. These rows do not alter the
+// PlayFish RPC envelope; rewards land in the existing profile tables.
+model SocialLink {
+  id                    String   @id
+  slug                  String   @unique
+  kind                  String
+  status                String   @default("DRAFT")
+  creatorAccountId      String?
+  adminAccountId        String?
+  payloadJson           String
+  payloadVersion        Int      @default(1)
+  title                 String
+  description           String
+  imagePath             String   @default("/assets/chef.png")
+  shareText             String   @default("")
+  notBefore             DateTime?
+  expiresAt             DateTime?
+  totalActionLimit      Int?
+  perAccountLimit       Int      @default(1)
+  allowSelfAction       Boolean  @default(false)
+  successfulActionCount Int      @default(0)
+  activatedAt           DateTime?
+  revokedAt             DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  creator               Account? @relation("SocialLinkCreator", fields: [creatorAccountId], references: [id], onDelete: SetNull)
+  administrator         Account? @relation("SocialLinkAdmin", fields: [adminAccountId], references: [id], onDelete: SetNull)
+  actions               SocialLinkAction[]
+  escrows               SocialLinkEscrow[]
+
+  @@index([kind, status])
+  @@index([creatorAccountId, createdAt])
+  @@index([notBefore, expiresAt])
+}
+
+model SocialLinkAction {
+  id              String   @id
+  socialLinkId    String
+  actorAccountId  String
+  action          String
+  outcome         String
+  resultSummary   String
+  idempotencyKey  String
+  createdAt       DateTime @default(now())
+  socialLink      SocialLink @relation(fields: [socialLinkId], references: [id], onDelete: Cascade)
+  actor           Account @relation(fields: [actorAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([socialLinkId, actorAccountId, idempotencyKey])
+  @@index([socialLinkId, actorAccountId, action, outcome])
+  @@index([socialLinkId, createdAt])
+}
+
+model SocialLinkEscrow {
+  id              String   @id
+  socialLinkId    String
+  ownerAccountId  String
+  category        String
+  globalItemId    Int
+  quantity        Int
+  state           String   @default("HELD")
+  transferredAt   DateTime?
+  returnedAt      DateTime?
+  createdAt       DateTime @default(now())
+  socialLink      SocialLink @relation(fields: [socialLinkId], references: [id], onDelete: Cascade)
+  owner           Account @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
+
+  @@index([socialLinkId, state])
+  @@index([ownerAccountId, state])
+}
+
+model FoodKingEncounter {
+  id               String   @id
+  creatorAccountId String
+  offersJson       String
+  selectedItemId   Int
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+
+  @@index([creatorAccountId, expiresAt])
+}
+
+model FriendRequest {
+  id                 String   @id
+  senderAccountId    String
+  recipientAccountId String
+  status             String   @default("PENDING")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  sender             Account @relation("FriendRequestSender", fields: [senderAccountId], references: [id], onDelete: Cascade)
+  recipient          Account @relation("FriendRequestRecipient", fields: [recipientAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([senderAccountId, recipientAccountId])
+  @@index([recipientAccountId, status])
+}
+
+model Friendship {
+  id         String   @id
+  accountAId String
+  accountBId String
+  createdAt  DateTime @default(now())
+  accountA   Account @relation("FriendshipA", fields: [accountAId], references: [id], onDelete: Cascade)
+  accountB   Account @relation("FriendshipB", fields: [accountBId], references: [id], onDelete: Cascade)
+
+  @@unique([accountAId, accountBId])
+  @@index([accountAId])
+  @@index([accountBId])
 }

@@ -1,6 +1,7 @@
 import type { ActiveAccount } from './session';
 
 export const LIVE_EVENT_ALERT = 1;
+export const LIVE_EVENT_MAIL = 2;
 
 export interface LiveEvent {
   readonly id: number;
@@ -102,6 +103,28 @@ export function enqueueGlobalLiveEvent(type: number, body: Buffer): number {
     }
   }
   return count;
+}
+
+/** Notify an online client that its authoritative mailbox changed. */
+export function enqueueLiveMail(networkUid: string, mailType: number): boolean {
+  pruneOfflineUsers();
+  const entry = users.get(networkUid);
+  if (!entry) return false;
+
+  // One getMails response contains the whole authoritative inbox, so collapse
+  // queued changes. Preserve a popup-producing type when any queued mail needs it.
+  const queued = entry.queued.find((event) => event.type === LIVE_EVENT_MAIL);
+  if (queued) {
+    if (mailNeedsStartupPopup(mailType) || !mailNeedsStartupPopup(queued.body[0] ?? 0)) {
+      queued.body[0] = mailType & 0xff;
+    }
+    return true;
+  }
+  return enqueueLiveEvent(networkUid, LIVE_EVENT_MAIL, Buffer.from([mailType & 0xff]));
+}
+
+function mailNeedsStartupPopup(mailType: number): boolean {
+  return mailType === 5 || mailType === 10 || mailType === 11 || mailType === 13;
 }
 
 function pruneOfflineUsers(): void {

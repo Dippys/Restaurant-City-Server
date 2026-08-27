@@ -9,6 +9,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "build": "prisma generate && tsc -p tsconfig.json && tsc -p tsconfig.admin.json",
+    "assets:social-icons": "node scripts/sync-social-ingredient-icons.cjs",
+    "preview:daily-ingredients": "node scripts/render-daily-ingredients-preview.cjs",
     "check": "prisma generate && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.admin.json --noEmit",
     "test": "npm run build && node --test test/*.test.cjs",
     "start": "npm run db:push && npm run build && node dist/server.js",
@@ -23,6 +25,7 @@
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@ruffle-rs/ruffle": "0.5.0",
-    "better-sqlite3": "^12.11.1"
+    "better-sqlite3": "^12.11.1",
+    "sharp": "^0.34.5"
   }
 }

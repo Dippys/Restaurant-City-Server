@@ -5,6 +5,7 @@ export interface ParsedSubRequest {
   readonly name: string;
   readonly len: number;
   readonly body: Buffer;
+  readonly session?: string;
 }
 
 export interface ParsedRequest {

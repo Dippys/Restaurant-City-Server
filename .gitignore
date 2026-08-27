@@ -9,3 +9,5 @@ prisma/dev.db-journal
 public/swf/*
 public/data/*
 public/ruffle/*
+test/.tmp/
+public/assets/*

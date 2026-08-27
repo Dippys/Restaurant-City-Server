@@ -35,6 +35,7 @@ function decodeEntities(value: string): string {
 }
 
 let cached: readonly ItemCatalogEntry[] | null = null;
+let cachedAttributes: ReadonlyMap<number, Readonly<Record<string, string>>> | null = null;
 
 /** Full catalogue: curated entries first, then every id/name found in the data XMLs (XML names win). */
 export function fullCatalog(): readonly ItemCatalogEntry[] {
@@ -76,4 +77,45 @@ export function isCatalogItemId(id: number): boolean {
 export function catalogLabel(id: number): string {
   const entry = fullCatalog().find((candidate) => candidate.id === id);
   return entry ? `${entry.label} (${id})` : `Unknown item (${id})`;
+}
+
+export function catalogEntry(id: number): ItemCatalogEntry | undefined {
+  return fullCatalog().find((entry) => entry.id === id);
+}
+
+export function itemAttributes(id: number): Readonly<Record<string, string>> | undefined {
+  if (!cachedAttributes) {
+    const attributes = new Map<number, Readonly<Record<string, string>>>();
+    const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
+    for (const file of CATALOG_FILES) {
+      let xml = '';
+      try { xml = fs.readFileSync(path.join(dataDir, file), 'utf8'); } catch { continue; }
+      for (const match of xml.matchAll(ITEM_TAG)) {
+        const values: Record<string, string> = {};
+        for (const attr of match[1].matchAll(/([A-Za-z_:][\w:.-]*)="([^"]*)"/g)) {
+          values[attr[1]] = decodeEntities(attr[2]);
+        }
+        const itemId = Number(values.id);
+        if (Number.isInteger(itemId)) attributes.set(itemId, values);
+      }
+    }
+    cachedAttributes = attributes;
+  }
+  return cachedAttributes.get(id);
+}
+
+export function isFoodKingEligibleItem(id: number): boolean {
+  return itemAttributes(id)?.foodKingFeed === 'true';
+}
+
+export function isEmployeeSnackItem(id: number): boolean {
+  const entry = catalogEntry(id);
+  if (entry?.category !== 'perk') return false;
+  try {
+    const xml = fs.readFileSync(path.resolve(__dirname, '..', '..', 'public', 'data', 'perk.xml'), 'utf8');
+    const group = xml.match(/<group\s+name="Employee">([\s\S]*?)<\/group>/)?.[1] ?? '';
+    return new RegExp(`<item\\b[^>]*\\bid="${id}"`).test(group);
+  } catch {
+    return false;
+  }
 }

@@ -94,4 +94,10 @@ export const api = {
     // live
     online: () => request('GET', '/__api/live/online'),
     alert: (input) => request('POST', '/__api/live/alert', input),
+    sendMail: (input) => request('POST', '/__api/live/mail', input),
+    socialLinks: () => request('GET', '/__api/admin/social-links'),
+    socialLink: (id) => request('GET', `/__api/admin/social-links/${enc(id)}`),
+    createSocialLink: (input) => request('POST', '/__api/admin/social-links', input),
+    patchSocialLink: (id, input) => request('PATCH', `/__api/admin/social-links/${enc(id)}`, input),
+    socialLifecycle: (id, operation) => request('POST', `/__api/admin/social-links/${enc(id)}/${operation}`),
 };

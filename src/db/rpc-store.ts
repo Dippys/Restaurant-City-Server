@@ -1,12 +1,13 @@
 import type { Mail, Pricepoint, PurchasableItem } from '@prisma/client';
+import { randomBytes } from 'node:crypto';
 import { prisma } from './client';
 import { FACEBOOK_NETWORK, PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, isNpcUid } from './defaults';
 import { getPlayerProfile, getProfiles, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
 import { ensureDailyContent, sendNpcGift, grantMailItem } from './system-mail';
-import { resolveIngredientId, firstVisitIngredientId } from './ingredient-catalog';
+import { resolveIngredientId, ingredientRarity, firstVisitIngredientId } from './ingredient-catalog';
 import { coinBundleForToken, ingredientCashCost, ownedItemCashCost } from './cash-catalog';
 import type { ActiveAccount } from '../session';
-import { pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
+import { enqueueLiveMail, pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
 import { selectGourmetStreetProfiles, selectHireCandidateProfiles, selectRandomStreetProfiles } from '../rpc/street-roster';
 
 const STATUS_OK = 0;
@@ -123,7 +124,7 @@ export async function cashBalance(account: ActiveAccount): Promise<number> {
   return profile.cashBalance;
 }
 
-export async function initSession(account: ActiveAccount): Promise<void> {
+export async function initSession(account: ActiveAccount): Promise<string> {
   const profile = await ensureAccountProfile(account);
   if (shouldIncrementPlayCountOnInit(profile)) {
     initializedPlayCountSessions.add(account.networkUid);
@@ -133,6 +134,20 @@ export async function initSession(account: ActiveAccount): Promise<void> {
     });
   }
   await ensureDailyContent(account);
+  if (!account.sessionId) {
+    return '';
+  }
+  const rpcSessionToken = randomBytes(24).toString('base64url');
+  await prisma.session.update({
+    where: { id: account.sessionId },
+    data: {
+      rpcSessionToken,
+      rpcSaveVersion: 0,
+      rpcSaveTime: 0,
+      rpcSaveDigest: '',
+    },
+  });
+  return rpcSessionToken;
 }
 
 function shouldIncrementPlayCountOnInit(profile: StoredProfile): boolean {
@@ -258,12 +273,24 @@ export async function sendMail(account: ActiveAccount, mail: {
   const recipientUid = mail.recipient.networkUid || String(mail.recipient.playfishUid || PLAYER_NETWORK_UID);
   await ensureProfileByUid(recipientUid);
 
+  if (mail.type === MAIL_TYPE_SECURECHANGE) {
+    const playerGives = mail.globalItemIds[0] ?? 0;
+    const playerReceives = mail.globalItemIds[1] ?? 0;
+    if (
+      mail.globalItemIds.length !== 2
+      || resolveIngredientId(String(playerGives)) !== playerGives
+      || resolveIngredientId(String(playerReceives)) !== playerReceives
+      || !(await hasIngredientStock(account.networkUid, playerGives))
+    ) {
+      return STATUS_INVALID_TOKEN;
+    }
+  }
+
   // NPC recipients have no client to act, so the server responds on their behalf:
   // trade requests are auto-accepted and gifts are reciprocated.
   if (isNpcUid(recipientUid)) {
     if (mail.type === MAIL_TYPE_SECURECHANGE) {
-      await autoAcceptNpcTrade(account, recipientUid, mail.globalItemIds);
-      return STATUS_OK;
+      return autoAcceptNpcTrade(account, recipientUid, mail.globalItemIds);
     }
 
     await persistMail(sender, recipientUid, mail);
@@ -307,26 +334,28 @@ async function persistMail(sender: StoredProfile, recipientUid: string, mail: {
       type: mail.type,
     },
   });
+  enqueueLiveMail(recipientUid, mail.type);
 }
 
 // A player mailed a trade request to an NPC. The offer carries both ingredient ids
 // (globalItemIds[0] = player gives, [1] = NPC gives). The NPC "accepts" instantly:
 // the player gives item 0 and receives item 1, then gets a confirmation mail.
-async function autoAcceptNpcTrade(player: ActiveAccount, npcUid: string, globalItemIds: readonly number[]): Promise<void> {
+async function autoAcceptNpcTrade(player: ActiveAccount, npcUid: string, globalItemIds: readonly number[]): Promise<number> {
   const playerGives = globalItemIds[0] ?? 0;
   const playerReceives = globalItemIds[1] ?? 0;
   const npcProfile = await ensureProfileByUid(npcUid);
 
-  await prisma.$transaction(async (tx) => {
-    if (playerGives > 0) {
-      await adjustIngredient(tx, player.networkUid, playerGives, -1);
-    }
-    if (playerReceives > 0) {
-      await adjustIngredient(tx, player.networkUid, playerReceives, 1);
-    }
+  const status = await prisma.$transaction(async (tx) => {
+    if (!(await hasIngredientStock(player.networkUid, playerGives, tx))) return STATUS_INVALID_TOKEN;
+    await adjustIngredient(tx, player.networkUid, playerGives, -1);
+    await adjustIngredient(tx, player.networkUid, playerReceives, 1, true);
+    await deliverNpcTradeConfirmation(player, npcProfile, playerGives, playerReceives, tx);
+    return STATUS_OK;
   });
 
-  await deliverNpcTradeConfirmation(player, npcProfile, playerGives, playerReceives);
+  if (status !== STATUS_OK) return status;
+  enqueueLiveMail(player.networkUid, MAIL_TYPE_SECUREECHANGE_OK);
+  return STATUS_OK;
 }
 
 async function deliverNpcTradeConfirmation(
@@ -334,8 +363,9 @@ async function deliverNpcTradeConfirmation(
   npc: StoredProfile,
   playerGives: number,
   playerReceives: number,
+  tx: any = prisma,
 ): Promise<void> {
-  await prisma.mail.create({
+  await tx.mail.create({
     data: {
       senderProfileId: profileKey(npc.networkUid),
       recipientProfileId: profileKey(player.networkUid),
@@ -518,52 +548,95 @@ async function enabledPlayerProfiles(excludedNetworkUids: readonly string[]): Pr
   return getProfiles(accounts.map((account) => account.networkUid), '');
 }
 
-// A player (`account`) accepts an ingredient trade offered by `target`. The offer
-// was a MAIL_TYPE_SECURECHANGE mail target->account carrying both ingredient ids.
-//
-// Division of labour matches the PlayFish client: the accepter's own inventory is
-// updated CLIENT-side (WorldMailTradeIngredient.onTradeIngredientSuccess) and
-// persisted via their next saveProfile, so the server must NOT touch it. The
-// offerer (`target`) is only a remote object in the accepter's client, which
-// cannot save another account — so the server owns the offerer's side. The client
-// also does not persist the offer-mail deletion on success, so the server consumes
-// it, and delivers the offerer an informational MAIL_TYPE_SECUREECHANGE_OK mail.
+// The Flash success handlers update both ingredient lists in memory but emit no
+// saveProfile ingredient-delta audit. Persist both real players here, validate a
+// secure offer against its live mail, consume it, and create the confirmation in
+// the same transaction so a retry cannot observe half a trade.
 export async function swapIngredient(
   account: ActiveAccount,
   target: NetworkUidData,
   offeredToken: string,
   requestedToken: string,
+  secure: boolean,
   mailId: number,
 ): Promise<number> {
   await ensureAccountProfile(account);
   const targetUid = target.networkUid || String(target.playfishUid || PLAYER_NETWORK_UID);
   const targetProfile = await ensureProfileByUid(targetUid);
   // The client sends each ingredient's opaque `hash`, not its numeric id.
-  const offered = resolveIngredientId(offeredToken, 4000000);
-  const requested = resolveIngredientId(requestedToken, 4000001);
+  const offered = resolveIngredientId(offeredToken);
+  const requested = resolveIngredientId(requestedToken);
+  if (offered === null || requested === null) return STATUS_INVALID_TOKEN;
 
-  await prisma.$transaction(async (tx) => {
-    // Offerer side only (NPCs trade from infinite stock, so skip their inventory).
+  const status = await prisma.$transaction(async (tx) => {
+    if (!(await hasIngredientStock(account.networkUid, offered, tx))) return STATUS_INVALID_TOKEN;
+
+    if (secure) {
+      if (mailId <= 0) return STATUS_INVALID_TOKEN;
+      const mail = await tx.mail.findFirst({
+        where: {
+          id: mailId,
+          senderProfileId: targetProfile.id,
+          recipientProfileId: profileKey(account.networkUid),
+          type: MAIL_TYPE_SECURECHANGE,
+          deleted: false,
+        },
+      });
+      if (!mail) return STATUS_INVALID_TOKEN;
+      const mailItems = readStoredNumberArray(mail.globalItemIdsJson);
+      if (mailItems.length !== 2 || mailItems[0] !== requested || mailItems[1] !== offered) {
+        return STATUS_INVALID_TOKEN;
+      }
+    } else if (!isNpcUid(targetUid)) {
+      const targetItem = await tx.ingredientInventory.findUnique({
+        where: { userProfileId_globalItemId: { userProfileId: profileKey(targetUid), globalItemId: requested } },
+      });
+      const offeredRarity = ingredientRarity(offered);
+      const requestedRarity = ingredientRarity(requested);
+      if (!targetItem || targetItem.number < 1 || targetItem.isLocked || offeredRarity === null || requestedRarity === null || offeredRarity < requestedRarity) {
+        return STATUS_INVALID_TOKEN;
+      }
+    }
+
+    if (!isNpcUid(targetUid) && !(await hasIngredientStock(targetUid, requested, tx))) return STATUS_INVALID_TOKEN;
+
+    await adjustIngredient(tx, account.networkUid, offered, -1);
+    await adjustIngredient(tx, account.networkUid, requested, 1, true);
     if (!isNpcUid(targetUid)) {
       await adjustIngredient(tx, targetUid, requested, -1);
-      await adjustIngredient(tx, targetUid, offered, 1);
+      await adjustIngredient(tx, targetUid, offered, 1, true);
     }
-    // Consume the trade-offer mail in the accepter's inbox (client won't persist it).
-    if (mailId > 0) {
-      await tx.mail.updateMany({
-        where: { id: mailId, recipientProfileId: profileKey(account.networkUid) },
-        data: { deleted: true },
-      });
+    if (secure) {
+      await tx.mail.update({ where: { id: mailId }, data: { deleted: true } });
     }
+    await deliverTradeConfirmation(account, targetProfile, offered, requested, tx);
+    return STATUS_OK;
   });
 
-  // Notify the offerer their trade was accepted (real players see it; harmless for NPCs).
-  await deliverTradeConfirmation(account, targetProfile, offered, requested);
+  if (status !== STATUS_OK) return status;
+  enqueueLiveMail(targetProfile.networkUid, MAIL_TYPE_SECUREECHANGE_OK);
   return STATUS_OK;
 }
 
+async function hasIngredientStock(networkUid: string, ingredientId: number, tx: any = prisma): Promise<boolean> {
+  const row = await tx.ingredientInventory.findUnique({
+    where: { userProfileId_globalItemId: { userProfileId: profileKey(networkUid), globalItemId: ingredientId } },
+    select: { number: true },
+  });
+  return (row?.number ?? 0) > 0;
+}
+
+function readStoredNumberArray(value: string): number[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isInteger) : [];
+  } catch {
+    return [];
+  }
+}
+
 // Reads/writes an ingredient count with a floor of 0, deleting empty non-locked rows.
-async function adjustIngredient(tx: any, networkUid: string, ingredientId: number, delta: number): Promise<void> {
+async function adjustIngredient(tx: any, networkUid: string, ingredientId: number, delta: number, lockReceived = false): Promise<void> {
   const profileId = profileKey(networkUid);
   const existing = await tx.ingredientInventory.findUnique({
     where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: ingredientId } },
@@ -579,8 +652,8 @@ async function adjustIngredient(tx: any, networkUid: string, ingredientId: numbe
 
   await tx.ingredientInventory.upsert({
     where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: ingredientId } },
-    update: { number: next },
-    create: { id: ingredientKey(networkUid, ingredientId), userProfileId: profileId, globalItemId: ingredientId, number: next, isLocked: false },
+    update: { number: next, ...(lockReceived ? { isLocked: true } : {}) },
+    create: { id: ingredientKey(networkUid, ingredientId), userProfileId: profileId, globalItemId: ingredientId, number: next, isLocked: lockReceived },
   });
 }
 
@@ -589,8 +662,9 @@ async function deliverTradeConfirmation(
   offerer: StoredProfile,
   offered: number,
   requested: number,
+  tx: any = prisma,
 ): Promise<void> {
-  await prisma.mail.create({
+  await tx.mail.create({
     data: {
       senderProfileId: profileKey(accepter.networkUid),
       recipientProfileId: profileKey(offerer.networkUid),

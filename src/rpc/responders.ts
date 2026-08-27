@@ -1,4 +1,5 @@
 import type { ParsedRequest, ParsedSubRequest } from './codec';
+import { createHash } from 'node:crypto';
 import {
   readString,
   readBool,
@@ -62,6 +63,7 @@ type RpcResponder = (
 
 const STATUS_OK = 0;
 const SAVE_STATUS_OK = 0;
+const SAVE_STATUS_ALREADY_DONE = 2;
 const EMPLOYEE_MAX_WORK_TIME_MS = 4 * 60 * 60 * 1000;
 const GARDEN_GROW_TIME_SECONDS = 48 * 60 * 60;
 const GARDEN_MAX_WETNESS_SECONDS = 9 * 60 * 60;
@@ -235,8 +237,7 @@ async function getUserProfile(_request: ParsedRequest | ParsedSubRequest, accoun
 }
 
 async function initResponder(_request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
-  await initSession(account);
-  return writeString('');
+  return writeString(await initSession(account));
 }
 
 async function getAllFriends(_request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
@@ -264,18 +265,23 @@ async function readBookmarkCountForAccount(_request: ParsedRequest | ParsedSubRe
 
 async function saveProfile(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
   const { profile, audit } = parseSaveProfile(requestBody(request));
-  const savedVersion = await savePlayerProfile({
+  const body = requestBody(request);
+  const result = await savePlayerProfile({
     ...profile,
     id: {
       network: profile.id.network || 2,
       networkUid: account.networkUid,
       playfishUid: account.playfishUid,
     },
-  }, audit);
+  }, audit, {
+    authSessionId: account.sessionId,
+    rpcSessionToken: request.session,
+    payloadDigest: createHash('sha256').update(body).digest('hex'),
+  });
 
   return Buffer.concat([
-    writeU8(SAVE_STATUS_OK),
-    writeVarint(savedVersion),
+    writeU8(result.status === 'stale' ? SAVE_STATUS_ALREADY_DONE : SAVE_STATUS_OK),
+    writeVarint(result.savedVersion),
     writeArray([]),
     writeBool(false),
     writeVarint(0),
@@ -392,7 +398,7 @@ async function getHireCandidates(request: ParsedRequest | ParsedSubRequest, acco
 
 async function swapIngredientResponder(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
   const parsed = readSwapIngredient(requestBody(request));
-  return writeU8(await swapIngredient(account, parsed.target, parsed.offeredToken, parsed.requestedToken, parsed.mailId));
+  return writeU8(await swapIngredient(account, parsed.target, parsed.offeredToken, parsed.requestedToken, parsed.secure, parsed.mailId));
 }
 
 async function sendMailResponder(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
@@ -546,11 +552,12 @@ function readSwapIngredient(body: Buffer) {
   [offeredToken, pos] = readString(body, pos);
   let requestedToken = '';
   [requestedToken, pos] = readString(body, pos);
-  [, pos] = readBool(body, pos);
+  let secure = false;
+  [secure, pos] = readBool(body, pos);
   let mailId = 0;
   [mailId, pos] = readVarint(body, pos);
   [, pos] = readBool(body, pos);
-  return { target, offeredToken, requestedToken, mailId };
+  return { target, offeredToken, requestedToken, secure, mailId };
 }
 
 function readSendMail(body: Buffer) {

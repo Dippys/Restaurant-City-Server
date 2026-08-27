@@ -4,6 +4,7 @@ import {
   DEFAULT_NEW_PLAYER_DEMAND,
   FACEBOOK_NETWORK,
   PLAYER_NETWORK_UID,
+  SYSTEM_NETWORK_UID,
   STARTER_BUILDING_ITEMS,
   STARTER_INGREDIENTS,
   STARTER_RECIPES,
@@ -13,7 +14,9 @@ import {
 } from './defaults';
 import { ensureEconomyCatalog } from './rpc-store';
 import { ensureStarterFriends } from './profile-store';
-import { fullCatalog, isCatalogItemId } from './item-catalog';
+import { fullCatalog, isCatalogItemId, isEmployeeSnackItem } from './item-catalog';
+import { grantMailItem } from './system-mail';
+import { enqueueLiveMail } from '../live-events';
 
 const adminUserInclude = {
   ownedItems: { orderBy: { serverId: 'asc' as const } },
@@ -120,7 +123,7 @@ export interface EmployeeInput {
 }
 
 export interface MailInput {
-  readonly senderNetworkUid: string;
+  readonly senderNetworkUid?: string;
   readonly recipientNetworkUid?: string;
   readonly globalItemIds?: readonly number[];
   readonly itemId?: number;
@@ -130,6 +133,15 @@ export interface MailInput {
   readonly sendDate?: number;
   readonly deleteTime?: number;
   readonly type?: number;
+}
+
+export interface BulkMailInput extends MailInput {
+  readonly recipientNetworkUids: readonly string[];
+}
+
+export interface BulkMailResult {
+  readonly created: number;
+  readonly liveNotified: number;
 }
 
 export interface GameEventInput {
@@ -523,7 +535,67 @@ export async function createAdminMail(networkUid: string, input: MailInput): Pro
     },
   });
 
+  await grantAdminMailRewards(recipientNetworkUid, clean.type, clean.message, clean.globalItemIds);
+  enqueueLiveMail(recipientNetworkUid, clean.type);
+
   return getAdminUser(recipientNetworkUid);
+}
+
+/** Send one type-safe admin-composed mail to several existing profiles. */
+export async function createAdminMails(input: BulkMailInput): Promise<BulkMailResult> {
+  const recipientNetworkUids = [...new Set(input.recipientNetworkUids.map(validateNetworkUid))];
+  if (recipientNetworkUids.length === 0) return { created: 0, liveNotified: 0 };
+  if (recipientNetworkUids.length > 10_000) throw new Error('Too many mail recipients.');
+
+  const senderNetworkUid = validateNetworkUid(input.senderNetworkUid || SYSTEM_NETWORK_UID);
+  const clean = validateComposedMailInput(input);
+  const [sender, recipients] = await Promise.all([
+    getAdminUser(senderNetworkUid),
+    prisma.userProfile.findMany({ where: { networkUid: { in: recipientNetworkUids } } }),
+  ]);
+  const byUid = new Map(recipients.map((recipient) => [recipient.networkUid, recipient]));
+  const missing = recipientNetworkUids.filter((uid) => !byUid.has(uid));
+  if (missing.length > 0) throw new Error(`Unknown recipient${missing.length === 1 ? '' : 's'}: ${missing.join(', ')}`);
+
+  await prisma.mail.createMany({
+    data: recipientNetworkUids.map((recipientNetworkUid) => {
+      const recipient = byUid.get(recipientNetworkUid)!;
+      return {
+        senderProfileId: sender.id,
+        recipientProfileId: recipient.id,
+        senderNetwork: sender.network,
+        senderNetworkUid: sender.networkUid,
+        senderPlayfishUid: sender.playfishUid,
+        recipientNetwork: recipient.network,
+        recipientNetworkUid: recipient.networkUid,
+        recipientPlayfishUid: recipient.playfishUid,
+        globalItemIdsJson: JSON.stringify(clean.globalItemIds),
+        itemId: clean.itemId,
+        message: clean.message,
+        read: false,
+        deleted: false,
+        sendDate: clean.sendDate,
+        deleteTime: 0,
+        type: clean.type,
+      };
+    }),
+  });
+
+  let liveNotified = 0;
+  for (const recipientNetworkUid of recipientNetworkUids) {
+    await grantAdminMailRewards(recipientNetworkUid, clean.type, clean.message, clean.globalItemIds);
+    if (enqueueLiveMail(recipientNetworkUid, clean.type)) liveNotified += 1;
+  }
+  return { created: recipientNetworkUids.length, liveNotified };
+}
+
+export async function listEnabledAccountNetworkUids(): Promise<string[]> {
+  const accounts = await prisma.account.findMany({
+    where: { disabled: false },
+    select: { networkUid: true },
+    orderBy: { usernameKey: 'asc' },
+  });
+  return accounts.map((account) => account.networkUid);
 }
 
 export async function updateAdminMail(networkUid: string, mailId: number, input: MailInput): Promise<AdminUser> {
@@ -736,6 +808,79 @@ function validateMailInput(input: MailInput) {
     deleteTime: boundedInt(input.deleteTime ?? 0, 'deleteTime', 0, 255),
     type: boundedInt(input.type ?? 1, 'type', 0, 255),
   };
+}
+
+function validateComposedMailInput(input: MailInput) {
+  const clean = validateMailInput(input);
+  const supportedTypes = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13]);
+  if (!supportedTypes.has(clean.type)) throw new Error('Choose a supported Restaurant City mail type.');
+  for (const itemId of clean.globalItemIds) {
+    if (!isCatalogItemId(itemId)) throw new Error(`Unknown item id ${itemId}.`);
+  }
+
+  if ((clean.type === 1 || clean.type === 3) && !clean.message.trim()) {
+    throw new Error('This mail type requires a message.');
+  }
+  if ([1, 2, 3, 7].includes(clean.type) && clean.globalItemIds.length !== 0) {
+    throw new Error('This mail type does not accept attached item ids.');
+  }
+  if ([4, 9, 10, 11].includes(clean.type) && clean.globalItemIds.length !== 1) {
+    throw new Error('This mail type requires exactly one reward item.');
+  }
+  if (clean.type === 5 && (clean.globalItemIds.length < 1 || clean.globalItemIds.length > 5)) {
+    throw new Error('Daily ingredient mail requires between one and five ingredients.');
+  }
+  if ((clean.type === 6 || clean.type === 8) && clean.globalItemIds.length !== 2) {
+    throw new Error('Trade mail requires exactly two ingredient ids.');
+  }
+  if ([5, 6, 8].includes(clean.type) && clean.globalItemIds.some((id) => Math.floor(id / 1_000_000) !== 4)) {
+    throw new Error('This mail type only accepts ingredient ids.');
+  }
+  if (clean.type === 9 && !isEmployeeSnackItem(clean.globalItemIds[0] ?? 0)) {
+    throw new Error('Invite-food gift mail requires a shipped employee snack perk.');
+  }
+  if (clean.type === 13 && clean.globalItemIds.length > 1) {
+    throw new Error('Special-day mail accepts at most one reward item.');
+  }
+  if (clean.type === 13) {
+    const presentThemes = new Set(['CHRISTMAS', 'VALENTINES', 'CHINESE_NEW_YEAR']);
+    if (clean.globalItemIds.length === 0 && clean.message !== '3MillionFan') {
+      throw new Error('A startup-message layout requires the 3MillionFan theme.');
+    }
+    if (clean.globalItemIds.length === 1 && !presentThemes.has(clean.message)) {
+      throw new Error('A special-day present requires Christmas, Valentines, or Chinese New Year layout text.');
+    }
+  }
+  if (clean.type === 7) {
+    const amountText = clean.message.startsWith('PFC:') ? clean.message.slice(4) : clean.message;
+    const amount = Number(amountText);
+    if (!Number.isInteger(amount) || amount <= 0 || amount > 999_999_999) {
+      throw new Error('Currency mail requires a positive whole-number amount.');
+    }
+  }
+
+  return clean;
+}
+
+async function grantAdminMailRewards(recipientNetworkUid: string, type: number, message: string, itemIds: readonly number[]): Promise<void> {
+  if (type === 7 && message.startsWith('PFC:')) {
+    const amount = Number(message.slice(4));
+    await prisma.userProfile.update({
+      where: { id: profileKey(recipientNetworkUid) },
+      data: { cashBalance: { increment: amount } },
+    });
+    return;
+  }
+  const displayOnlyReward = type === 4 || type === 5 || type === 9;
+  const feedOrSpecialReward = type === 10 || type === 11 || type === 13;
+  if (!displayOnlyReward && !feedOrSpecialReward) return;
+
+  for (const itemId of itemIds) {
+    // Coin/demand perk subtypes 602/603 are applied by the popup itself.
+    const perkSubtype = Math.floor(itemId / 10_000);
+    if (feedOrSpecialReward && (perkSubtype === 602 || perkSubtype === 603)) continue;
+    await grantMailItem(recipientNetworkUid, itemId);
+  }
 }
 
 function validateGameEventInput(input: GameEventInput) {

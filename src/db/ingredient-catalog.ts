@@ -9,8 +9,9 @@ const BY_ID = new Map<number, IngredientEntry>(INGREDIENTS.map((i) => [i.id, i])
 
 // Resolves an ingredient token to its numeric id. The client sends the opaque
 // `hash` (e.g. "3U1YuPCFbYYkyDirmWQpva") for trades, so hash lookup comes first;
-// a numeric token (or one embedding the id) is accepted as a fallback.
-export function resolveIngredientId(token: string, fallback: number): number {
+// a numeric token (or one embedding the id) is accepted as a compatibility
+// fallback. Unknown values stay invalid instead of becoming a fixed ingredient.
+export function resolveIngredientId(token: string): number | null {
   const byHash = BY_HASH.get(token);
   if (byHash) {
     return byHash.id;
@@ -22,7 +23,11 @@ export function resolveIngredientId(token: string, fallback: number): number {
       return id;
     }
   }
-  return fallback;
+  return null;
+}
+
+export function ingredientRarity(id: number): number | null {
+  return BY_ID.get(id)?.rarity ?? null;
 }
 
 // Rolls a rarity 1..5 using the client weights, then returns a random ingredient

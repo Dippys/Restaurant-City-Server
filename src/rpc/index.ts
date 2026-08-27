@@ -25,7 +25,7 @@ export async function buildResponse(buf: Buffer, account: ActiveAccount): Promis
 
     for (const sub of req.subs) {
       const responder = responders[sub.msgType];
-      const body = responder ? await responder(sub, account) : null;
+      const body = responder ? await responder({ ...sub, session: req.session }, account) : null;
 
       if (body !== null) {
         parts.push(writeU8(sub.msgType), writeVarint(body.length), body);

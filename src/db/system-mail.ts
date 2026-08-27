@@ -8,10 +8,10 @@ import {
 } from './defaults';
 import { dailyBonusIngredientIds } from './ingredient-catalog';
 import type { ActiveAccount } from '../session';
+import { enqueueLiveMail } from '../live-events';
 
 // Client mail type ids (see com.playfish.rpc.cooking.RpcClient in the SWF).
 const MAIL_TYPE_QUIZZ = 2;
-const MAIL_TYPE_GIFT = 4;
 const MAIL_TYPE_DAILYINGREDIENT = 5;
 
 // The daily-bonus streak grants 1..5 ingredients on consecutive days, then cycles
@@ -124,6 +124,7 @@ async function deliverMail(params: DeliverMailParams): Promise<void> {
       type: params.type,
     },
   });
+  enqueueLiveMail(recipientUid, params.type);
 }
 
 // Records that a given once-per-day grant has happened. Returns true only the
@@ -147,15 +148,22 @@ async function grantExists(recipientProfileId: string, kind: string, dayKey: str
   return found !== null;
 }
 
-// Delivers a server-generated gift ingredient. UID 1 is permanent, unlike the
-// legacy profile-only NPC friends that production cleanup is allowed to purge.
+// Delivers an explicit NPC response gift. This is not part of daily login
+// content: generating one there produced a second ingredient reward whose
+// synthetic UID 1 sender cannot be rendered as a social friend by the client.
 export async function sendNpcGift(recipient: ActiveAccount, _npcNetworkUid?: string): Promise<void> {
   await ensureSystemProfile();
+  const npcProfile = _npcNetworkUid
+    ? await prisma.userProfile.findUnique({ where: { id: profileKey(_npcNetworkUid) }, select: { networkUid: true, playfishUid: true } })
+    : null;
+  const sender = npcProfile
+    ? { networkUid: npcProfile.networkUid, playfishUid: npcProfile.playfishUid }
+    : SYSTEM_SENDER;
   const giftIngredient = dailyBonusIngredientIds(1)[0] ?? pick(DAILY_INGREDIENT_POOL);
   await deliverMail({
-    sender: SYSTEM_SENDER,
+    sender,
     recipient,
-    type: MAIL_TYPE_GIFT,
+    type: 4,
     globalItemIds: [giftIngredient],
     message: '',
   });
@@ -163,7 +171,7 @@ export async function sendNpcGift(recipient: ActiveAccount, _npcNetworkUid?: str
 }
 
 // Idempotently generates all once-per-day server content for a player: the daily
-// quiz mail, the daily free-ingredient bonus, an NPC gift, and an occasional NPC
+// quiz mail, the daily free-ingredient bonus, and an occasional NPC
 // rank. Safe to call on every init/getMails — grants fire at most once per day.
 export async function ensureDailyContent(account: ActiveAccount): Promise<void> {
   await ensureSystemProfile();
@@ -189,10 +197,6 @@ export async function ensureDailyContent(account: ActiveAccount): Promise<void> 
     for (const ingredientId of bonus) {
       await grantMailItem(account.networkUid, ingredientId);
     }
-  }
-
-  if (await claimDailyGrant(recipientProfileId, 'npcGift', dayKey)) {
-    await sendNpcGift(account);
   }
 
   if (await claimDailyGrant(recipientProfileId, 'npcRank', dayKey)) {

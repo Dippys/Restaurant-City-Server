@@ -77,8 +77,10 @@
   </footer>
 </div>
 <script>
-// Already signed in? No reason to be here — send them to the game.
-fetch('/__api/session').then(r=>r.json()).then(s=>{ if(s.loggedIn) location.replace('/game'); }).catch(()=>{});
+function safeReturnPath(value){if(!value||!value.startsWith('/')||value.startsWith('//')||value.includes('\\')||/[\u0000-\u001f]/.test(value))return '/game';try{const u=new URL(value,location.origin);return u.origin===location.origin?u.pathname+u.search+u.hash:'/game'}catch{return '/game'}}
+const requestedNext=new URLSearchParams(location.search).get('next');const safeNext=safeReturnPath(requestedNext);
+// An already signed-in visitor must retain a social-link destination.
+fetch('/__api/session').then(r=>r.json()).then(s=>{ if(s.loggedIn) location.replace(safeNext); }).catch(()=>{});
 // PIN fields accept digits only (keyboard + paste sanitised).
 for (const field of document.querySelectorAll('.rc-pin-input')) {
   field.addEventListener('keydown', (event) => {
@@ -87,7 +89,6 @@ for (const field of document.querySelectorAll('.rc-pin-input')) {
   field.addEventListener('input', () => { field.value = field.value.replace(/\D/g, ''); });
 }
 const signup=location.pathname==='/signup', loginForm=document.querySelector('#loginForm'), signupForm=document.querySelector('#signupForm'); if(signup){loginForm.classList.add('hidden');signupForm.classList.remove('hidden')}
-const next=new URLSearchParams(location.search).get('next'); const safeNext=next&&next.startsWith('/')&&!next.startsWith('//')?next:'/game';
 for(const [form,path] of [[loginForm,'/__api/login'],[signupForm,'/__api/signup']]) form.addEventListener('submit',async e=>{e.preventDefault();const error=form.querySelector('.error');error.textContent='';const button=form.querySelector('button');button.disabled=true;const data=Object.fromEntries(new FormData(form));delete data.accept;try{const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Request failed');location.replace(safeNext)}catch(err){error.textContent=err.message||String(err);button.disabled=false}});
 </script>
 </body>

@@ -105,8 +105,9 @@
   // the enter/exit decisions from document.fullscreenElement.
   window.rcIsFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
   window.rcExitFullscreen = () => {
+    if (!window.rcIsFullscreen()) return;
     const exit = document.exitFullscreen || document.webkitExitFullscreen;
-    if (exit) exit.call(document);
+    if (exit) Promise.resolve(exit.call(document)).catch(() => {});
   };
   window.rcToggleFullscreen = () => {
     if (window.rcIsFullscreen()) {
@@ -151,8 +152,116 @@ const main = document.getElementById("main");
 const statusEl = document.getElementById("accountStatus");
 const logoutButton = document.getElementById("logoutButton");
 let csrfToken = "";
+window.rcSocialCsrf = "";
 const instanceId = crypto.randomUUID();
 let claimTimer = null;
+
+// ADR-0022 Ruffle bridge. Existing in-game feed/invite actions terminate in
+// this browser modal instead of an obsolete Facebook iframe. The selected
+// game intent comes from Flash; validation and reward authority stay server-side.
+function rcFlashCallback(success) {
+  const player = document.querySelector("ruffle-object,ruffle-player,object");
+  try { if (typeof player?.sendToActionScript === "function") player.sendToActionScript([Boolean(success)]); } catch {}
+}
+
+function rcUnwrap(value) {
+  let current = value;
+  while (Array.isArray(current) && current.length === 1) current = current[0];
+  return current;
+}
+
+function rcJson(value, fallback) {
+  try { return typeof value === "string" ? JSON.parse(value) : value || fallback; } catch { return fallback; }
+}
+
+function rcLegacyFeedTemplate(raw) {
+  const stream = rcUnwrap(raw);
+  if (!Array.isArray(stream) || stream.length < 2 || stream.length > 6) throw new Error("Unsupported legacy feed shape.");
+  const attachment = rcJson(stream[1], {});
+  const links = rcJson(stream[2], []);
+  const hrefs = [attachment?.href, ...(attachment?.media || []).map((item) => item?.href), ...(Array.isArray(links) ? links.map((item) => item?.href) : [])].filter((value) => typeof value === "string");
+  const foodKingUrl = hrefs.find((href) => href.includes("/foodking?") && href.includes("pf_i_id="));
+  if (foodKingUrl) return { kind: "foodKingReward", legacyUrl: foodKingUrl };
+  const mediaSources = (attachment?.media || []).map((item) => String(item?.src || ""));
+  const ingredient = mediaSources.map((src) => src.match(/\/(4\d{6})\.png(?:$|[?#])/)).find(Boolean);
+  if (ingredient) return { kind: "ingredientRequest", ingredientId: Number(ingredient[1]) };
+  // Level-ups, level-10 dishes, awards, arcade results and special-day shares
+  // are non-claiming authoritative announcement templates on the replacement.
+  return { kind: "achievement", source: "legacy-feed" };
+}
+
+async function rcCreateSocialLink(template) {
+  const response = await fetch("/__api/social-links", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": window.rcSocialCsrf || "" },
+    body: JSON.stringify(template),
+  });
+  if (response.status === 401) {
+    location.href = "/login?next=" + encodeURIComponent("/game");
+    throw new Error("Your session expired. Redirecting to login…");
+  }
+  const result = await response.json();
+  if (!response.ok || !result.ok) throw new Error(result.error || "Could not create social link.");
+  let state = null;
+  try {
+    const prepared = await fetch(`/__api/social-links/${encodeURIComponent(result.slug)}`, { headers: { "Accept": "application/json" } });
+    const body = await prepared.json();
+    if (prepared.ok && body.ok) state = body.link;
+  } catch {}
+  return { url: new URL(result.url, location.origin).href, state };
+}
+
+function rcSocialOverlay(template) {
+  let link = "";
+  let finished = false;
+  const overlay = document.createElement("div");
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "rcSocialTitle");
+  overlay.style.cssText = "position:fixed;inset:0;z-index:1001;background:rgba(5,15,22,.88);display:grid;place-items:center;padding:20px";
+  overlay.innerHTML = `<section class="rc-panel" style="width:min(580px,100%);text-align:left"><p style="margin:0 0 6px;color:#49b675;font-weight:800;text-transform:uppercase;letter-spacing:.08em;font-size:12px">Prepared in Restaurant City</p><h2 id="rcSocialTitle" style="margin-top:0">Share your link</h2><p id="rcSocialState" aria-live="polite">Validating your in-game selection…</p><div id="rcSocialPreview" class="hidden" style="display:grid;grid-template-columns:112px 1fr;gap:14px;align-items:center;margin:15px 0;padding:12px;border:1px solid rgba(73,182,117,.35);border-radius:14px;background:rgba(255,255,255,.72)"><img id="rcSocialImage" alt="" style="width:112px;height:86px;object-fit:contain;border-radius:10px;background:#e8f4ed"><div><h3 id="rcSocialPreparedTitle" style="margin:0 0 5px"></h3><p id="rcSocialDescription" style="margin:0;line-height:1.45"></p></div></div><label style="display:block;font-weight:700;margin:14px 0 6px" for="rcSocialUrl">Prepared link</label><input id="rcSocialUrl" class="rc-input" readonly aria-label="Prepared shareable link"><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button id="rcSocialCopy" class="rc-btn green" disabled>Copy Link</button><button id="rcSocialShare" class="rc-btn ghost hidden" disabled>Share…</button><button id="rcSocialRetry" class="rc-btn ghost hidden">Retry</button><button id="rcSocialClose" class="rc-btn">Cancel</button></div></section>`;
+  document.body.append(overlay);
+  const status = overlay.querySelector("#rcSocialState"), input = overlay.querySelector("#rcSocialUrl"), copy = overlay.querySelector("#rcSocialCopy"), share = overlay.querySelector("#rcSocialShare"), retry = overlay.querySelector("#rcSocialRetry"), close = overlay.querySelector("#rcSocialClose"), preview = overlay.querySelector("#rcSocialPreview"), image = overlay.querySelector("#rcSocialImage"), preparedTitle = overlay.querySelector("#rcSocialPreparedTitle"), description = overlay.querySelector("#rcSocialDescription");
+  const create = async () => {
+    retry.classList.add("hidden"); preview.classList.add("hidden"); status.textContent = "Validating your in-game selection…";
+    try {
+      const prepared = await rcCreateSocialLink(template);
+      link = prepared.url;
+      input.value = link; copy.disabled = false; finished = true;
+      if (prepared.state) {
+        image.src = prepared.state.imagePath; preparedTitle.textContent = prepared.state.title; description.textContent = prepared.state.description;
+        preview.classList.remove("hidden");
+      }
+      status.textContent = "Your link is ready. Copy it and send it through Discord or any chat.";
+      if (navigator.share) { share.classList.remove("hidden"); share.disabled = false; }
+      rcFlashCallback(true); close.textContent = "Close"; copy.focus();
+    } catch (error) {
+      status.textContent = error.message || String(error); retry.classList.remove("hidden"); close.textContent = "Close";
+    }
+  };
+  copy.onclick = async () => { try { await navigator.clipboard.writeText(link); status.textContent = "Link copied. Paste it into Discord or any chat."; } catch { input.select(); document.execCommand("copy"); status.textContent = "Link selected—copy it now."; } };
+  share.onclick = () => navigator.share({ title: "Restaurant City Reborn", url: link }).catch(() => {});
+  retry.onclick = create;
+  close.onclick = () => { if (!finished) rcFlashCallback(false); overlay.remove(); };
+  overlay.addEventListener("keydown", (event) => { if (event.key === "Escape") close.click(); });
+  create();
+}
+
+window.addStream = (...args) => { try { rcSocialOverlay(rcLegacyFeedTemplate(args)); } catch { rcSocialOverlay({ kind: "achievement", source: "legacy-feed" }); } };
+window.addFeedSystem = window.addStream;
+window.addInviteFriendsIFrame = () => rcSocialOverlay({ kind: "friendInvite" });
+window.addInviteStickersIFrame = (...args) => {
+  const values = rcUnwrap(args); const itemId = Number(Array.isArray(values) ? values[0] : values);
+  if (!Number.isSafeInteger(itemId)) return rcFlashCallback(false);
+  rcSocialOverlay({ kind: "employeeSnack", itemId });
+};
+window.addSendGiftIFrame = (...args) => {
+  const values = rcUnwrap(args); const itemId = Number(Array.isArray(values) ? values[0] : values);
+  if (!Number.isSafeInteger(itemId)) return rcFlashCallback(false);
+  rcSocialOverlay({ kind: "directGift", itemId, quantity: 1 });
+};
+// Obsolete non-social Facebook surfaces complete without opening UI.
+window.addBookmark = window.callBookmark = window.addPermission = () => rcFlashCallback(false);
 
 init();
 
@@ -161,6 +270,7 @@ async function init() {
     const session = await requestJson("/__api/session");
     if (session.loggedIn && session.account) {
       csrfToken = session.csrfToken || "";
+      window.rcSocialCsrf = csrfToken;
       // Claim this game instance: only the newest instance may run (hard kick).
       try {
         await requestJson("/__api/game/claim", {

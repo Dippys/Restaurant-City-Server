@@ -8,6 +8,7 @@ import {
   addAdminOwnedItem,
   createAdminGameEvent,
   createAdminMail,
+  createAdminMails,
   createAdminUser,
   deleteAdminEmployee,
   deleteAdminFloor,
@@ -24,6 +25,7 @@ import {
   itemCatalog,
   listEconomy,
   listAdminUsers,
+  listEnabledAccountNetworkUids,
   resetAdminDatabase,
   updateAdminMail,
   updateAdminOwnedItem,
@@ -49,6 +51,8 @@ import { writeString } from './rpc/codec';
 import { accountFromRequest, accountFromUsername, clientIp, logoutCookie, requestIsSecure, sessionCookie } from './session';
 import type { ActiveAccount } from './session';
 import { enqueueGlobalLiveEvent, enqueueLiveEvent, listOnlineUsers, LIVE_EVENT_ALERT } from './live-events';
+import { actOnLink, adminLifecycle, adminLinkDetail, cancelPlayerLink, createAdminLink, createPlayerLink, listAdminLinks, publicLink, socialImageTarget, sweepExpiredEscrow } from './social-links/service';
+import { renderSocialLanding } from './social-links/landing';
 
 const CROSSDOMAIN = [
   '<?xml version="1.0"?>',
@@ -81,7 +85,9 @@ export function createServer(config: ServerConfig): RestaurantCityServer {
   });
 
   purgeExpiredSessions().catch((error) => console.error('Session cleanup failed:', error));
-
+  sweepExpiredEscrow().catch((error) => console.error('Social escrow cleanup failed:', error));
+  const socialSweep = setInterval(() => sweepExpiredEscrow().catch((error) => console.error('Social escrow cleanup failed:', error)), 60_000);
+  socialSweep.unref();
   return { httpServer, staticFiles, requestLog };
 }
 
@@ -117,6 +123,28 @@ async function handleRequest(
   if (pathname === '/login' || pathname === '/signup') {
     serveHtml(config, res, 'auth.html');
     return;
+  }
+
+  const socialPage = pathname.match(/^\/s\/([A-Za-z0-9_-]{32})$/);
+  if (socialPage && (req.method === 'GET' || req.method === 'HEAD')) {
+    const account = await accountFromRequest(req);
+    const state = await publicLink(socialPage[1], account);
+    if (!state) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(req.method === 'HEAD' ? undefined : 'Social link not found.'); return; }
+    const origin = publicOrigin(req);
+    const html = renderSocialLanding(state, origin, account?.csrfToken ?? '');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=30' });
+    res.end(req.method === 'HEAD' ? undefined : html);
+    return;
+  }
+
+  const socialImage = pathname.match(/^\/s\/([A-Za-z0-9_-]{32})\/image\.png$/);
+  if (socialImage && (req.method === 'GET' || req.method === 'HEAD')) {
+    const target = await socialImageTarget(socialImage[1]);
+    const stored = target ? await latestStoredImage(target.networkUid, target.imageType) : null;
+    if (!stored) { res.writeHead(302, { Location: '/assets/building.png', 'Cache-Control': 'public, max-age=60' }); res.end(); return; }
+    const png = encodeArgbPng(stored.data, stored.width, stored.height);
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': png.length, 'Cache-Control': 'public, max-age=300', 'X-Robots-Tag': 'noindex' });
+    res.end(req.method === 'HEAD' ? undefined : png); return;
   }
 
   if (pathname === '/terms' || pathname === '/privacy' || pathname === '/cookies' || pathname === '/community-guidelines') {
@@ -244,6 +272,73 @@ async function handleRequest(
       csrfToken: account?.csrfToken || null,
     });
     return;
+  }
+
+  const socialState = pathname.match(/^\/__api\/social-links\/([A-Za-z0-9_-]{32})$/);
+  if (socialState && req.method === 'GET') {
+    const state = await publicLink(socialState[1], await accountFromRequest(req));
+    if (!state) { sendJson(res, { ok: false, error: 'Social link not found.' }, 404); return; }
+    sendJson(res, { ok: true, link: state });
+    return;
+  }
+
+  if (pathname === '/__api/social-links' && req.method === 'POST') {
+    const account = await requireMutation(req, res); if (!account) return;
+    try {
+      enforceSocialRateLimit('create', clientIp(req), 20, 60_000);
+      sendJson(res, { ok: true, ...(await createPlayerLink(account, parseJsonBody(body))) }, 201);
+    } catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, error instanceof RateLimitError ? 429 : 400); }
+    return;
+  }
+
+  const socialAction = pathname.match(/^\/__api\/social-links\/([A-Za-z0-9_-]{32})\/actions$/);
+  if (socialAction && req.method === 'POST') {
+    const account = await requireMutation(req, res); if (!account) return;
+    try {
+      enforceSocialRateLimit('action', `${clientIp(req)}:${account.id}`, 60, 60_000);
+      const input = parseJsonBody<{ action?: string; idempotencyKey?: string }>(body);
+      const key = String(req.headers['idempotency-key'] || input.idempotencyKey || '');
+      const result = await actOnLink(socialAction[1], account, String(input.action || ''), key);
+      sendJson(res, result, result.ok ? 200 : result.code === 'ALREADY_DONE' ? 409 : 400);
+    } catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, error instanceof RateLimitError ? 429 : 400); }
+    return;
+  }
+
+  const socialCancel = pathname.match(/^\/__api\/social-links\/([A-Za-z0-9_-]{32})\/cancel$/);
+  if (socialCancel && req.method === 'POST') {
+    const account = await requireMutation(req, res); if (!account) return;
+    try { enforceSocialRateLimit('action', `${clientIp(req)}:${account.id}`, 60, 60_000); await cancelPlayerLink(socialCancel[1], account); sendJson(res, { ok: true }); }
+    catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, error instanceof RateLimitError ? 429 : 400); }
+    return;
+  }
+
+  if (pathname === '/__api/admin/social-links' && req.method === 'GET') {
+    if (!(await requireAdmin(req, res))) return;
+    sendJson(res, { ok: true, links: await listAdminLinks() }); return;
+  }
+  if (pathname === '/__api/admin/social-links' && req.method === 'POST') {
+    const account = await requireAdminMutation(req, res); if (!account) return;
+    try { enforceSocialRateLimit('admin', account.id || clientIp(req), 100, 60_000); sendJson(res, { ok: true, ...(await createAdminLink(account, parseJsonBody(body))) }, 201); }
+    catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, error instanceof RateLimitError ? 429 : 400); } return;
+  }
+  const adminSocial = pathname.match(/^\/__api\/admin\/social-links\/([A-Za-z0-9-]+)(?:\/(activate|pause|resume|revoke|expire|duplicate|actions))?$/);
+  if (adminSocial) {
+    if (req.method === 'GET') {
+      if (!(await requireAdmin(req, res))) return;
+      const detail = await adminLinkDetail(adminSocial[1]);
+      if (!detail) { sendJson(res, { ok: false, error: 'Social link not found.' }, 404); return; }
+      if (adminSocial[2] === 'actions' && url.searchParams.get('format') === 'csv') {
+        const rows = (detail as { actions?: Array<{ action: string; outcome: string; resultSummary: string; createdAt: Date }> }).actions ?? [];
+        const csv = ['action,outcome,result,createdAt', ...rows.map((row) => [row.action, row.outcome, row.resultSummary, row.createdAt.toISOString()].map(csvCell).join(','))].join('\n');
+        res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="social-link-${adminSocial[1]}-actions.csv"` }); res.end(csv); return;
+      }
+      sendJson(res, { ok: true, link: detail }); return;
+    }
+    if (req.method === 'PATCH' || req.method === 'POST') {
+      const account = await requireAdminMutation(req, res); if (!account) return;
+      try { enforceSocialRateLimit('admin', account.id || clientIp(req), 100, 60_000); sendJson(res, { ok: true, link: await adminLifecycle(account, adminSocial[1], adminSocial[2] || 'patch', parseJsonBody(body)) }); }
+      catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, error instanceof RateLimitError ? 429 : 400); } return;
+    }
   }
 
   // Game instance claim: the newest instance of a player's game wins; older
@@ -384,6 +479,20 @@ async function handleRequest(
     }
   }
 
+  // Ingredient social previews are packaged in their own directory. Keep this
+  // route exact instead of recursively exposing public/assets: item IDs are the
+  // only accepted path component and the generated previews are always PNGs.
+  const ingredientAssetMatch = pathname.match(/^\/assets\/ingredients\/(\d{7})\.png$/);
+  if (ingredientAssetMatch) {
+    const filename = `${ingredientAssetMatch[1]}.png`;
+    const fullPath = path.join(config.serverRoot, 'public', 'assets', 'ingredients', filename);
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      sendStaticFile(res, fullPath, 'image/png', entry, `public/assets/ingredients/${filename}`);
+      requestLog.record(entry);
+      return;
+    }
+  }
+
   const assetMatch = pathname.match(/^\/assets\/([A-Za-z0-9._-]+\.(?:png|jpg|jpeg|gif|svg|webp))$/);
   if (assetMatch) {
     const filename = assetMatch[1];
@@ -493,6 +602,36 @@ async function handleLiveApi(method: string, pathname: string, body: Buffer, res
       }
 
       sendJson(res, { ok: true, delivered, users: listOnlineUsers() });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/__api/live/mail') {
+      const input = parseJsonBody<{
+        scope?: string;
+        recipientNetworkUids?: string[];
+        senderNetworkUid?: string;
+        globalItemIds?: number[];
+        itemId?: number;
+        message?: string;
+        type?: number;
+      }>(body);
+
+      let recipientNetworkUids: string[];
+      if (input.scope === 'online') {
+        recipientNetworkUids = listOnlineUsers().map((user) => user.networkUid);
+      } else if (input.scope === 'everyone') {
+        recipientNetworkUids = await listEnabledAccountNetworkUids();
+      } else if (input.scope === 'specific') {
+        recipientNetworkUids = Array.isArray(input.recipientNetworkUids)
+          ? input.recipientNetworkUids.map(String)
+          : [];
+        if (recipientNetworkUids.length === 0) throw new Error('Choose at least one recipient.');
+      } else {
+        throw new Error('Choose Online players, Everyone, or Specific people.');
+      }
+
+      const result = await createAdminMails({ ...input, recipientNetworkUids });
+      sendJson(res, { ok: true, ...result, users: listOnlineUsers() });
       return;
     }
 
@@ -830,6 +969,24 @@ function sendJson(res: ServerResponse, value: unknown, status = 200): void {
   res.end(JSON.stringify(value));
 }
 
+function publicOrigin(req: IncomingMessage): string {
+  const configured = String(process.env.RC_PUBLIC_ORIGIN || '').replace(/\/$/, '');
+  if (configured) return configured;
+  return `${requestIsSecure(req) ? 'https' : 'http'}://${req.headers.host || 'localhost:8090'}`;
+}
+
+function csvCell(value: unknown): string {
+  return `"${String(value ?? '').replace(/"/g, '""')}"`;
+}
+
+const socialRateLimits = new Map<string, { count: number; resetAt: number }>();
+function enforceSocialRateLimit(bucket: string, identity: string, maximum: number, windowMs: number): void {
+  const now = Date.now(); const key = `${bucket}:${identity}`; const prior = socialRateLimits.get(key);
+  if (!prior || prior.resetAt <= now) { socialRateLimits.set(key, { count: 1, resetAt: now + windowMs }); return; }
+  if (prior.count >= maximum) throw new RateLimitError('Too many social-link requests. Try again shortly.');
+  prior.count += 1;
+}
+
 function serveHtml(config: ServerConfig, res: ServerResponse, filename: string): void {
   const html = fs.readFileSync(path.join(config.serverRoot, 'public', filename));
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -899,7 +1056,7 @@ async function requireAdminMutationForMethod(req: IncomingMessage, res: ServerRe
 
 function sameOrigin(req: IncomingMessage): boolean {
   const origin = req.headers.origin;
-  if (!origin) return true;
+  if (!origin) return req.headers['sec-fetch-site'] === 'same-origin';
   try {
     const parsed = new URL(origin);
     return parsed.host === req.headers.host;
