@@ -8,16 +8,18 @@ import * as economy from './views/economy.js';
 import * as game from './views/game.js';
 import * as assets from './views/assets.js';
 import * as socialLinks from './views/social-links.js';
+import * as anomalies from './views/anomalies.js';
 const NAV = [
     { id: 'overview', label: 'Overview' },
     { id: 'traffic', label: 'Traffic' },
     { id: 'users', label: 'Players' },
+    { id: 'anomalies', label: 'Anomalies' },
     { id: 'economy', label: 'Economy' },
     { id: 'game', label: 'Game tools' },
     { id: 'social-links', label: 'Social links' },
     { id: 'assets', label: 'Assets' },
 ];
-const VIEWS = { overview, traffic, users, economy, game, 'social-links': socialLinks, assets };
+const VIEWS = { overview, traffic, users, anomalies, economy, game, 'social-links': socialLinks, assets };
 function navId() {
     const id = (location.hash.match(/^#\/([a-z-]+)/) ?? [])[1] ?? 'overview';
     return VIEWS[id] ? id : 'overview';

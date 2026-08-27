@@ -323,6 +323,136 @@ model CashTransaction {
   @@index([userProfileId, createdAt])
 }
 
+// ADR-0034: server-owned moderation evidence. These tables are deliberately
+// additive and do not participate in the PlayFish RPC wire format.
+model PlayerActivity {
+  accountId          String   @id
+  networkUid         String   @unique
+  firstSeenAt        DateTime @default(now())
+  lastSeenAt         DateTime @default(now())
+  lastLoginAt        DateTime @default(now())
+  totalActiveSeconds Int      @default(0)
+  loginCount         Int      @default(0)
+  requestCount       Int      @default(0)
+  rpcCount           Int      @default(0)
+  saveCount          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([lastSeenAt])
+}
+
+model ProfileSnapshot {
+  id             String   @id
+  networkUid     String
+  reason         String
+  label          String   @default("")
+  payloadVersion Int      @default(1)
+  payloadJson    String
+  payloadDigest  String
+  userLevel      Int
+  gourmetPoint   Int
+  credits        Int
+  cashBalance    Int
+  placedItems    Int
+  inventoryUnits Int
+  ingredientUnits Int
+  employeeCount  Int
+  createdByAccountId String?
+  createdAt      DateTime @default(now())
+
+  @@index([networkUid, createdAt])
+  @@index([payloadDigest])
+}
+
+model ProfileSaveFact {
+  id                Int      @id @default(autoincrement())
+  networkUid        String
+  snapshotId        String?
+  saveVersion       Int
+  clientTime        Int
+  previousClientTime Int
+  serverDeltaSeconds Int
+  clientDeltaSeconds Int
+  previousCredits   Int
+  credits           Int
+  creditDelta       Int
+  previousGourmet   Int
+  gourmetPoint      Int
+  gourmetDelta      Int
+  previousLevel     Int
+  userLevel         Int
+  actionCount       Int
+  unknownActionCount Int
+  actionCountsJson  String   @default("{}")
+  placedItems       Int
+  inventoryUnits    Int
+  ingredientUnits   Int
+  employeeCount     Int
+  gardenPlotCount   Int
+  selectedRecipeCount Int
+  createdAt         DateTime @default(now())
+
+  @@index([networkUid, createdAt])
+  @@index([snapshotId])
+}
+
+model AnomalyFinding {
+  id              String   @id
+  fingerprint     String   @unique
+  networkUid      String
+  ruleId          String
+  severity        String
+  score           Int
+  title           String
+  summary         String
+  evidenceJson    String
+  evidenceVersion Int      @default(1)
+  notifiedVersion Int      @default(0)
+  status          String   @default("OPEN")
+  occurrenceCount Int      @default(1)
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  resolvedAt      DateTime?
+  reviewedAt      DateTime?
+  reviewedByAccountId String?
+  reviewNote      String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([networkUid, status, lastSeenAt])
+  @@index([status, severity, score])
+  @@index([notifiedVersion, evidenceVersion])
+}
+
+model ModerationAction {
+  id                String   @id
+  targetNetworkUid  String
+  actorAccountId    String?
+  actorUsername     String   @default("system")
+  actionType        String
+  reason            String
+  snapshotId        String?
+  detailsJson       String   @default("{}")
+  createdAt         DateTime @default(now())
+
+  @@index([targetNetworkUid, createdAt])
+  @@index([actionType, createdAt])
+}
+
+model ModerationScan {
+  id               Int      @id @default(autoincrement())
+  startedAt        DateTime @default(now())
+  completedAt      DateTime?
+  profilesScanned  Int      @default(0)
+  findingsCreated  Int      @default(0)
+  findingsUpdated  Int      @default(0)
+  findingsResolved Int      @default(0)
+  discordAttempted Boolean  @default(false)
+  discordSent      Boolean  @default(false)
+  discordError     String   @default("")
+}
+
 // Idempotency marker for once-per-day server-generated content (daily quiz mail,
 // daily free-ingredient bonus, NPC gifts/ranks). One row per (player, kind, day).
 model SystemGrant {

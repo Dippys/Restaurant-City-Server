@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { prisma } from './client';
 import type { ActiveAccount } from '../session';
 import { accountFromUsername, cleanPersonName, cleanPin, cleanUsername, hashSessionToken, newCsrfToken, newSessionToken } from '../session';
+import { recordLoginActivity } from '../moderation/service';
 
 const scrypt = promisify(nodeScrypt);
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -98,6 +99,7 @@ async function createSession(account: { id: string; username: string; firstName:
   // login elsewhere immediately invalidates every older session, so the other
   // device's next request gets 401 and its game instance dies.
   await prisma.session.deleteMany({ where: { accountId: account.id, id: { not: session.id } } }).catch(() => undefined);
+  await recordLoginActivity({ id: account.id, networkUid: account.networkUid });
 
   return { account: toActiveAccount(account, csrfToken, session.id), rawToken };
 }

@@ -1,6 +1,7 @@
 import type { Employee, FriendVisit, GardenPlot, IngredientInventory, InventoryItem, OwnedItem, RestaurantFloor, UserProfile } from '@prisma/client';
 import { prisma } from './client';
 import { pricePurchases } from './purchase-pricing';
+import { sanitizeActiveFloorIndex } from './layouts';
 import {
   FACEBOOK_NETWORK,
   PLAYER_NETWORK_UID,
@@ -18,6 +19,7 @@ import {
 import type { ActiveAccount } from '../session';
 import { hiredFriendRosterNetworkUids, ownerFirst } from '../rpc/friend-roster';
 import { gardenIngredientForSeed } from '../rpc/garden-plot';
+import { capturePreSaveSnapshotTx, recordAcceptedSaveTx, scanPlayer } from '../moderation/service';
 
 export type StoredProfile = UserProfile & {
   ownedItems: OwnedItem[];
@@ -93,6 +95,10 @@ export interface SaveAuditData {
   readonly visitedFriends: readonly NetworkUidData[];
   /** Coin purchases recorded from the audit (ADR-0035); empty/absent when none. */
   readonly purchases?: readonly PurchaseAuditData[];
+  /** ADR-0034: compact evidence about the client-supplied audit envelope. */
+  readonly actionCount?: number;
+  readonly unknownActionCount?: number;
+  readonly actionTypeCounts?: Readonly<Record<string, number>>;
 }
 
 export interface SaveFence {
@@ -217,10 +223,70 @@ const STARTER_RESTAURANT_DOOR_RECOVERY_SLOT = (() => {
 })();
 const COLLISION_RECOVERY_SLOTS = [...STARTER_FACADE_RECOVERY_SLOTS, STARTER_RESTAURANT_DOOR_RECOVERY_SLOT];
 
+/**
+ * ADR-0039: fixes OwnedItem rows whose primary key `id` is out of sync with
+ * their `serverId`. Legacy rows can hold `…:owned:<negative>` ids while
+ * `serverId` was renumbered to a positive value, so a later client session
+ * that generates that same negative local uid collides on the `id` unique
+ * constraint during `ownedItem.upsert()` (the "Unique constraint failed on
+ * the fields: (id)" save crash). When the correct deterministic id
+ * (`owned:<serverId>`) is already taken, the row is renumbered to a fresh
+ * positive pair. Returns the number of rows repaired.
+ */
+export async function repairOwnedItemKeyMismatches(
+  tx: any,
+  networkUid: string,
+  profileId: string,
+): Promise<number> {
+  const rows: Array<{ id: string; serverId: number }> = await tx.ownedItem.findMany({
+    where: { userProfileId: profileId },
+    select: { id: true, serverId: true },
+  });
+  const mismatched = rows.filter((row) => row.id !== ownedItemKey(networkUid, row.serverId));
+  if (mismatched.length === 0) {
+    return 0;
+  }
+
+  const usedIds = new Set(rows.map((row) => row.id));
+  const usedServerIds = new Set(rows.map((row) => row.serverId));
+  let nextServerId = rows.reduce((max, row) => Math.max(max, row.serverId), 0) + 1;
+
+  for (const row of mismatched) {
+    const correctId = ownedItemKey(networkUid, row.serverId);
+    if (!usedIds.has(correctId)) {
+      // Raw SQL on purpose: Prisma's update() would auto-bump @updatedAt,
+      // which changes the delivery's newest-kept façade ordering.
+      await tx.$executeRaw`UPDATE "OwnedItem" SET "id" = ${correctId} WHERE "id" = ${row.id}`;
+      usedIds.delete(row.id);
+      usedIds.add(correctId);
+    } else {
+      while (usedIds.has(ownedItemKey(networkUid, nextServerId)) || usedServerIds.has(nextServerId)) {
+        nextServerId += 1;
+      }
+      const freshId = ownedItemKey(networkUid, nextServerId);
+      await tx.$executeRaw`UPDATE "OwnedItem" SET "id" = ${freshId}, "serverId" = ${nextServerId} WHERE "id" = ${row.id}`;
+      usedIds.delete(row.id);
+      usedIds.add(freshId);
+      usedServerIds.add(nextServerId);
+      nextServerId += 1;
+    }
+  }
+  return mismatched.length;
+}
+
+/** Standalone per-profile repair (used by the migration script). */
+export async function repairOwnedItemKeyMismatchesForProfile(networkUid: string): Promise<number> {
+  const profileId = profileKey(networkUid);
+  return prisma.$transaction((tx) => repairOwnedItemKeyMismatches(tx, networkUid, profileId));
+}
+
 export async function prepareOwnedItemsForProfileDelivery(networkUid: string): Promise<boolean> {
   const profileId = profileKey(networkUid);
   return prisma.$transaction(async (tx) => {
     let changed = false;
+    // ADR-0039: stale negative ids must not collide with fresh client uids.
+    const repairedKeys = await repairOwnedItemKeyMismatches(tx, networkUid, profileId);
+    if (repairedKeys > 0) changed = true;
     const placed = await tx.ownedItem.findMany({
       where: { userProfileId: profileId },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { serverId: 'desc' }],
@@ -424,7 +490,8 @@ export async function savePlayerProfile(
   const profileId = profileKey(profile.id.networkUid);
   await ensureProfile(profile.id.networkUid || PLAYER_NETWORK_UID);
 
-  return prisma.$transaction(async (tx): Promise<SaveResult> => {
+  const acceptedAt = new Date();
+  const result = await prisma.$transaction(async (tx): Promise<SaveResult> => {
     if (fence.authSessionId) {
       const claimed = await tx.session.updateMany({
         where: {
@@ -457,7 +524,11 @@ export async function savePlayerProfile(
 
     const current = await tx.userProfile.findUniqueOrThrow({ where: { id: profileId } });
     const saneUserLevel = boundedIntOrFallback(profile.userLevel, current.userLevel, 1, 99);
-    const saneActiveFloorIndex = boundedIntOrFallback(profile.activeFloorIndex, current.activeFloorIndex, 0, 8);
+    // ADR-0038: the client stores activeFloorIndex as layout*2 (0/2/4) and
+    // gates layouts by level; clamp modified-client values to the unlocked
+    // layouts so a profile cannot hold an unearned or unrenderable layout.
+    const saneActiveFloorIndex = sanitizeActiveFloorIndex(profile.activeFloorIndex, current.activeFloorIndex, saneUserLevel);
+    const snapshotId = await capturePreSaveSnapshotTx(tx, profile.id.networkUid, audit.saveVersion);
 
     // ADR-0035: the client never sends purchase credit deltas, so the server
     // prices purchases from game data. An unpriced/invalid purchase or an
@@ -501,6 +572,12 @@ export async function savePlayerProfile(
     for (const serverId of audit.removeOwnedItemIds) {
       await tx.ownedItem.deleteMany({ where: { userProfileId: profileId, serverId } });
     }
+
+    // ADR-0039: stale negative ids (legacy rows whose id does not match their
+    // serverId) can collide with a fresh client uid in the create branch of
+    // the upsert below ("Unique constraint failed on the fields: (id)"), which
+    // previously aborted the whole save. Repair them before upserting.
+    await repairOwnedItemKeyMismatches(tx, profile.id.networkUid, profileId);
 
     for (const item of audit.upsertOwnedItems) {
       await tx.ownedItem.upsert({
@@ -639,8 +716,27 @@ export async function savePlayerProfile(
 
     await repairProfileStateInTransaction(tx, profile.id.networkUid, profileId, true);
 
+    await recordAcceptedSaveTx(tx, {
+      networkUid: profile.id.networkUid,
+      saveVersion: audit.saveVersion,
+      clientTime: audit.timeOnClient,
+      previousCredits: current.credits,
+      credits: nextCredits,
+      previousGourmet: current.gourmetPoint,
+      gourmetPoint: profile.gourmetPoint,
+      previousLevel: current.userLevel,
+      userLevel: saneUserLevel,
+      audit,
+      snapshotId,
+      acceptedAt,
+    });
+
     return { status: 'saved', savedVersion: audit.saveVersion };
   });
+  if (result.status === 'saved') {
+    await scanPlayer(profile.id.networkUid).catch((error) => console.error('Post-save moderation scan failed:', error));
+  }
+  return result;
 }
 
 interface EnsureProfileOptions {

@@ -24,3 +24,8 @@ export function activeGameInstance(networkUid: string): string | null {
   }
   return entry.instanceId;
 }
+
+/** Immediately invalidate a player's current browser game claim. */
+export function terminateGameInstance(networkUid: string): boolean {
+  return activeInstances.delete(networkUid);
+}

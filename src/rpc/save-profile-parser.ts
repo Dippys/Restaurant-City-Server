@@ -51,6 +51,7 @@ const ACTION_CREDIT_VISIT_FRIEND = 49;
 const ACTION_SAVE_FLOOR = 7;
 const ACTION_SAVE_FLOORS = 50;
 const ACTION_MOVE_IN_GAME_ITEMS_TO_INVENTORY = 51;
+const KNOWN_ACTIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 48, 49, 50, 51]);
 
 export interface ParsedSaveProfile {
   readonly profile: SavedProfileData;
@@ -143,6 +144,8 @@ function readAuditChanges(
   const purchases: PurchaseAuditData[] = [];
   let creditDelta = 0;
   let newCredits: number | null = null;
+  let unknownActionCount = 0;
+  const actionTypeCounts: Record<string, number> = {};
 
   let count = 0;
   [count, pos] = readVarint(body, pos);
@@ -150,6 +153,8 @@ function readAuditChanges(
   for (let i = 0; i < count; i += 1) {
     let action = 0;
     [action, pos] = readU8(body, pos);
+    actionTypeCounts[String(action)] = (actionTypeCounts[String(action)] ?? 0) + 1;
+    if (!KNOWN_ACTIONS.has(action)) unknownActionCount += 1;
 
     let actionNewCredits = 0;
     [actionNewCredits, pos] = readVarint(body, pos);
@@ -374,6 +379,9 @@ function readAuditChanges(
     deleteMailIds,
     visitedFriends,
     purchases,
+    actionCount: count,
+    unknownActionCount,
+    actionTypeCounts,
   };
 }
 

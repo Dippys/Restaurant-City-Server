@@ -54,6 +54,9 @@ import { enqueueGlobalLiveEvent, enqueueLiveEvent, listOnlineUsers, LIVE_EVENT_A
 import { actOnLink, adminLifecycle, adminLinkDetail, cancelPlayerLink, createAdminLink, createPlayerLink, listAdminLinks, publicLink, socialImageTarget, sweepExpiredEscrow } from './social-links/service';
 import { renderSocialLanding } from './social-links/landing';
 import { forceDailyIngredientSync } from './daily-ingredients/scheduler';
+import { recordRpcActivity } from './moderation/service';
+import { createManualSnapshot, moderationOverview, moderationPlayerDetail, resetProfileToStarter, reviewFinding, rollbackProfile, setPlayerBan, terminatePlayerSessions } from './moderation/service';
+import { runModerationCycle } from './moderation/scheduler';
 
 const CROSSDOMAIN = [
   '<?xml version="1.0"?>',
@@ -437,6 +440,13 @@ async function handleRequest(
     return;
   }
 
+  if (pathname.startsWith('/__api/moderation')) {
+    const actor = await requireAdminMutationForMethod(req, res);
+    if (!actor) return;
+    await handleModerationApi(config, req.method || 'GET', pathname, body, actor, res);
+    return;
+  }
+
   if (pathname.startsWith('/__api/db')) {
     if (!(await requireAdminMutationForMethod(req, res))) return;
     await handleDatabaseApi(req.method || 'GET', pathname, body, res);
@@ -543,6 +553,56 @@ async function handleRequest(
   requestLog.record(entry);
 }
 
+async function handleModerationApi(config: ServerConfig, method: string, pathname: string, body: Buffer, actor: ActiveAccount, res: ServerResponse): Promise<void> {
+  try {
+    if (method === 'GET' && pathname === '/__api/moderation') {
+      sendJson(res, { ok: true, ...(await moderationOverview()) });
+      return;
+    }
+    if (method === 'POST' && pathname === '/__api/moderation/scan') {
+      sendJson(res, { ok: true, result: await runModerationCycle(config.discordAnomalyWebhook, config.moderationSnapshotRetentionDays, config.moderationMaxSnapshotsPerPlayer) });
+      return;
+    }
+    const finding = pathname.match(/^\/__api\/moderation\/findings\/([A-Za-z0-9-]+)$/);
+    if (finding && method === 'PATCH') {
+      const input = parseJsonBody<{ status?: string; note?: string }>(body);
+      sendJson(res, { ok: true, finding: await reviewFinding(finding[1], actor, String(input.status || ''), String(input.note || '')) });
+      return;
+    }
+    const player = pathname.match(/^\/__api\/moderation\/players\/([^/]+)(?:\/(snapshots|rollback|reset|ban|unban|terminate))?$/);
+    if (player) {
+      const networkUid = decodeURIComponent(player[1]);
+      const operation = player[2] || '';
+      if (method === 'GET' && !operation) {
+        sendJson(res, { ok: true, player: await moderationPlayerDetail(networkUid) });
+        return;
+      }
+      const input = parseJsonBody<{ reason?: string; snapshotId?: string; label?: string }>(body);
+      if (method === 'POST' && operation === 'snapshots') {
+        sendJson(res, { ok: true, result: await createManualSnapshot(networkUid, actor, String(input.label || 'Manual moderation snapshot')) }); return;
+      }
+      if (method === 'POST' && operation === 'rollback') {
+        sendJson(res, { ok: true, result: await rollbackProfile(networkUid, String(input.snapshotId || ''), actor, String(input.reason || '')) }); return;
+      }
+      if (method === 'POST' && operation === 'reset') {
+        sendJson(res, { ok: true, result: await resetProfileToStarter(networkUid, actor, String(input.reason || '')) }); return;
+      }
+      if (method === 'POST' && operation === 'ban') {
+        sendJson(res, { ok: true, result: await setPlayerBan(networkUid, true, actor, String(input.reason || '')) }); return;
+      }
+      if (method === 'POST' && operation === 'unban') {
+        sendJson(res, { ok: true, result: await setPlayerBan(networkUid, false, actor, String(input.reason || '')) }); return;
+      }
+      if (method === 'POST' && operation === 'terminate') {
+        sendJson(res, { ok: true, result: await terminatePlayerSessions(networkUid, actor, String(input.reason || '')) }); return;
+      }
+    }
+    sendJson(res, { ok: false, error: 'not found' }, 404);
+  } catch (error) {
+    sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+}
+
 async function handleRpc(req: IncomingMessage, res: ServerResponse, body: Buffer, entry: CapturedRequest): Promise<void> {
   entry.kind = 'rpc';
   const account = await accountFromRequest(req);
@@ -552,6 +612,7 @@ async function handleRpc(req: IncomingMessage, res: ServerResponse, body: Buffer
     res.end(Buffer.from([0, 0, 0]));
     return;
   }
+  await recordRpcActivity(account).catch((error) => console.error('Moderation activity tracking failed:', error));
 
   let response: Buffer;
   try {

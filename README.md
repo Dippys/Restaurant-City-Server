@@ -10,6 +10,8 @@ in a modern browser via Ruffle. It does four things:
   local SQLite database.
 - **Creates safe social links** with Discord previews, explicit claims,
   transactional escrow, friendships, and administrator campaigns.
+- **Ranks explainable profile anomalies** and provides immutable rollback,
+  account-ban, and session-termination controls to administrators.
 - **Captures every request** to a live dashboard, and exposes a web UI for
   editing the database.
 
@@ -77,6 +79,10 @@ All optional, via environment variables:
 | `RC_SEED_STARTER_FRIENDS` | `false` | Set `true` only for local/demo servers that need the six legacy NPC profiles |
 | `RC_SOCIAL_DISABLED_KINDS` | empty | Comma-separated social-link kinds whose creation/actions are paused while public pages stay readable |
 | `RC_PUBLIC_ORIGIN` | request origin | Canonical HTTPS origin used for public link and Open Graph URLs |
+| `RC_DISCORD_ANOMALY_WEBHOOK` | empty | Optional Discord webhook for new or changed anomaly evidence; the secret remains environment-only |
+| `RC_MODERATION_SCAN_INTERVAL_MINUTES` | `60` | Full non-admin profile scan interval (minimum effective interval: 5 minutes) |
+| `RC_MODERATION_SNAPSHOT_RETENTION_DAYS` | `90` | Age limit for unprotected profile rollback snapshots |
+| `RC_MODERATION_MAX_SNAPSHOTS_PER_PLAYER` | `250` | Per-player count limit for unprotected rollback snapshots |
 
 ## How it works
 
@@ -156,6 +162,24 @@ Normalization updates both `OwnedItem.serverId` and its deterministic primary
 key (ADR-0027), leaving the SWF's freshly reused negative IDs available for new
 avatar/furniture saves instead of producing a Prisma unique-key failure.
 
+### Moderation and profile recovery
+
+ADR-0034 adds server-owned evidence without changing the PlayFish RPC bytes.
+Every accepted profile save records compact before/after facts and first stores
+the complete gameplay state immediately before the commit. The first scheduled
+scan gives older profiles one `INITIAL_BASELINE` snapshot. The **Anomalies**
+admin page ranks reason-coded findings and shows the exact evidence, measured
+activity since deployment, accepted-save history, rollback points, and the
+moderation audit trail. Findings never punish a player automatically.
+
+Rollback and reset are transactional, create a recovery snapshot first, retain
+account/mail/social/audit history, and revoke active sessions. Ban uses the
+existing disabled-account gate and also removes persistent and in-memory game
+state; unban is explicit. Configure `RC_DISCORD_ANOMALY_WEBHOOK` to deliver an
+idempotent `@here` digest of new or changed evidence after the startup/hourly
+scan. User-controlled text is mention-escaped, so only the digest's deliberate
+channel ping can notify members.
+
 ## Endpoints
 
 Pages and control routes served outside the RPC/asset paths:
@@ -187,6 +211,11 @@ Pages and control routes served outside the RPC/asset paths:
 | `/__api/live/online` | GET | Admin: current RPC 247 online-session roster |
 | `/__api/live/alert` | POST | Admin: enqueue a live popup for one or all online players |
 | `/__api/live/mail` | POST | Admin: type-safe mail fan-out to online, enabled, or selected players |
+| `/__api/moderation` | GET | Admin: anomaly queue, current evidence, activity, and latest scan |
+| `/__api/moderation/scan` | POST | Admin: run the full scan, Discord delivery, and snapshot cleanup now |
+| `/__api/moderation/players/:uid` | GET | Admin: one player's findings, saves, snapshots, and action history |
+| `/__api/moderation/players/:uid/{snapshots,rollback,reset,ban,unban,terminate}` | POST | Admin: recoverable moderation controls; destructive controls require a reason |
+| `/__api/moderation/findings/:id` | PATCH | Admin: review, dismiss, confirm, or reopen a finding with a note |
 | `/__api/db/...` | GET/POST/PATCH/DELETE | Admin CRUD used by the editor |
 | `/crossdomain.xml` | GET | Same-origin-only Flash policy |
 
@@ -209,6 +238,7 @@ Pages and control routes served outside the RPC/asset paths:
 | `src/db/client.ts` | Prisma client (better-sqlite3 adapter) |
 | `src/db/defaults.ts` | Seed values for new profiles and the economy |
 | `src/db/profile-store.ts` | Profile read/write and `saveProfile` application |
+| `src/moderation/` | Evidence rules, scan persistence, Discord digest, snapshots, rollback, and scheduler |
 | `src/db/rpc-store.ts` | Persistence for the remaining RPC calls |
 | `src/db/admin-store.ts` | Queries behind the `/__api/db` editor |
 | `prisma/schema.prisma` | SQLite schema |

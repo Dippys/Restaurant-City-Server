@@ -11,6 +11,10 @@ export interface ServerConfig {
   readonly rebuiltSwf: string;
   readonly maxLogEntries: number;
   readonly discordDailyIngredientsWebhook?: string;
+  readonly discordAnomalyWebhook?: string;
+  readonly moderationScanIntervalMinutes: number;
+  readonly moderationSnapshotRetentionDays: number;
+  readonly moderationMaxSnapshotsPerPlayer: number;
 }
 
 export function loadConfig(): ServerConfig {
@@ -33,7 +37,16 @@ export function loadConfig(): ServerConfig {
     rebuiltSwf: path.join(serverRoot, 'public', 'swf', 'game.swf'),
     maxLogEntries: Number(process.env.MAX_LOG_ENTRIES) || 500,
     discordDailyIngredientsWebhook: process.env.RC_DISCORD_DAILY_INGREDIENTS_WEBHOOK || undefined,
+    discordAnomalyWebhook: process.env.RC_DISCORD_ANOMALY_WEBHOOK || undefined,
+    moderationScanIntervalMinutes: positiveInt(process.env.RC_MODERATION_SCAN_INTERVAL_MINUTES, 60),
+    moderationSnapshotRetentionDays: positiveInt(process.env.RC_MODERATION_SNAPSHOT_RETENTION_DAYS, 90),
+    moderationMaxSnapshotsPerPlayer: positiveInt(process.env.RC_MODERATION_MAX_SNAPSHOTS_PER_PLAYER, 250),
   };
+}
+
+function positiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function loadEnvFile(filename: string): void {

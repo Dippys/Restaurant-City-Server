@@ -406,3 +406,41 @@ export interface DailyIngredientSyncResponse {
   attemptCount: number;
   ingredients: ReadonlyArray<{ id: number; name: string; price: number }>;
 }
+
+// ---------- moderation / anomalies ----------
+export interface AnomalyFinding {
+  id: string; networkUid: string; ruleId: string; severity: string; score: number;
+  title: string; summary: string; evidenceJson: string; evidenceVersion: number;
+  notifiedVersion: number; status: string; occurrenceCount: number;
+  firstSeenAt: string; lastSeenAt: string; resolvedAt?: string | null;
+  reviewedAt?: string | null; reviewedByAccountId?: string | null; reviewNote: string;
+}
+export interface ModerationPlayerSummary {
+  networkUid: string;
+  account: { id: string; networkUid: string; username: string; firstName: string; lastName: string; role: string; disabled: boolean; createdAt: string; lastLoginAt?: string | null; _count: { sessions: number } } | null;
+  profile: { networkUid: string; restaurantName: string; userLevel: number; gourmetPoint: number; credits: number; cashBalance: number; updatedAt: string } | null;
+  activity: { totalActiveSeconds: number; loginCount: number; requestCount: number; rpcCount: number; saveCount: number; firstSeenAt: string; lastSeenAt: string } | null;
+  riskScore: number; highestSeverity: string; openFindings: number; findings: AnomalyFinding[];
+}
+export interface ModerationOverviewResponse {
+  ok: true; players: ModerationPlayerSummary[]; onlineNetworkUids: string[];
+  latestScan?: { id: number; startedAt: string; completedAt?: string | null; profilesScanned: number; findingsCreated: number; findingsUpdated: number; findingsResolved: number; discordAttempted: boolean; discordSent: boolean; discordError: string } | null;
+}
+export interface ProfileSnapshotSummary {
+  id: string; reason: string; label: string; payloadVersion: number; payloadDigest: string;
+  userLevel: number; gourmetPoint: number; credits: number; cashBalance: number;
+  placedItems: number; inventoryUnits: number; ingredientUnits: number; employeeCount: number;
+  createdByAccountId?: string | null; createdAt: string;
+}
+export interface ProfileSaveFact {
+  id: number; saveVersion: number; clientTime: number; serverDeltaSeconds: number; clientDeltaSeconds: number;
+  previousCredits: number; credits: number; creditDelta: number; previousGourmet: number; gourmetPoint: number; gourmetDelta: number;
+  previousLevel: number; userLevel: number; actionCount: number; unknownActionCount: number; actionCountsJson: string;
+  placedItems: number; inventoryUnits: number; ingredientUnits: number; employeeCount: number; gardenPlotCount: number; selectedRecipeCount: number; createdAt: string;
+}
+export interface ModerationAction {
+  id: string; actorUsername: string; actionType: string; reason: string; snapshotId?: string | null; detailsJson: string; createdAt: string;
+}
+export interface ModerationPlayerDetail extends ModerationPlayerSummary {
+  online: boolean; snapshots: ProfileSnapshotSummary[]; saves: ProfileSaveFact[]; actions: ModerationAction[];
+}

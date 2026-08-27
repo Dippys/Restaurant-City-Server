@@ -105,6 +105,11 @@ export function enqueueGlobalLiveEvent(type: number, body: Buffer): number {
   return count;
 }
 
+/** Remove the in-memory online/event state after a moderation kick or ban. */
+export function disconnectOnlineUser(networkUid: string): boolean {
+  return users.delete(networkUid);
+}
+
 /** Notify an online client that its authoritative mailbox changed. */
 export function enqueueLiveMail(networkUid: string, mailType: number): boolean {
   pruneOfflineUsers();

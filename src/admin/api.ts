@@ -28,6 +28,9 @@ import type {
   UserMutationResponse,
   UsersResponse,
   DailyIngredientSyncResponse,
+  ModerationOverviewResponse,
+  ModerationPlayerDetail,
+  AnomalyFinding,
 } from './types.js';
 
 export class ApiError extends Error {
@@ -152,6 +155,18 @@ export const api = {
   alert: (input: { scope: string; networkUid?: string; title?: string; message: string }) => request<AlertResponse>('POST', '/__api/live/alert', input),
   sendMail: (input: BulkMailInput) => request<BulkMailResponse>('POST', '/__api/live/mail', input),
   forceDailyIngredientSync: () => request<DailyIngredientSyncResponse>('POST', '/__api/live/daily-ingredients/sync'),
+
+  // moderation
+  moderation: () => request<ModerationOverviewResponse>('GET', '/__api/moderation'),
+  moderationPlayer: (uid: string) => request<{ ok: true; player: ModerationPlayerDetail }>('GET', `/__api/moderation/players/${enc(uid)}`),
+  runModerationScan: () => request<{ ok: true; result: Record<string, number> }>('POST', '/__api/moderation/scan'),
+  reviewFinding: (id: string, input: { status: string; note: string }) => request<{ ok: true; finding: AnomalyFinding }>('PATCH', `/__api/moderation/findings/${enc(id)}`, input),
+  createModerationSnapshot: (uid: string, label: string) => request<{ ok: true; result: { snapshotId: string } }>('POST', `/__api/moderation/players/${enc(uid)}/snapshots`, { label }),
+  rollbackPlayer: (uid: string, snapshotId: string, reason: string) => request<{ ok: true; result: Record<string, unknown> }>('POST', `/__api/moderation/players/${enc(uid)}/rollback`, { snapshotId, reason }),
+  resetPlayer: (uid: string, reason: string) => request<{ ok: true; result: Record<string, unknown> }>('POST', `/__api/moderation/players/${enc(uid)}/reset`, { reason }),
+  banPlayer: (uid: string, reason: string) => request<{ ok: true; result: Record<string, unknown> }>('POST', `/__api/moderation/players/${enc(uid)}/ban`, { reason }),
+  unbanPlayer: (uid: string, reason: string) => request<{ ok: true; result: Record<string, unknown> }>('POST', `/__api/moderation/players/${enc(uid)}/unban`, { reason }),
+  terminatePlayer: (uid: string, reason: string) => request<{ ok: true; result: Record<string, unknown> }>('POST', `/__api/moderation/players/${enc(uid)}/terminate`, { reason }),
 
   socialLinks: () => request<{ ok: true; links: SocialLinkAdmin[] }>('GET', '/__api/admin/social-links'),
   socialLink: (id: string) => request<{ ok: true; link: SocialLinkAdmin }>('GET', `/__api/admin/social-links/${enc(id)}`),
