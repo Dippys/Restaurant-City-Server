@@ -77,7 +77,16 @@ export async function recordAcceptedSaveTx(tx: Prisma.TransactionClient, evidenc
     ingredients: { select: { number: true } }, employees: { select: { id: true } }, gardenPlots: { select: { ingredientId: true } },
   } });
   const serverDeltaSeconds = previousFact ? Math.max(0, Math.floor((evidence.acceptedAt.getTime() - previousFact.createdAt.getTime()) / 1000)) : 0;
-  const clientDeltaSeconds = previousFact ? evidence.clientTime - previousFact.clientTime : 0;
+  // timeOnClient is milliseconds since the session's first save
+  // (RpcClient.as: `getTimer() - INIT_TIME`). The previous fact may belong to
+  // an earlier RPC session — the ADR-0031 fence restarts saveVersion at 1 and
+  // the SWF reload restarts the client clock — where the raw delta is
+  // meaningless (a reload otherwise looks like the clock "reversed"). Only
+  // compare within one session and store the delta in seconds.
+  const sameSession = previousFact ? evidence.saveVersion > previousFact.saveVersion : true;
+  const clientDeltaSeconds = previousFact && sameSession
+    ? Math.round((evidence.clientTime - previousFact.clientTime) / 1000)
+    : 0;
   await tx.profileSaveFact.create({ data: {
     networkUid: evidence.networkUid, snapshotId: evidence.snapshotId, saveVersion: evidence.saveVersion,
     clientTime: evidence.clientTime, previousClientTime: previousFact?.clientTime ?? 0, serverDeltaSeconds, clientDeltaSeconds,
@@ -95,6 +104,12 @@ export async function recordAcceptedSaveTx(tx: Prisma.TransactionClient, evidenc
     createdAt: evidence.acceptedAt,
   } });
   await tx.playerActivity.updateMany({ where: { networkUid: evidence.networkUid }, data: { saveCount: { increment: 1 } } });
+}
+
+/** Deletes every anomaly finding so a fresh full scan starts from zero. */
+export async function resetAllFindings(): Promise<number> {
+  const deleted = await prisma.anomalyFinding.deleteMany();
+  return deleted.count;
 }
 
 export async function scanPlayer(networkUid: string, now = new Date()): Promise<ScanSummary> {
@@ -117,8 +132,7 @@ export async function scanPlayer(networkUid: string, now = new Date()): Promise<
   return persistFindings(networkUid, active, now);
 }
 
-export async function scanAllProfiles(now = new Date()): Promise<ScanSummary> {
-  const scan = await prisma.moderationScan.create({ data: { startedAt: now } });
+export async function scanAllProfiles(now = new Date()): Promise<ScanSummary> {  const scan = await prisma.moderationScan.create({ data: { startedAt: now } });
   const accounts = await prisma.account.findMany({ where: { role: { not: 'ADMIN' } }, select: { networkUid: true } });
   const total = emptySummary();
   try {

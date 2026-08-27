@@ -15,7 +15,7 @@ process.env.RC_DB_PATH = testDbPath;
 const { prisma } = require('../dist/db/client.js');
 const { savePlayerProfile } = require('../dist/db/profile-store.js');
 const { evaluateProfile, levelForGourmet, unlocksForLevel } = require('../dist/moderation/rules.js');
-const { moderationPlayerDetail, recordLoginActivity, recordRpcActivity, scanPlayer, setPlayerBan, terminatePlayerSessions, rollbackProfile, resetProfileToStarter } = require('../dist/moderation/service.js');
+const { moderationPlayerDetail, recordLoginActivity, recordRpcActivity, resetAllFindings, scanPlayer, setPlayerBan, terminatePlayerSessions, rollbackProfile, resetProfileToStarter } = require('../dist/moderation/service.js');
 const { sendPendingAnomalyDigest, validateModerationWebhookUrl } = require('../dist/moderation/discord.js');
 const { claimGameInstance, activeGameInstance } = require('../dist/game-instances.js');
 const { touchOnline, listOnlineUsers } = require('../dist/live-events.js');
@@ -60,7 +60,7 @@ test('AS3 progression rules identify exact contradictions and keep context separ
     networkUid: 'rule-test', credits: 2_000_000, cashBalance: 250, userLevel: 4, gourmetPoint: 50,
     activeFloorIndex: 2, createdAt: new Date(), ownedItems: [], inventoryItems: [{ globalItemId: 123, number: -1, isSelected: false }],
     ingredients: [], gardenPlots: [{ ingredientId: 4000000 }], employees: [{}, {}, {}, {}], cashTransactions: [],
-  }, { totalActiveSeconds: 60, loginCount: 1, requestCount: 1, saveCount: 1 }, null, new Date());
+  }, { totalActiveSeconds: 5400, loginCount: 1, requestCount: 1, saveCount: 1 }, null, new Date());
   const ids = new Set(findings.map((finding) => finding.ruleId));
   for (const expected of ['LEVEL_GOURMET_MISMATCH', 'EMPLOYEE_UNLOCK_EXCEEDED', 'GARDEN_UNLOCK_EXCEEDED', 'LAYOUT_UNLOCK_EXCEEDED', 'NEGATIVE_ITEM_QUANTITY', 'UNKNOWN_ITEM_IDENTITIES', 'COINS_VS_MEASURED_TIME']) assert.equal(ids.has(expected), true, expected);
   const ahead = findings.find((finding) => finding.ruleId === 'LEVEL_GOURMET_MISMATCH');
@@ -188,4 +188,57 @@ test('fixed profiles resolve open findings without erasing review history', asyn
   const summary = await scanPlayer(account.networkUid);
   assert.equal(summary.findingsResolved >= 1, true);
   assert.equal((await prisma.anomalyFinding.findUniqueOrThrow({ where: { id: open.id } })).status, 'RESOLVED');
+});
+
+test('reset all findings wipes the queue and a re-scan recreates fresh findings', async () => {
+  const account = await seed('81009', 'ResetQueueChef', { profile: { userLevel: 30, gourmetPoint: 50 } });
+  await scanPlayer(account.networkUid);
+  const before = await prisma.anomalyFinding.count({ where: { networkUid: account.networkUid } });
+  assert.equal(before > 0, true);
+  const totalBefore = await prisma.anomalyFinding.count();
+  const reset = await resetAllFindings();
+  assert.equal(reset, totalBefore);
+  assert.equal(await prisma.anomalyFinding.count(), 0);
+  await scanPlayer(account.networkUid);
+  assert.equal(await prisma.anomalyFinding.count({ where: { networkUid: account.networkUid } }), before);
+});
+
+test('save-fact client deltas are stored in seconds and reset across RPC sessions', async () => {
+  const account = await seed('81008', 'TimeDeltaChef');
+  await prisma.session.create({ data: { id: 'sess-a', tokenHash: 't-a', csrfToken: 'c', accountId: account.id, expiresAt: new Date('2035-01-01T00:00:00Z'), rpcSessionToken: 'rpc-time-a' } });
+  const fenceA = { authSessionId: 'sess-a', rpcSessionToken: 'rpc-time-a', payloadDigest: 'a' };
+  await savePlayerProfile(profile(account), audit(1, 60000), fenceA); // t+60s
+  await savePlayerProfile(profile(account), audit(2, 120300), { ...fenceA, payloadDigest: 'b' }); // +60.3s
+
+  // new RPC session (new fence token, saveVersion restarts at 1, clock resets)
+  await prisma.session.create({ data: { id: 'sess-b', tokenHash: 't-b', csrfToken: 'c', accountId: account.id, expiresAt: new Date('2035-01-01T00:00:00Z'), rpcSessionToken: 'rpc-time-b' } });
+  await savePlayerProfile(profile(account), audit(1, 30000), { authSessionId: 'sess-b', rpcSessionToken: 'rpc-time-b', payloadDigest: 'c' });
+
+  const facts = await prisma.profileSaveFact.findMany({ where: { networkUid: account.networkUid }, orderBy: { createdAt: 'asc' } });
+  assert.equal(facts.length, 3);
+  // 60,300 ms -> 60 s, not 60,300 "seconds"
+  assert.equal(facts[1].clientDeltaSeconds, 60);
+  // a reload (new session, smaller clientTime) is not a reversed clock
+  assert.equal(facts[2].clientDeltaSeconds, 0);
+});
+
+test('clock rules use real seconds and the measured-time rules need a measured hour', () => {
+  const base = {
+    networkUid: 'clock-rule', credits: 0, cashBalance: 250, userLevel: 5, gourmetPoint: 5000,
+    activeFloorIndex: 0, createdAt: new Date(), ownedItems: [], inventoryItems: [], ingredients: [],
+    gardenPlots: [], employees: [], cashTransactions: [],
+  };
+  const fact = (clientDeltaSeconds, serverDeltaSeconds) => ({
+    creditDelta: 0, gourmetDelta: 0, clientDeltaSeconds, serverDeltaSeconds, actionCount: 1, unknownActionCount: 0, createdAt: new Date(),
+  });
+  // a normal 60 s autosave is not "accelerated"
+  assert.equal(evaluateProfile(base, null, fact(60, 60), new Date()).some((f) => f.ruleId === 'CLIENT_TIME_ACCELERATED'), false);
+  // a genuine 60,000 s claim in 60 s is
+  assert.equal(evaluateProfile(base, null, fact(60000, 60), new Date()).some((f) => f.ruleId === 'CLIENT_TIME_ACCELERATED'), true);
+  assert.equal(evaluateProfile(base, null, fact(-5, 60), new Date()).some((f) => f.ruleId === 'CLIENT_TIME_REVERSED'), true);
+  // lifetime gourmet vs a fresh activity tracker (<1 measured hour) is not flagged
+  const fresh = evaluateProfile({ ...base, gourmetPoint: 900000 }, { totalActiveSeconds: 1800, loginCount: 1, requestCount: 1, saveCount: 1 }, null, new Date());
+  assert.equal(fresh.some((f) => f.ruleId === 'GOURMET_VS_MEASURED_TIME'), false);
+  const measured = evaluateProfile({ ...base, gourmetPoint: 900000 }, { totalActiveSeconds: 5400, loginCount: 1, requestCount: 1, saveCount: 1 }, null, new Date());
+  assert.equal(measured.some((f) => f.ruleId === 'GOURMET_VS_MEASURED_TIME'), true);
 });

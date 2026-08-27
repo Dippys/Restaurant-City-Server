@@ -162,11 +162,14 @@ export function evaluateProfile(
     findings.push(finding('RAPID_NEW_ACCOUNT_PROGRESSION', 'HIGH', 75, 'New account reached advanced progression',
       `The profile reached level ${expectedLevel} within ${accountAgeHours.toFixed(1)} hours of creation.`, { accountAgeHours, expectedLevel, gourmetPoint: profile.gourmetPoint }));
   }
-  if (activity && activeHours > 0 && activeHours < 2 && profile.gourmetPoint >= 100_000) {
+  // Lifetime totals vs measured activity only make sense once the activity
+  // tracker has at least one measured hour; a fresh tracker (it starts when
+  // ADR-0034 lands) would otherwise flag every established player.
+  if (activity && activeHours >= 1 && activeHours < 2 && profile.gourmetPoint >= 100_000) {
     findings.push(finding('GOURMET_VS_MEASURED_TIME', 'HIGH', 70, 'Gourmet total is extreme for measured activity',
       `${profile.gourmetPoint.toLocaleString('en-US')} gourmet is stored after ${activeHours.toFixed(2)} measured active hours.`, { gourmetPoint: profile.gourmetPoint, measuredActiveSeconds: activity.totalActiveSeconds }));
   }
-  if (activity && activeHours > 0 && activeHours < 2 && profile.credits >= 1_000_000) {
+  if (activity && activeHours >= 1 && activeHours < 2 && profile.credits >= 1_000_000) {
     findings.push(finding('COINS_VS_MEASURED_TIME', 'HIGH', 70, 'Coin balance is extreme for measured activity',
       `${profile.credits.toLocaleString('en-US')} coins are stored after ${activeHours.toFixed(2)} measured active hours.`, { credits: profile.credits, measuredActiveSeconds: activity.totalActiveSeconds }));
   }
@@ -174,7 +177,7 @@ export function evaluateProfile(
   const placedValue = profile.ownedItems.reduce((sum, item) => sum + coinCost(item.globalItemId), 0);
   const inventoryValue = profile.inventoryItems.reduce((sum, item) => sum + coinCost(item.globalItemId) * Math.max(0, item.number), 0);
   const apparentWealth = profile.credits + placedValue + inventoryValue;
-  if (activity && activeHours < 5 && apparentWealth >= 5_000_000) {
+  if (activity && activeHours >= 1 && activeHours < 5 && apparentWealth >= 5_000_000) {
     findings.push(finding('WEALTH_VS_MEASURED_TIME', 'HIGH', 65, 'Apparent wealth is extreme for measured activity',
       `Coins plus coin-priced assets total about ${apparentWealth.toLocaleString('en-US')} after ${activeHours.toFixed(1)} measured hours.`, { credits: profile.credits, placedValue, inventoryValue, apparentWealth, measuredActiveSeconds: activity.totalActiveSeconds }));
   }

@@ -55,7 +55,7 @@ import { actOnLink, adminLifecycle, adminLinkDetail, cancelPlayerLink, createAdm
 import { renderSocialLanding } from './social-links/landing';
 import { forceDailyIngredientSync } from './daily-ingredients/scheduler';
 import { recordRpcActivity } from './moderation/service';
-import { createManualSnapshot, moderationOverview, moderationPlayerDetail, resetProfileToStarter, reviewFinding, rollbackProfile, setPlayerBan, terminatePlayerSessions } from './moderation/service';
+import { createManualSnapshot, moderationOverview, moderationPlayerDetail, resetAllFindings, resetProfileToStarter, reviewFinding, rollbackProfile, scanAllProfiles, setPlayerBan, terminatePlayerSessions } from './moderation/service';
 import { runModerationCycle } from './moderation/scheduler';
 
 const CROSSDOMAIN = [
@@ -561,6 +561,15 @@ async function handleModerationApi(config: ServerConfig, method: string, pathnam
     }
     if (method === 'POST' && pathname === '/__api/moderation/scan') {
       sendJson(res, { ok: true, result: await runModerationCycle(config.discordAnomalyWebhook, config.moderationSnapshotRetentionDays, config.moderationMaxSnapshotsPerPlayer) });
+      return;
+    }
+    if (method === 'POST' && pathname === '/__api/moderation/reset') {
+      // Wipe every finding, then immediately re-scan so only fresh results
+      // remain. No Discord digest here: a reset would otherwise re-notify every
+      // recreated finding.
+      const reset = await resetAllFindings();
+      const summary = await scanAllProfiles();
+      sendJson(res, { ok: true, result: { ...summary, reset } });
       return;
     }
     const finding = pathname.match(/^\/__api\/moderation\/findings\/([A-Za-z0-9-]+)$/);

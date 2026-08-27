@@ -160,6 +160,7 @@ export const api = {
   moderation: () => request<ModerationOverviewResponse>('GET', '/__api/moderation'),
   moderationPlayer: (uid: string) => request<{ ok: true; player: ModerationPlayerDetail }>('GET', `/__api/moderation/players/${enc(uid)}`),
   runModerationScan: () => request<{ ok: true; result: Record<string, number> }>('POST', '/__api/moderation/scan'),
+  resetModerationFindings: () => request<{ ok: true; result: Record<string, number> }>('POST', '/__api/moderation/reset'),
   reviewFinding: (id: string, input: { status: string; note: string }) => request<{ ok: true; finding: AnomalyFinding }>('PATCH', `/__api/moderation/findings/${enc(id)}`, input),
   createModerationSnapshot: (uid: string, label: string) => request<{ ok: true; result: { snapshotId: string } }>('POST', `/__api/moderation/players/${enc(uid)}/snapshots`, { label }),
   rollbackPlayer: (uid: string, snapshotId: string, reason: string) => request<{ ok: true; result: Record<string, unknown> }>('POST', `/__api/moderation/players/${enc(uid)}/rollback`, { snapshotId, reason }),

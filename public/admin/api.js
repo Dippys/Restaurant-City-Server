@@ -100,6 +100,7 @@ export const api = {
     moderation: () => request('GET', '/__api/moderation'),
     moderationPlayer: (uid) => request('GET', `/__api/moderation/players/${enc(uid)}`),
     runModerationScan: () => request('POST', '/__api/moderation/scan'),
+    resetModerationFindings: () => request('POST', '/__api/moderation/reset'),
     reviewFinding: (id, input) => request('PATCH', `/__api/moderation/findings/${enc(id)}`, input),
     createModerationSnapshot: (uid, label) => request('POST', `/__api/moderation/players/${enc(uid)}/snapshots`, { label }),
     rollbackPlayer: (uid, snapshotId, reason) => request('POST', `/__api/moderation/players/${enc(uid)}/rollback`, { snapshotId, reason }),
