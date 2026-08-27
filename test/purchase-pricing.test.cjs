@@ -145,6 +145,28 @@ test('placing a bought item deducts its shipped coin cost', async () => {
   assert.equal(await ownedCount(account, WHITE_ROOM_DIVIDER), 1);
 });
 
+test('outdoor and facade decoration purchases are priced like any other item', async () => {
+  const account = await seedProfile('outdoordecor');
+  const fence = await setupFence(account);
+  const GREEN_BUSH = 3120000; // restaurant.xml cost 500 (outside-area patio item)
+  const BASIC_WINDOW = 2000014; // front.xml cost 200 (building facade item)
+  const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
+    upsertOwnedItems: [
+      { ...ownedItem(-1, GREEN_BUSH), roomIndex: 1 }, // ROOM_INDEX_OUTSIDE_AREA
+      ownedItem(-2, BASIC_WINDOW),
+    ],
+    purchases: [
+      { kind: 'owned', itemId: GREEN_BUSH, qty: 1 },
+      { kind: 'owned', itemId: BASIC_WINDOW, qty: 1 },
+    ],
+  }), { ...fence, payloadDigest: 'outdoor-v1' });
+  assert.equal(result.status, 'saved');
+  assert.equal(await credits(account), 50000 - 500 - 200);
+  const placed = await prisma.ownedItem.findMany({ where: { userProfileId: `facebook:${account.networkUid}` } });
+  assert.equal(placed.some((item) => item.globalItemId === GREEN_BUSH && item.roomIndex === 1), true);
+  assert.equal(placed.some((item) => item.globalItemId === BASIC_WINDOW), true);
+});
+
 test('inventory purchase resolves the hash token and charges cost × qty', async () => {
   const account = await seedProfile('inventorybuy');
   const fence = await setupFence(account);

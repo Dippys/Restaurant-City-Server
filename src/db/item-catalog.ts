@@ -36,6 +36,7 @@ function decodeEntities(value: string): string {
 
 let cached: readonly ItemCatalogEntry[] | null = null;
 let cachedAttributes: ReadonlyMap<number, Readonly<Record<string, string>>> | null = null;
+let cachedOutdoorIds: ReadonlySet<number> | null = null;
 
 /** Full catalogue: curated entries first, then every id/name found in the data XMLs (XML names win). */
 export function fullCatalog(): readonly ItemCatalogEntry[] {
@@ -145,6 +146,43 @@ export function itemAttributes(id: number): Readonly<Record<string, string>> | u
     cachedAttributes = attributes;
   }
   return cachedAttributes.get(id);
+}
+
+// The AS3 marks an item `outdoor` through its group `type` string
+// (RoomItem.as:154-171 sets flags from group/item types). In the shipped
+// restaurant.xml exactly one group declares `type="outdoor"` ("Outdoor Only",
+// the 312xxxxx plants/trees), so a placement counts as outdoor decoration iff
+// its item id belongs to a group whose `type` attribute contains `outdoor`.
+// Used by the Gourmet Street scoring (ADR-0037); the client equivalent is
+// ItemCatalog flags in client-html5/src/game/catalog.ts.
+const GROUP_BLOCK = /<group\b([^>]*)>([\s\S]*?)<\/group>/g;
+
+export function outdoorItemIds(): ReadonlySet<number> {
+  if (cachedOutdoorIds) {
+    return cachedOutdoorIds;
+  }
+
+  const ids = new Set<number>();
+  const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
+  const xml = fs.readFileSync(path.join(dataDir, 'restaurant.xml'), 'utf8');
+  for (const match of xml.matchAll(GROUP_BLOCK)) {
+    if (!/\btype="[^"]*\boutdoor\b[^"]*"/.test(match[1] ?? '')) {
+      continue;
+    }
+    for (const item of (match[2] ?? '').matchAll(ITEM_TAG)) {
+      const id = Number(attribute(item[1], 'id'));
+      if (Number.isInteger(id)) {
+        ids.add(id);
+      }
+    }
+  }
+
+  cachedOutdoorIds = ids;
+  return cachedOutdoorIds;
+}
+
+export function isOutdoorItemId(globalItemId: number): boolean {
+  return outdoorItemIds().has(globalItemId);
 }
 
 export function isFoodKingEligibleItem(id: number): boolean {
