@@ -9,7 +9,7 @@ const {
 } = require('../dist/daily-ingredients/catalog.js');
 const { dailyIngredientsMessage, validateDiscordWebhookUrl } = require('../dist/daily-ingredients/discord.js');
 const { renderDailyIngredientsImage } = require('../dist/daily-ingredients/image.js');
-const { dueUtcDate, millisecondsUntilNextNoonUtc } = require('../dist/daily-ingredients/scheduler.js');
+const { dueUtcDate, millisecondsUntilNextNoonUtc, rotationUtcDate } = require('../dist/daily-ingredients/scheduler.js');
 
 test('PF cash maps proportionally to daily coin prices', () => {
   assert.equal(coinPriceForPfCash(4), 1000);
@@ -33,6 +33,8 @@ test('UTC due date and next-noon delay use 12:00 UTC', () => {
   assert.equal(dueUtcDate(new Date('2026-08-27T12:00:00.000Z')), '2026-08-27');
   assert.equal(millisecondsUntilNextNoonUtc(new Date('2026-08-27T11:00:00.000Z')), 60 * 60 * 1000);
   assert.equal(millisecondsUntilNextNoonUtc(new Date('2026-08-27T12:00:00.000Z')), 24 * 60 * 60 * 1000);
+  assert.equal(rotationUtcDate(new Date('2026-08-27T11:00:00.000Z'), false), null);
+  assert.equal(rotationUtcDate(new Date('2026-08-27T11:00:00.000Z'), true), '2026-08-27');
 });
 
 test('Discord copy pings everyone, includes all items, and only accepts Discord webhook hosts', () => {

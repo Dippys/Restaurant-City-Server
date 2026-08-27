@@ -11,6 +11,10 @@ export function dueUtcDate(now: Date): string | null {
   return now.toISOString().slice(0, 10);
 }
 
+export function rotationUtcDate(now: Date, force: boolean): string | null {
+  return force ? now.toISOString().slice(0, 10) : dueUtcDate(now);
+}
+
 export function millisecondsUntilNextNoonUtc(now: Date): number {
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), NOON_UTC_HOUR));
   if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1);
@@ -32,8 +36,9 @@ export async function runDailyIngredientRotation(
   serverRoot: string,
   webhookUrl: string | undefined,
   now = new Date(),
+  force = false,
 ): Promise<boolean> {
-  const utcDate = dueUtcDate(now);
+  const utcDate = rotationUtcDate(now, force);
   if (!utcDate) return false;
 
   let rotation = await prisma.dailyIngredientRotation.findUnique({ where: { utcDate } });
@@ -65,8 +70,21 @@ export async function runDailyIngredientRotation(
     console.log(`Daily ingredients rotated for ${utcDate}: ${rotation.ingredientIdsJson}`);
   }
 
-  if (rotation.announcedAt || !webhookUrl) return true;
+  // Reconcile the market even for an existing daily record. This repairs an
+  // incomplete deployment or later manual economy edit without rerolling.
   const ingredients = materialize(rotation.ingredientIdsJson);
+  await prisma.$transaction(async (tx) => {
+    await tx.ingredientMarketItem.updateMany({ data: { enabled: false } });
+    for (const ingredient of ingredients) {
+      await tx.ingredientMarketItem.upsert({
+        where: { ingredientId: ingredient.id },
+        update: { price: ingredient.coinPrice, enabled: true },
+        create: { ingredientId: ingredient.id, price: ingredient.coinPrice, enabled: true },
+      });
+    }
+  });
+
+  if (rotation.announcedAt || !webhookUrl) return true;
   try {
     const image = await renderDailyIngredientsImage(ingredients, serverRoot);
     await sendDailyIngredientsDiscord(webhookUrl, ingredients, image);
@@ -84,6 +102,38 @@ export async function runDailyIngredientRotation(
     throw error;
   }
   return true;
+}
+
+export interface DailyIngredientSyncResult {
+  readonly utcDate: string;
+  readonly created: boolean;
+  readonly announced: boolean;
+  readonly alreadyComplete: boolean;
+  readonly attemptCount: number;
+  readonly ingredients: ReadonlyArray<{ id: number; name: string; price: number }>;
+}
+
+export async function forceDailyIngredientSync(
+  serverRoot: string,
+  webhookUrl: string | undefined,
+  now = new Date(),
+): Promise<DailyIngredientSyncResult> {
+  const utcDate = rotationUtcDate(now, true)!;
+  const before = await prisma.dailyIngredientRotation.findUnique({ where: { utcDate } });
+  await runDailyIngredientRotation(serverRoot, webhookUrl, now, true);
+  const after = await prisma.dailyIngredientRotation.findUniqueOrThrow({ where: { utcDate } });
+  return {
+    utcDate,
+    created: !before,
+    announced: Boolean(after.announcedAt),
+    alreadyComplete: Boolean(before?.announcedAt),
+    attemptCount: after.attemptCount,
+    ingredients: materialize(after.ingredientIdsJson).map((ingredient) => ({
+      id: ingredient.id,
+      name: ingredient.name,
+      price: ingredient.coinPrice,
+    })),
+  };
 }
 
 export function startDailyIngredientScheduler(serverRoot: string, webhookUrl: string | undefined): void {

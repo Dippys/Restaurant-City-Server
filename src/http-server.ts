@@ -53,6 +53,7 @@ import type { ActiveAccount } from './session';
 import { enqueueGlobalLiveEvent, enqueueLiveEvent, listOnlineUsers, LIVE_EVENT_ALERT } from './live-events';
 import { actOnLink, adminLifecycle, adminLinkDetail, cancelPlayerLink, createAdminLink, createPlayerLink, listAdminLinks, publicLink, socialImageTarget, sweepExpiredEscrow } from './social-links/service';
 import { renderSocialLanding } from './social-links/landing';
+import { forceDailyIngredientSync } from './daily-ingredients/scheduler';
 
 const CROSSDOMAIN = [
   '<?xml version="1.0"?>',
@@ -432,7 +433,7 @@ async function handleRequest(
 
   if (pathname.startsWith('/__api/live')) {
     if (!(await requireAdminMutationForMethod(req, res))) return;
-    await handleLiveApi(req.method || 'GET', pathname, body, res);
+    await handleLiveApi(config, req.method || 'GET', pathname, body, res);
     return;
   }
 
@@ -574,7 +575,7 @@ async function handleRpc(req: IncomingMessage, res: ServerResponse, body: Buffer
   res.end(response);
 }
 
-async function handleLiveApi(method: string, pathname: string, body: Buffer, res: ServerResponse): Promise<void> {
+async function handleLiveApi(config: ServerConfig, method: string, pathname: string, body: Buffer, res: ServerResponse): Promise<void> {
   try {
     if (method === 'GET' && pathname === '/__api/live/online') {
       sendJson(res, { ok: true, users: listOnlineUsers() });
@@ -632,6 +633,12 @@ async function handleLiveApi(method: string, pathname: string, body: Buffer, res
 
       const result = await createAdminMails({ ...input, recipientNetworkUids });
       sendJson(res, { ok: true, ...result, users: listOnlineUsers() });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/__api/live/daily-ingredients/sync') {
+      const result = await forceDailyIngredientSync(config.serverRoot, config.discordDailyIngredientsWebhook);
+      sendJson(res, { ok: true, ...result });
       return;
     }
 

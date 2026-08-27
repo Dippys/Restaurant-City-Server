@@ -397,3 +397,12 @@ export interface BulkMailResponse {
   liveNotified: number;
   users: OnlineUser[];
 }
+export interface DailyIngredientSyncResponse {
+  ok: true;
+  utcDate: string;
+  created: boolean;
+  announced: boolean;
+  alreadyComplete: boolean;
+  attemptCount: number;
+  ingredients: ReadonlyArray<{ id: number; name: string; price: number }>;
+}

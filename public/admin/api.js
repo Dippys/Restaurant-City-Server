@@ -95,6 +95,7 @@ export const api = {
     online: () => request('GET', '/__api/live/online'),
     alert: (input) => request('POST', '/__api/live/alert', input),
     sendMail: (input) => request('POST', '/__api/live/mail', input),
+    forceDailyIngredientSync: () => request('POST', '/__api/live/daily-ingredients/sync'),
     socialLinks: () => request('GET', '/__api/admin/social-links'),
     socialLink: (id) => request('GET', `/__api/admin/social-links/${enc(id)}`),
     createSocialLink: (input) => request('POST', '/__api/admin/social-links', input),

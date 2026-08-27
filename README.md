@@ -298,6 +298,11 @@ The preview is written under ignored `test/.tmp/`. The live renderer uses the
 original `/public/assets/ingredients/<id>.png` art and the shipped ingredient
 names, so the image and profile market cannot disagree.
 
+After a deployment, an administrator can open **Admin → Game tools → Daily
+ingredients** and press **Force daily ingredient sync**. This creates today's
+UTC rotation if missing, restores its three market rows, and retries a pending
+Discord delivery. Repeating it does not reroll or repost a completed date.
+
 There is intentionally no PIN-by-email reset yet because the system does not
 collect verified email addresses. Account recovery must be an operator-assisted
 identity check or a separately designed verified recovery system; do not add an

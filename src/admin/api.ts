@@ -27,6 +27,7 @@ import type {
   SessionResponse,
   UserMutationResponse,
   UsersResponse,
+  DailyIngredientSyncResponse,
 } from './types.js';
 
 export class ApiError extends Error {
@@ -150,6 +151,7 @@ export const api = {
   online: () => request<OnlineResponse>('GET', '/__api/live/online'),
   alert: (input: { scope: string; networkUid?: string; title?: string; message: string }) => request<AlertResponse>('POST', '/__api/live/alert', input),
   sendMail: (input: BulkMailInput) => request<BulkMailResponse>('POST', '/__api/live/mail', input),
+  forceDailyIngredientSync: () => request<DailyIngredientSyncResponse>('POST', '/__api/live/daily-ingredients/sync'),
 
   socialLinks: () => request<{ ok: true; links: SocialLinkAdmin[] }>('GET', '/__api/admin/social-links'),
   socialLink: (id: string) => request<{ ok: true; link: SocialLinkAdmin }>('GET', `/__api/admin/social-links/${enc(id)}`),

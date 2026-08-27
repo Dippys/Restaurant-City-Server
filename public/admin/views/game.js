@@ -69,6 +69,37 @@ export async function render(container) {
     const mailTool = h('div', { class: 'rc-toolbar' }, also(h('button', { class: 'rc-btn', type: 'button' }, 'Send mail to a player…'), (btn) => {
         btn.addEventListener('click', () => void openMailComposer());
     }));
+    // ---- daily ingredient sync ----
+    const ingredientSyncMessage = h('div', { class: 'rc-msg', 'aria-live': 'polite' });
+    const ingredientSyncButton = h('button', { class: 'rc-btn primary', type: 'button' }, 'Force daily ingredient sync');
+    ingredientSyncButton.addEventListener('click', async () => {
+        const confirmed = await confirmDialog('Force today\'s ingredient sync?', 'If today has no UTC rotation yet, this creates it immediately—even before 12:00 UTC. Existing completed rotations are reapplied without rerolling or reposting.');
+        if (!confirmed)
+            return;
+        ingredientSyncButton.disabled = true;
+        ingredientSyncMessage.textContent = 'Syncing today\'s market and Discord announcement…';
+        ingredientSyncMessage.className = 'rc-msg';
+        try {
+            const result = await api.forceDailyIngredientSync();
+            const items = result.ingredients.map((ingredient) => `${ingredient.name} (${ingredient.price.toLocaleString()} coins)`).join(', ');
+            const action = result.alreadyComplete
+                ? 'Already complete; market rows were reconciled and Discord was not posted twice.'
+                : result.created
+                    ? 'Created today\'s rotation.'
+                    : 'Retried today\'s pending sync.';
+            ingredientSyncMessage.textContent = `${action} ${items} Discord: ${result.announced ? 'sent' : 'pending (webhook not configured)'}.`;
+            ingredientSyncMessage.className = result.announced ? 'rc-msg ok' : 'rc-msg';
+            toast('Daily ingredients synchronized');
+        }
+        catch (error) {
+            ingredientSyncMessage.textContent = error instanceof Error ? error.message : String(error);
+            ingredientSyncMessage.className = 'rc-msg error';
+        }
+        finally {
+            ingredientSyncButton.disabled = false;
+        }
+    });
+    const ingredientSyncTool = h('div', {}, h('p', {}, 'Create or reconcile today\'s UTC ingredient market and send any pending Discord announcement. Safe to repeat after deployment.'), ingredientSyncButton, ingredientSyncMessage);
     // ---- danger zone ----
     const dangerZone = h('section', { class: 'rc-panel rc-danger' }, h('h2', {}, 'Danger zone'), h('p', {}, 'Reset wipes every player, all items, mail, images and economy rows. There is no undo.'), also(h('button', { class: 'rc-btn danger', type: 'button' }, 'Reset entire database'), (btn) => {
         btn.addEventListener('click', async () => {
@@ -94,7 +125,7 @@ export async function render(container) {
         });
     }));
     container.textContent = '';
-    container.append(h('h1', { class: 'rc-title' }, 'Game tools'), h('p', { class: 'rc-sub' }, 'Talk to players live, deliver mail, and manage server-wide actions.'), h('section', { class: 'rc-panel' }, h('div', { class: 'rc-panel-head' }, h('h2', {}, 'Live alert')), alertForm), h('section', { class: 'rc-panel' }, h('div', { class: 'rc-panel-head' }, h('h2', {}, 'Online players')), onlineTable), h('section', { class: 'rc-panel' }, h('div', { class: 'rc-panel-head' }, h('h2', {}, 'Mail')), mailTool), dangerZone);
+    container.append(h('h1', { class: 'rc-title' }, 'Game tools'), h('p', { class: 'rc-sub' }, 'Talk to players live, deliver mail, and manage server-wide actions.'), h('section', { class: 'rc-panel' }, h('div', { class: 'rc-panel-head' }, h('h2', {}, 'Live alert')), alertForm), h('section', { class: 'rc-panel' }, h('div', { class: 'rc-panel-head' }, h('h2', {}, 'Online players')), onlineTable), h('section', { class: 'rc-panel' }, h('div', { class: 'rc-panel-head' }, h('h2', {}, 'Mail')), mailTool), h('section', { class: 'rc-panel' }, h('div', { class: 'rc-panel-head' }, h('h2', {}, 'Daily ingredients')), ingredientSyncTool), dangerZone);
 }
 const MAIL_TYPES = [
     ['1', 1, 'Player message'],
