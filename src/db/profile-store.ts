@@ -1180,13 +1180,16 @@ async function changeIngredient(
 
   await tx.ingredientInventory.upsert({
     where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: change.globalItemId } },
-    update: { number: nextNumber },
+    // Ingredients the client reports receiving (positive delta — harvest, quiz,
+    // market/cash purchase, first-visit gift…) start locked so they cannot be
+    // traded away until the owner unlocks them. Consuming leaves the lock alone.
+    update: { number: nextNumber, ...(change.delta > 0 ? { isLocked: true } : {}) },
     create: {
       id: ingredientKey(networkUid, change.globalItemId),
       userProfileId: profileId,
       globalItemId: change.globalItemId,
       number: nextNumber,
-      isLocked: false,
+      isLocked: true,
     },
   });
 }

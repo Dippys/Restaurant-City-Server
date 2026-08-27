@@ -62,10 +62,12 @@ export async function grantMailItem(recipientNetworkUid: string, itemId: number)
   const profileId = profileKey(recipientNetworkUid);
 
   if (itemType(itemId) === 4) {
+    // Received ingredients start locked so they cannot be traded away until the
+    // owner unlocks them (matching the client's receive-lock behaviour).
     await prisma.ingredientInventory.upsert({
       where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: itemId } },
-      update: { number: { increment: 1 } },
-      create: { id: `${profileId}:ingredient:${itemId}`, userProfileId: profileId, globalItemId: itemId, number: 1, isLocked: false },
+      update: { number: { increment: 1 }, isLocked: true },
+      create: { id: `${profileId}:ingredient:${itemId}`, userProfileId: profileId, globalItemId: itemId, number: 1, isLocked: true },
     });
     return;
   }

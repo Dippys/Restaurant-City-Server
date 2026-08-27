@@ -248,10 +248,12 @@ async function deduct(tx: Tx, networkUid: string, category: string, itemId: numb
 async function grant(tx: Tx, networkUid: string, category: string, itemId: number, quantity: number): Promise<void> {
   const userProfileId = profileKey(networkUid);
   if (category === 'ingredient') {
+    // Received ingredients start locked so they cannot be traded away until the
+    // owner unlocks them.
     await tx.ingredientInventory.upsert({
       where: { userProfileId_globalItemId: { userProfileId, globalItemId: itemId } },
-      update: { number: { increment: quantity } },
-      create: { id: `${userProfileId}:ingredient:${itemId}`, userProfileId, globalItemId: itemId, number: quantity },
+      update: { number: { increment: quantity }, isLocked: true },
+      create: { id: `${userProfileId}:ingredient:${itemId}`, userProfileId, globalItemId: itemId, number: quantity, isLocked: true },
     });
   } else {
     await tx.inventoryItem.upsert({
