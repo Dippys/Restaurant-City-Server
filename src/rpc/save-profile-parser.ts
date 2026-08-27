@@ -8,10 +8,12 @@ import type {
   InventoryItemData,
   NetworkUidData,
   OwnedItemData,
+  PurchaseAuditData,
   SaveAuditData,
   SavedProfileData,
 } from '../db/profile-store';
 import { resolveRecipeEntry } from '../db/recipe-catalog';
+import { itemIdForToken } from '../db/item-catalog';
 import {
   readArray,
   readBool,
@@ -138,6 +140,7 @@ function readAuditChanges(
   const openMailIds: number[] = [];
   const deleteMailIds: number[] = [];
   const visitedFriends: NetworkUidData[] = [];
+  const purchases: PurchaseAuditData[] = [];
   let creditDelta = 0;
   let newCredits: number | null = null;
 
@@ -184,10 +187,12 @@ function readAuditChanges(
         break;
       case ACTION_PURCHASE_OWNED_ITEM:
         {
-          [, pos] = readString(body, pos);
-          const [item, nextPos] = readOwnedItem(body, pos);
+          const [token, nextPos] = readString(body, pos);
           pos = nextPos;
+          const [item, itemNextPos] = readOwnedItem(body, pos);
+          pos = itemNextPos;
           upsertOwnedItems.push(item);
+          purchases.push({ kind: 'owned', itemId: item.globalItemId, qty: 1, token });
         }
         break;
       case ACTION_SELL_OWNED_ITEM:
@@ -215,7 +220,15 @@ function readAuditChanges(
           if (action === ACTION_PURCHASE_PERKS || action === ACTION_PURCHASE_INVENTORY_ITEM) {
             let qty = 0;
             [qty, pos] = readVarint(body, pos);
-            inventoryChanges.push({ globalItemId: itemIdFromToken(token), delta: Math.max(1, qty) });
+            const itemId = itemIdForToken(token);
+            inventoryChanges.push({ globalItemId: itemId ?? 0, delta: Math.max(1, qty) });
+            purchases.push({
+              kind: action === ACTION_PURCHASE_PERKS ? 'perk' : 'inventory',
+              itemId,
+              qty: Math.max(1, qty),
+              token,
+              unresolved: itemId === undefined,
+            });
           } else {
             const recipe = resolveRecipeEntry(token);
             const recipeId = recipe?.id ?? itemIdFromToken(token);
@@ -250,6 +263,7 @@ function readAuditChanges(
           let qty = 0;
           [qty, pos] = readVarint(body, pos);
           ingredientChanges.push({ globalItemId: itemId, delta: Math.max(1, qty) });
+          purchases.push({ kind: 'ingredient', itemId, qty: Math.max(1, qty) });
         }
         break;
       case ACTION_SELECT_RECIPE:
@@ -266,6 +280,7 @@ function readAuditChanges(
           let itemId = 0;
           [itemId, pos] = readVarint(body, pos);
           gardenChanges.push({ plotId: itemId, action: 'seed' });
+          purchases.push({ kind: 'seed', qty: 1 });
         }
         break;
       case ACTION_WATER_PLANT:
@@ -358,6 +373,7 @@ function readAuditChanges(
     openMailIds,
     deleteMailIds,
     visitedFriends,
+    purchases,
   };
 }
 

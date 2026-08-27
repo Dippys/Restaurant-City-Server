@@ -73,6 +73,49 @@ export function isCatalogItemId(id: number): boolean {
   return fullCatalog().some((entry) => entry.id === id);
 }
 
+let cachedHashIndex: ReadonlyMap<string, number> | null = null;
+
+/**
+ * Resolves an opaque item hash (the `hash="…"` attribute from the shipped
+ * data XMLs, which the client sends as `AuditChange.itemToken`) to its item
+ * id. Previously the save parser guessed ids by extracting digits from the
+ * hash, which produced stale id-0/1/2/… inventory rows; the hash index is the
+ * authoritative mapping (ADR-0035).
+ */
+export function itemIdForToken(token: string): number | undefined {
+  if (!cachedHashIndex) {
+    const byHash = new Map<string, number>();
+    const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
+    for (const file of CATALOG_FILES) {
+      let xml = '';
+      try { xml = fs.readFileSync(path.join(dataDir, file), 'utf8'); } catch { continue; }
+      for (const match of xml.matchAll(ITEM_TAG)) {
+        const hash = attribute(match[1], 'hash');
+        const id = Number(attribute(match[1], 'id'));
+        if (hash && Number.isInteger(id)) byHash.set(hash, id);
+      }
+    }
+    cachedHashIndex = byHash;
+  }
+  return cachedHashIndex.get(token);
+}
+
+/**
+ * The coin price of an item as the shipped client charges it
+ * (`CashPanel.addCoins(-itemConfig.cost)`). Returns `null` when the item is
+ * not coin-purchasable through the save audit: unknown ids, cash-only items
+ * (PF Cash purchases go through RPC 41/42, never the save audit), and
+ * invisible/non-shop rows. Items with `cost="0"` (e.g. the starter avatar
+ * outfit) are valid and free. ADR-0035.
+ */
+export function coinPriceForItemId(id: number): number | null {
+  const attrs = itemAttributes(id);
+  if (!attrs) return null;
+  if (!Object.prototype.hasOwnProperty.call(attrs, 'cost')) return null;
+  const cost = Number(attrs.cost);
+  return Number.isInteger(cost) && cost >= 0 ? cost : null;
+}
+
 /** "Apple (4000000)" label for display, or the raw id if unknown. */
 export function catalogLabel(id: number): string {
   const entry = fullCatalog().find((candidate) => candidate.id === id);

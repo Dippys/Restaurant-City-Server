@@ -1,5 +1,6 @@
 import type { Employee, FriendVisit, GardenPlot, IngredientInventory, InventoryItem, OwnedItem, RestaurantFloor, UserProfile } from '@prisma/client';
 import { prisma } from './client';
+import { pricePurchases } from './purchase-pricing';
 import {
   FACEBOOK_NETWORK,
   PLAYER_NETWORK_UID,
@@ -44,6 +45,22 @@ export interface OwnedItemData {
   readonly employee: NetworkUidData;
 }
 
+/**
+ * A coin purchase recorded from the save audit (ADR-0035). The shipped client
+ * deducts the price only from its local balance and sends no credit delta, so
+ * the server prices these authoritatively at save-apply time.
+ */
+export interface PurchaseAuditData {
+  readonly kind: 'owned' | 'inventory' | 'perk' | 'ingredient' | 'seed';
+  /** Resolved item id (owned/inventory/perk/ingredient). */
+  readonly itemId?: number;
+  readonly qty: number;
+  /** Raw item hash from the audit (`itemToken`) for inventory/perk buys. */
+  readonly token?: string;
+  /** The inventory/perk token did not resolve to a known shipped item. */
+  readonly unresolved?: boolean;
+}
+
 export interface SavedProfileData {
   readonly id: NetworkUidData;
   readonly restaurantName: string;
@@ -74,6 +91,8 @@ export interface SaveAuditData {
   readonly openMailIds: readonly number[];
   readonly deleteMailIds: readonly number[];
   readonly visitedFriends: readonly NetworkUidData[];
+  /** Coin purchases recorded from the audit (ADR-0035); empty/absent when none. */
+  readonly purchases?: readonly PurchaseAuditData[];
 }
 
 export interface SaveFence {
@@ -437,9 +456,26 @@ export async function savePlayerProfile(
     }
 
     const current = await tx.userProfile.findUniqueOrThrow({ where: { id: profileId } });
-    const nextCredits = audit.newCredits ?? current.credits + audit.creditDelta;
     const saneUserLevel = boundedIntOrFallback(profile.userLevel, current.userLevel, 1, 99);
     const saneActiveFloorIndex = boundedIntOrFallback(profile.activeFloorIndex, current.activeFloorIndex, 0, 8);
+
+    // ADR-0035: the client never sends purchase credit deltas, so the server
+    // prices purchases from game data. An unpriced/invalid purchase or an
+    // unaffordable batch rejects the whole save atomically (the fence version
+    // is consumed so the client's next save is not blocked; the audit batch is
+    // dropped client-side on the already-done status). When purchases exist,
+    // `newCredits` (never sent by the shipped client) is ignored so an
+    // absolute-balance value cannot bypass the price.
+    const pricing = await pricePurchases(audit.purchases ?? [], tx);
+    if (pricing.invalid || pricing.cost < 0) {
+      return { status: 'stale', savedVersion: audit.saveVersion };
+    }
+    const nextCredits = (pricing.cost > 0
+      ? current.credits + audit.creditDelta
+      : (audit.newCredits ?? current.credits + audit.creditDelta)) - pricing.cost;
+    if (nextCredits < 0) {
+      return { status: 'stale', savedVersion: audit.saveVersion };
+    }
 
     await tx.userProfile.update({
       where: { id: profileId },
