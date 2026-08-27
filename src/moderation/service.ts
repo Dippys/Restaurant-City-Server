@@ -5,7 +5,7 @@ import type { SaveAuditData } from '../db/profile-store';
 import type { ActiveAccount } from '../session';
 import { disconnectOnlineUser, listOnlineUsers } from '../live-events';
 import { terminateGameInstance } from '../game-instances';
-import { evaluateProfile, type RuleFinding } from './rules';
+import { evaluateProfile, levelForGourmet, type RuleFinding, unlocksForLevel } from './rules';
 import { captureProfileSnapshot, captureProfileSnapshotTx, listProfileSnapshots, resetProfileToStarter, rollbackProfile } from './snapshots';
 
 const moderationProfileInclude = {
@@ -110,6 +110,103 @@ export async function recordAcceptedSaveTx(tx: Prisma.TransactionClient, evidenc
 export async function resetAllFindings(): Promise<number> {
   const deleted = await prisma.anomalyFinding.deleteMany();
   return deleted.count;
+}
+
+export interface SignalFixSummary {
+  readonly snapshotId: string;
+  readonly employeesFired: number;
+  readonly dishesDeselected: number;
+  readonly levelBumped: number;
+  readonly changed: boolean;
+}
+
+/**
+ * Resolves the reviewable anomaly signals for one profile: fires staff beyond
+ * the level's employee cap, deselects menu dishes beyond the level's per-course
+ * cap, and catches the stored level up to the gourmet-derived level (never
+ * lowers it). A recovery snapshot is taken first and a moderation action
+ * records exactly what changed; the profile is re-scanned afterwards so the
+ * queue reflects the fix.
+ */
+export async function resolveProfileSignals(networkUid: string, actor: { id?: string; username: string }): Promise<SignalFixSummary> {
+  const profile = await prisma.userProfile.findUnique({
+    where: { networkUid },
+    include: { employees: true, inventoryItems: true },
+  });
+  if (!profile) throw new Error(`Profile not found: ${networkUid}`);
+
+  const expectedLevel = Math.max(1, levelForGourmet(Math.floor(profile.gourmetPoint / 10)));
+  const finalLevel = Math.max(profile.userLevel, expectedLevel); // only ever catches up
+  const unlocks = unlocksForLevel(finalLevel);
+
+  const staff = [...profile.employees].sort((a, b) =>
+    (a.createdAt.getTime() - b.createdAt.getTime()) || a.networkUid.localeCompare(b.networkUid));
+  const extras = staff.slice(unlocks.employees);
+
+  const overSelected: Array<{ globalItemId: number; course: number }> = [];
+  for (const course of [50, 51, 52]) {
+    const selected = profile.inventoryItems
+      .filter((item) => item.isSelected && item.globalItemId >= 5_000_000 && item.globalItemId < 5_400_000 && Math.floor(item.globalItemId / 100_000) === course)
+      .sort((a, b) => a.globalItemId - b.globalItemId);
+    for (const extra of selected.slice(unlocks.numDishes)) overSelected.push({ globalItemId: extra.globalItemId, course });
+  }
+
+  const levelBump = finalLevel - profile.userLevel;
+  if (extras.length === 0 && overSelected.length === 0 && levelBump === 0) {
+    return { snapshotId: '', employeesFired: 0, dishesDeselected: 0, levelBumped: 0, changed: false };
+  }
+
+  const snapshotId = await captureProfileSnapshot(networkUid, 'SIGNAL_FIX', 'Before anomaly-signal resolution', actor);
+  const changes: string[] = [];
+  await prisma.$transaction(async (tx) => {
+    if (extras.length > 0) {
+      await tx.employee.deleteMany({ where: { id: { in: extras.map((employee) => employee.id) } } });
+      changes.push(`fired ${extras.length} staff over the level-${finalLevel} cap of ${unlocks.employees}`);
+    }
+    for (const extra of overSelected) {
+      await tx.inventoryItem.update({
+        where: { userProfileId_globalItemId: { userProfileId: profile.id, globalItemId: extra.globalItemId } },
+        data: { isSelected: false },
+      });
+    }
+    if (overSelected.length > 0) {
+      changes.push(`deselected ${overSelected.length} dishes beyond the level-${finalLevel} cap of ${unlocks.numDishes} per course`);
+    }
+    if (levelBump > 0) {
+      await tx.userProfile.update({ where: { id: profile.id }, data: { userLevel: finalLevel } });
+      changes.push(`level ${profile.userLevel} -> ${finalLevel} (gourmet-derived)`);
+    }
+    await tx.moderationAction.create({
+      data: {
+        id: randomUUID(), targetNetworkUid: networkUid, actorAccountId: actor.id || null, actorUsername: actor.username,
+        actionType: 'RESOLVE_SIGNALS', reason: changes.join('; ').slice(0, 500), snapshotId,
+        detailsJson: JSON.stringify({ employeesFired: extras.length, dishesDeselected: overSelected.length, levelBumped: levelBump }),
+      },
+    });
+  });
+  await scanPlayer(networkUid);
+  return { snapshotId, employeesFired: extras.length, dishesDeselected: overSelected.length, levelBumped: levelBump, changed: true };
+}
+
+/** Resolves every profile with an open staff/menu/level signal. */
+export async function resolveAllSignalProfiles(actor: { id?: string; username: string }): Promise<{
+  profilesScanned: number; profilesFixed: number; employeesFired: number; dishesDeselected: number; levelBumped: number;
+}> {
+  const uids = [...new Set((await prisma.anomalyFinding.findMany({
+    where: { status: 'OPEN', ruleId: { in: ['EMPLOYEE_UNLOCK_EXCEEDED', 'MENU_UNLOCK_EXCEEDED', 'LEVEL_GOURMET_MISMATCH'] } },
+    select: { networkUid: true },
+  })).map((row) => row.networkUid))];
+  const totals = { profilesFixed: 0, employeesFired: 0, dishesDeselected: 0, levelBumped: 0 };
+  for (const networkUid of uids) {
+    const result = await resolveProfileSignals(networkUid, actor);
+    if (result.changed) {
+      totals.profilesFixed += 1;
+      totals.employeesFired += result.employeesFired;
+      totals.dishesDeselected += result.dishesDeselected;
+      totals.levelBumped += result.levelBumped;
+    }
+  }
+  return { profilesScanned: uids.length, ...totals };
 }
 
 export async function scanPlayer(networkUid: string, now = new Date()): Promise<ScanSummary> {

@@ -15,7 +15,7 @@ process.env.RC_DB_PATH = testDbPath;
 const { prisma } = require('../dist/db/client.js');
 const { savePlayerProfile } = require('../dist/db/profile-store.js');
 const { evaluateProfile, levelForGourmet, unlocksForLevel } = require('../dist/moderation/rules.js');
-const { moderationPlayerDetail, recordLoginActivity, recordRpcActivity, resetAllFindings, scanPlayer, setPlayerBan, terminatePlayerSessions, rollbackProfile, resetProfileToStarter } = require('../dist/moderation/service.js');
+const { moderationPlayerDetail, recordLoginActivity, recordRpcActivity, resetAllFindings, resolveProfileSignals, scanPlayer, setPlayerBan, terminatePlayerSessions, rollbackProfile, resetProfileToStarter } = require('../dist/moderation/service.js');
 const { sendPendingAnomalyDigest, validateModerationWebhookUrl } = require('../dist/moderation/discord.js');
 const { claimGameInstance, activeGameInstance } = require('../dist/game-instances.js');
 const { touchOnline, listOnlineUsers } = require('../dist/live-events.js');
@@ -201,6 +201,39 @@ test('reset all findings wipes the queue and a re-scan recreates fresh findings'
   assert.equal(await prisma.anomalyFinding.count(), 0);
   await scanPlayer(account.networkUid);
   assert.equal(await prisma.anomalyFinding.count({ where: { networkUid: account.networkUid } }), before);
+});
+
+test('resolve signals fires over-cap staff, deselects over-cap dishes, catches level up, and audits', async () => {
+  const account = await seed('81010', 'SignalChef', { profile: { userLevel: 4, gourmetPoint: 5000 } });
+  const profileId = `facebook:${account.networkUid}`;
+  // 6 employees at level 4/5 (cap 4); 3 selected dishes (course 50 x2, course 51 x1, cap 1/course);
+  // gourmet 5000 -> displayed 500 -> level 5.
+  await prisma.employee.createMany({ data: [1, 2, 3, 4, 5, 6].map((i) => ({
+    id: `${profileId}:emp:${i}`, userProfileId: profileId, networkUid: `emp-${i}`,
+    network: 2, playfishUid: i, createdAt: new Date(`2026-08-2${i}T00:00:00Z`),
+  })) });
+  await prisma.inventoryItem.createMany({ data: [5000000, 5000008, 5100003].map((gid, i) => ({
+    id: `${profileId}:inv:${gid}`, userProfileId: profileId, globalItemId: gid, number: 1, isSelected: true,
+    createdAt: new Date(`2026-08-2${i + 1}T00:00:00Z`),
+  })) });
+
+  const result = await resolveProfileSignals(account.networkUid, { id: 'admin-id', username: 'moderator' });
+  assert.equal(result.employeesFired, 2); // 6 - level-5 cap 4
+  assert.equal(result.dishesDeselected, 1); // course 50 had 2, cap 1
+  assert.equal(result.levelBumped, 1); // level 4 -> 5
+  assert.equal(result.changed, true);
+
+  const profile = await prisma.userProfile.findUniqueOrThrow({ where: { networkUid: account.networkUid } });
+  assert.equal(profile.userLevel, 5);
+  assert.equal(await prisma.employee.count({ where: { userProfileId: profileId } }), 4);
+  const selected = await prisma.inventoryItem.findMany({ where: { userProfileId: profileId, isSelected: true } });
+  assert.equal(selected.map((item) => item.globalItemId).sort((a, b) => a - b).join(','), '5000000,5100003');
+  assert.equal(await prisma.moderationAction.count({ where: { targetNetworkUid: account.networkUid, actionType: 'RESOLVE_SIGNALS' } }), 1);
+  assert.equal((await prisma.profileSnapshot.count({ where: { networkUid: account.networkUid, reason: 'SIGNAL_FIX' } })), 1);
+
+  await scanPlayer(account.networkUid);
+  const open = await prisma.anomalyFinding.findMany({ where: { networkUid: account.networkUid, status: 'OPEN' } });
+  assert.equal(open.length, 0);
 });
 
 test('save-fact client deltas are stored in seconds and reset across RPC sessions', async () => {

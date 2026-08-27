@@ -46,10 +46,24 @@ async function renderQueue(container) {
             button.disabled = false;
         }
     }));
+    const resolveButton = also(h('button', { class: 'rc-btn primary', type: 'button' }, 'Resolve all signals'), (button) => button.addEventListener('click', async () => {
+        if (!(await confirmDialog('Resolve all signals?', 'For every profile with an open staff/menu/level signal: fire staff beyond the level cap, deselect dishes beyond the course cap, and catch the level up to its gourmet value. Each profile gets a recovery snapshot and an audit entry first.', true)))
+            return;
+        button.disabled = true;
+        try {
+            const result = await api.resolveModerationSignals();
+            toast(`Resolved: ${fmt(result.result.profilesFixed ?? 0)} profiles, ${fmt(result.result.employeesFired ?? 0)} staff fired, ${fmt(result.result.dishesDeselected ?? 0)} dishes deselected, ${fmt(result.result.levelBumped ?? 0)} levels caught up`);
+            await renderQueue(container);
+        }
+        catch (error) {
+            toast(error instanceof Error ? error.message : String(error), false);
+            button.disabled = false;
+        }
+    }));
     const search = also(h('input', { class: 'rc-input', type: 'search', placeholder: 'search player, uid, rule…' }), (input) => input.addEventListener('input', () => { filter = input.value.trim().toLowerCase(); redraw(); }));
     const severity = also(h('select', { class: 'rc-input' }, ...['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map((value) => h('option', { value }, value === 'ALL' ? 'All severities' : value))), (input) => input.addEventListener('change', () => { severityFilter = input.value; redraw(); }));
     container.textContent = '';
-    container.append(h('h1', { class: 'rc-title' }, 'Anomaly review'), h('p', { class: 'rc-sub' }, 'Explainable evidence only. No finding automatically bans, deletes, or rolls back a player.'), h('div', { class: 'rc-cards' }, card('Flagged players', fmt(active.length), 'active findings'), card('Critical', fmt(critical), 'mathematical contradictions'), card('High', fmt(high), 'strong supporting signals'), card('Last scan', dateText(data.latestScan?.completedAt ?? data.latestScan?.startedAt), data.latestScan?.discordError ? 'Discord pending/error' : data.latestScan?.discordSent ? 'Discord sent' : 'no Discord delivery')), h('div', { class: 'rc-toolbar' }, search, severity, scanButton, resetButton), panel);
+    container.append(h('h1', { class: 'rc-title' }, 'Anomaly review'), h('p', { class: 'rc-sub' }, 'Explainable evidence only. No finding automatically bans, deletes, or rolls back a player.'), h('div', { class: 'rc-cards' }, card('Flagged players', fmt(active.length), 'active findings'), card('Critical', fmt(critical), 'mathematical contradictions'), card('High', fmt(high), 'strong supporting signals'), card('Last scan', dateText(data.latestScan?.completedAt ?? data.latestScan?.startedAt), data.latestScan?.discordError ? 'Discord pending/error' : data.latestScan?.discordSent ? 'Discord sent' : 'no Discord delivery')), h('div', { class: 'rc-toolbar' }, search, severity, scanButton, resolveButton, resetButton), panel);
     redraw();
 }
 async function renderDetail(container, uid) {
