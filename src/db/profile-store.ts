@@ -1,4 +1,4 @@
-import type { Employee, FriendVisit, GardenPlot, IngredientInventory, InventoryItem, OwnedItem, RestaurantFloor, UserProfile } from '@prisma/client';
+import type { Employee, FriendVisit, GardenPlot, IngredientInventory, InventoryItem, OwnedItem, RestaurantFloor, UserProfile, Prisma } from '@prisma/client';
 import { prisma } from './client';
 import { pricePurchases } from './purchase-pricing';
 import { sanitizeActiveFloorIndex } from './layouts';
@@ -20,6 +20,7 @@ import type { ActiveAccount } from '../session';
 import { hiredFriendRosterNetworkUids, ownerFirst } from '../rpc/friend-roster';
 import { gardenIngredientForSeed } from '../rpc/garden-plot';
 import { capturePreSaveSnapshotTx, recordAcceptedSaveTx, scanPlayer } from '../moderation/service';
+import { isStackableItemId, isWallDecorationItemId } from './item-catalog';
 
 export type StoredProfile = UserProfile & {
   ownedItems: OwnedItem[];
@@ -204,6 +205,27 @@ export async function getPlayerProfile(account?: ActiveAccount): Promise<StoredP
   return profile;
 }
 
+/**
+ * ADR-0042: read-only owner fetch for internal callers (street/gourmet/hire
+ * rosters, cash purchases, mail, trades, init, balance). Delivery preparation
+ * — negative-id renumbering, façade dedup, phantom cleanup — must run only when
+ * the response actually reaches the client (`getUserProfile`), because the live
+ * client keeps saving items under their original negative local uids and a
+ * renumbering it never learns about makes the next save create a duplicate row.
+ */
+export async function readOwnerProfile(account?: ActiveAccount): Promise<StoredProfile> {
+  if (account) {
+    return ensureProfile(account.networkUid, {
+      firstName: account.username,
+      fullName: account.username,
+      playfishUid: account.playfishUid,
+      restaurantName: `${account.username}'s Restaurant`,
+      seedStarterItems: true,
+    });
+  }
+  return ensureProfile(PLAYER_NETWORK_UID, { seedStarterItems: true });
+}
+
 // Spec: decompiled/game/scripts/com/playfish/games/cooking/UserItem.as and
 // WorldCustomiseBuilding.as. Local negative IDs restart at -1 on each SWF load;
 // façade singleton groups replace their previous active item in the editor.
@@ -365,6 +387,33 @@ export async function prepareOwnedItemsForProfileDelivery(networkUid: string): P
       changed = true;
     }
 
+    // ADR-0042: the renumber-on-internal-read loop left phantom copies of one
+    // physical item (same item id at the same tile + room). Two identical
+    // non-stackable items can never legitimately share a tile, so keep the
+    // newest row and delete the phantoms. Exempt: stackable items
+    // (Crate/Sake Keg/…), wall decorations (walls hold several items per
+    // position), façade singleton groups (handled above), and non-restaurant
+    // ranges — avatar wardrobe rows (1xxxxxx) and building layers (2xxxxxx)
+    // legitimately pile up at one position.
+    const byPlacement = new Map<string, Array<{ id: string; updatedAt: Date }>>();
+    for (const item of survivingItems) {
+      if (item.globalItemId < 3_000_000 || item.globalItemId >= 8_000_000) continue;
+      if (isStackableItemId(item.globalItemId) || isWallDecorationItemId(item.globalItemId)) continue;
+      if (FACADE_SINGLETON_GROUPS.has(Math.floor(item.globalItemId / 10_000))) continue;
+      const key = `${item.globalItemId}:${item.positionX}:${item.positionY}:${item.roomIndex}`;
+      const group = byPlacement.get(key);
+      if (group) group.push(item);
+      else byPlacement.set(key, [item]);
+    }
+    for (const group of byPlacement.values()) {
+      if (group.length < 2) continue;
+      group.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+      for (const phantom of group.slice(1)) {
+        await tx.ownedItem.delete({ where: { id: phantom.id } });
+        changed = true;
+      }
+    }
+
     return changed;
   });
 }
@@ -417,7 +466,10 @@ export async function getAllFriends(activeNetworkUid = PLAYER_NETWORK_UID): Prom
 
 export async function ensureLoginAccount(account: ActiveAccount): Promise<StoredProfile> {
   await ensureStarterFriends();
-  return getPlayerProfile(account);
+  // ADR-0042: the login/signup response goes to the web page, not the SWF —
+  // the game always fetches its own profile via getUserProfile (the delivery
+  // path that renumbers negative ids and hands the result to the client).
+  return readOwnerProfile(account);
 }
 
 export async function ensureStarterFriends(): Promise<void> {
@@ -580,15 +632,7 @@ export async function savePlayerProfile(
     await repairOwnedItemKeyMismatches(tx, profile.id.networkUid, profileId);
 
     for (const item of audit.upsertOwnedItems) {
-      await tx.ownedItem.upsert({
-        where: { userProfileId_serverId: { userProfileId: profileId, serverId: item.serverId } },
-        update: ownedItemWriteData(item),
-        create: {
-          id: ownedItemKey(profile.id.networkUid, item.serverId),
-          userProfileId: profileId,
-          ...ownedItemWriteData(item),
-        },
-      });
+      await upsertOwnedItemReconciled(tx, profileId, profile.id.networkUid, item);
     }
 
     for (const change of audit.inventoryChanges) {
@@ -729,6 +773,7 @@ export async function savePlayerProfile(
       audit,
       snapshotId,
       acceptedAt,
+      rpcSessionToken: fence.rpcSessionToken ?? '',
     });
 
     return { status: 'saved', savedVersion: audit.saveVersion };
@@ -833,6 +878,71 @@ function ownedItemWriteData(item: OwnedItemData) {
     employeeNetworkUid: item.employee.networkUid,
     employeePlayfishUid: item.employee.playfishUid,
   };
+}
+
+/**
+ * ADR-0042: a negative local uid with no matching row means the row was
+ * renumbered by an earlier delivery the client never saw. Re-create it only
+ * when no physical twin exists (same item at the same tile + room) — otherwise
+ * update the twin in place, so one physical item can never become two rows.
+ * Stackable items, wall decorations, and façade singletons can legitimately
+ * share a position and keep the plain create path.
+ */
+async function upsertOwnedItemReconciled(
+  tx: Prisma.TransactionClient,
+  profileId: string,
+  networkUid: string,
+  item: OwnedItemData,
+): Promise<void> {
+  const existing = await tx.ownedItem.findUnique({
+    where: { userProfileId_serverId: { userProfileId: profileId, serverId: item.serverId } },
+    select: { id: true },
+  });
+  const sharesPositionLegitimately = item.serverId >= 0
+    || isStackableItemId(item.globalItemId)
+    || isWallDecorationItemId(item.globalItemId)
+    || FACADE_SINGLETON_GROUPS.has(Math.floor(item.globalItemId / 10_000));
+  if (existing || sharesPositionLegitimately) {
+    await tx.ownedItem.upsert({
+      where: { userProfileId_serverId: { userProfileId: profileId, serverId: item.serverId } },
+      update: ownedItemWriteData(item),
+      create: {
+        id: ownedItemKey(networkUid, item.serverId),
+        userProfileId: profileId,
+        ...ownedItemWriteData(item),
+      },
+    });
+    return;
+  }
+
+  const twin = await tx.ownedItem.findFirst({
+    where: {
+      userProfileId: profileId,
+      globalItemId: item.globalItemId,
+      positionX: item.positionX,
+      positionY: item.positionY,
+      roomIndex: item.roomIndex,
+    },
+    orderBy: [{ updatedAt: 'desc' }, { serverId: 'desc' }],
+    select: { id: true, serverId: true },
+  });
+  if (twin) {
+    await tx.ownedItem.update({
+      where: { id: twin.id },
+      data: ownedItemWriteData({ ...item, serverId: twin.serverId }),
+    });
+    return;
+  }
+
+  await tx.ownedItem.upsert({
+    where: { userProfileId_serverId: { userProfileId: profileId, serverId: item.serverId } },
+    update: ownedItemWriteData(item),
+    create: {
+      id: ownedItemKey(networkUid, item.serverId),
+      userProfileId: profileId,
+      ...ownedItemWriteData(item),
+    },
+  });
 }
 
 function starterSeeds(): OwnedItemSeed[] {

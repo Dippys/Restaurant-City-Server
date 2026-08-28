@@ -37,6 +37,8 @@ function decodeEntities(value: string): string {
 let cached: readonly ItemCatalogEntry[] | null = null;
 let cachedAttributes: ReadonlyMap<number, Readonly<Record<string, string>>> | null = null;
 let cachedOutdoorIds: ReadonlySet<number> | null = null;
+let cachedStackableIds: ReadonlySet<number> | null = null;
+let cachedWallDecorationIds: ReadonlySet<number> | null = null;
 
 /** Full catalogue: curated entries first, then every id/name found in the data XMLs (XML names win). */
 export function fullCatalog(): readonly ItemCatalogEntry[] {
@@ -183,6 +185,72 @@ export function outdoorItemIds(): ReadonlySet<number> {
 
 export function isOutdoorItemId(globalItemId: number): boolean {
   return outdoorItemIds().has(globalItemId);
+}
+
+// ADR-0042: items whose `type` contains "stackable" (Crate/Sake Keg/Barrel/…)
+// can legitimately stack several copies on one tile, so duplicate cleanup and
+// save-time reconciliation must never merge them.
+export function stackableItemIds(): ReadonlySet<number> {
+  if (cachedStackableIds) {
+    return cachedStackableIds;
+  }
+
+  const ids = new Set<number>();
+  const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
+  for (const file of CATALOG_FILES) {
+    let xml = '';
+    try { xml = fs.readFileSync(path.join(dataDir, file), 'utf8'); } catch { continue; }
+    for (const match of xml.matchAll(ITEM_TAG)) {
+      if (/type="[^"]*stackable/.test(match[1] ?? '')) {
+        const id = Number(attribute(match[1], 'id'));
+        if (Number.isInteger(id)) ids.add(id);
+      }
+    }
+  }
+
+  cachedStackableIds = ids;
+  return cachedStackableIds;
+}
+
+export function isStackableItemId(globalItemId: number): boolean {
+  return stackableItemIds().has(globalItemId);
+}
+
+// ADR-0042: walls legitimately hold several decorations (windows/pictures) at
+// one position, so wall-decoration items are exempt from duplicate cleanup and
+// save-time reconciliation too.
+export function wallDecorationItemIds(): ReadonlySet<number> {
+  if (cachedWallDecorationIds) {
+    return cachedWallDecorationIds;
+  }
+
+  const ids = new Set<number>();
+  const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
+  let xml: string;
+  try {
+    xml = fs.readFileSync(path.join(dataDir, 'restaurant.xml'), 'utf8');
+  } catch {
+    cachedWallDecorationIds = ids;
+    return ids;
+  }
+  for (const match of xml.matchAll(GROUP_BLOCK)) {
+    if (!/\btype="[^"]*\bwallDecorationItem\b[^"]*"/.test(match[1] ?? '')) {
+      continue;
+    }
+    for (const item of (match[2] ?? '').matchAll(ITEM_TAG)) {
+      const id = Number(attribute(item[1], 'id'));
+      if (Number.isInteger(id)) {
+        ids.add(id);
+      }
+    }
+  }
+
+  cachedWallDecorationIds = ids;
+  return cachedWallDecorationIds;
+}
+
+export function isWallDecorationItemId(globalItemId: number): boolean {
+  return wallDecorationItemIds().has(globalItemId);
 }
 
 export function isFoodKingEligibleItem(id: number): boolean {

@@ -268,7 +268,9 @@ test('clock rules use real seconds and the measured-time rules need a measured h
   assert.equal(evaluateProfile(base, null, fact(60, 60), new Date()).some((f) => f.ruleId === 'CLIENT_TIME_ACCELERATED'), false);
   // a genuine 60,000 s claim in 60 s is
   assert.equal(evaluateProfile(base, null, fact(60000, 60), new Date()).some((f) => f.ruleId === 'CLIENT_TIME_ACCELERATED'), true);
-  assert.equal(evaluateProfile(base, null, fact(-5, 60), new Date()).some((f) => f.ruleId === 'CLIENT_TIME_REVERSED'), true);
+  // ADR-0042: a real same-session reversal flags; sub-15 s timer noise does not
+  assert.equal(evaluateProfile(base, null, fact(-20, 60), new Date()).some((f) => f.ruleId === 'CLIENT_TIME_REVERSED'), true);
+  assert.equal(evaluateProfile(base, null, fact(-5, 60), new Date()).some((f) => f.ruleId === 'CLIENT_TIME_REVERSED'), false);
   // lifetime gourmet vs a fresh activity tracker (<1 measured hour) is not flagged
   const fresh = evaluateProfile({ ...base, gourmetPoint: 900000 }, { totalActiveSeconds: 1800, loginCount: 1, requestCount: 1, saveCount: 1 }, null, new Date());
   assert.equal(fresh.some((f) => f.ruleId === 'GOURMET_VS_MEASURED_TIME'), false);

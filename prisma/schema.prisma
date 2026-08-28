@@ -370,6 +370,7 @@ model ProfileSaveFact {
   networkUid        String
   snapshotId        String?
   saveVersion       Int
+  rpcSessionToken   String   @default("") // ADR-0042: fence token (per SWF load) for exact same-session clock comparisons
   clientTime        Int
   previousClientTime Int
   serverDeltaSeconds Int

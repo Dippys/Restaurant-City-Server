@@ -30,6 +30,8 @@ export interface AcceptedSaveEvidence {
   readonly audit: SaveAuditData;
   readonly snapshotId: string;
   readonly acceptedAt: Date;
+  /** ADR-0042: the ADR-0031 fence token (one per SWF load) for exact same-session clock comparisons. */
+  readonly rpcSessionToken: string;
 }
 
 export interface ScanSummary {
@@ -79,16 +81,20 @@ export async function recordAcceptedSaveTx(tx: Prisma.TransactionClient, evidenc
   const serverDeltaSeconds = previousFact ? Math.max(0, Math.floor((evidence.acceptedAt.getTime() - previousFact.createdAt.getTime()) / 1000)) : 0;
   // timeOnClient is milliseconds since the session's first save
   // (RpcClient.as: `getTimer() - INIT_TIME`). The previous fact may belong to
-  // an earlier RPC session — the ADR-0031 fence restarts saveVersion at 1 and
-  // the SWF reload restarts the client clock — where the raw delta is
-  // meaningless (a reload otherwise looks like the clock "reversed"). Only
-  // compare within one session and store the delta in seconds.
-  const sameSession = previousFact ? evidence.saveVersion > previousFact.saveVersion : true;
+  // an earlier RPC session — the ADR-0031 fence issues a fresh rpcSessionToken
+  // per SWF load and restarts saveVersion at 1, and the SWF reload restarts the
+  // client clock — where the raw delta is meaningless (a reload otherwise looks
+  // like the clock "reversed"). ADR-0042 compares clocks only across facts
+  // carrying the same non-empty fence token, which is exact.
+  const sameSession = previousFact !== null
+    && previousFact.rpcSessionToken !== ''
+    && previousFact.rpcSessionToken === evidence.rpcSessionToken;
   const clientDeltaSeconds = previousFact && sameSession
     ? Math.round((evidence.clientTime - previousFact.clientTime) / 1000)
     : 0;
   await tx.profileSaveFact.create({ data: {
     networkUid: evidence.networkUid, snapshotId: evidence.snapshotId, saveVersion: evidence.saveVersion,
+    rpcSessionToken: evidence.rpcSessionToken,
     clientTime: evidence.clientTime, previousClientTime: previousFact?.clientTime ?? 0, serverDeltaSeconds, clientDeltaSeconds,
     previousCredits: evidence.previousCredits, credits: evidence.credits, creditDelta: evidence.credits - evidence.previousCredits,
     previousGourmet: evidence.previousGourmet, gourmetPoint: evidence.gourmetPoint, gourmetDelta: evidence.gourmetPoint - evidence.previousGourmet,

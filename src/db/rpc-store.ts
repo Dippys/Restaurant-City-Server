@@ -2,7 +2,7 @@ import type { Mail, Pricepoint, PurchasableItem } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { prisma } from './client';
 import { FACEBOOK_NETWORK, PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, isNpcUid } from './defaults';
-import { getAllFriends, getPlayerProfile, getProfiles, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
+import { getAllFriends, getProfiles, readOwnerProfile, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
 import { ensureDailyContent, sendNpcGift, grantMailItem } from './system-mail';
 import { resolveIngredientId, ingredientRarity, firstVisitIngredientId } from './ingredient-catalog';
 import { coinBundleForToken, ingredientCashCost, ownedItemCashCost } from './cash-catalog';
@@ -537,20 +537,20 @@ export async function firstVisitFriend(account: ActiveAccount, friend: NetworkUi
 }
 
 export async function streetUsers(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
-  const owner = await getPlayerProfile(account);
+  const owner = await readOwnerProfile(account);
   const friendNetworkUids = new Set(owner.employees.map((employee) => employee.networkUid));
   const profiles = await enabledPlayerProfiles([account.networkUid, ...friendNetworkUids]);
   return selectRandomStreetProfiles(profiles, account.networkUid, friendNetworkUids, count);
 }
 
 export async function gourmetStreetUsers(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
-  await getPlayerProfile(account);
+  await readOwnerProfile(account);
   const profiles = await enabledPlayerProfiles([account.networkUid]);
   return selectGourmetStreetProfiles(profiles, account.networkUid, count);
 }
 
 export async function hireCandidates(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
-  const owner = await getPlayerProfile(account);
+  const owner = await readOwnerProfile(account);
   const friendNetworkUids = new Set(owner.employees.map((employee) => employee.networkUid));
   const profiles = await enabledPlayerProfiles([account.networkUid, ...friendNetworkUids]);
   return selectHireCandidateProfiles(profiles, account.networkUid, friendNetworkUids, count);
@@ -914,7 +914,7 @@ export function mailItemIds(mail: StoredMail): number[] {
 }
 
 async function ensureAccountProfile(account: ActiveAccount): Promise<StoredProfile> {
-  const profile = await getPlayerProfile(account);
+  const profile = await readOwnerProfile(account);
   if (profile.cashBalance <= 0) {
     return prisma.userProfile.update({
       where: { id: profileKey(account.networkUid) },
@@ -938,7 +938,7 @@ async function ensureProfileByUid(networkUid: string): Promise<StoredProfile> {
   if (found[0]) {
     return found[0];
   }
-  return getPlayerProfile({
+  return readOwnerProfile({
     username: `User${networkUid}`,
     networkUid,
     playfishUid: Number.parseInt(networkUid, 10) || 0,
