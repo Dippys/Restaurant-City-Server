@@ -80,6 +80,12 @@ export function ingredientCashCost(tokens: readonly string[]): number | null {
   return total;
 }
 
+/** Resolves the real ingredient id carried by an opaque ingredient hash. */
+export function ingredientIdForCashToken(token: string): number | null {
+  const entry = catalogByToken().get(token);
+  return entry?.source === 'ingredient.xml' ? entry.id : null;
+}
+
 /** Coin conversion entries are the only catalog rows carrying both cash and coin cost values. */
 export function coinBundleForToken(token: string): CoinBundle | null {
   const entry = catalogByToken().get(token);

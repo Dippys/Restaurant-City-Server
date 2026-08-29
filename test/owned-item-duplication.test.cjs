@@ -26,6 +26,7 @@ process.env.RC_DB_PATH = testDbPath;
 const { prisma } = require('../dist/db/client.js');
 const { getPlayerProfile, readOwnerProfile, savePlayerProfile } = require('../dist/db/profile-store.js');
 const { recordAcceptedSaveTx } = require('../dist/moderation/service.js');
+const { captureProfileSnapshot } = require('../dist/moderation/snapshots.js');
 const { evaluateProfile } = require('../dist/moderation/rules.js');
 
 let seq = 0;
@@ -109,8 +110,8 @@ function emptyAudit(overrides = {}) {
   };
 }
 
-function item(serverId, globalItemId, positionX, positionY, data = 0) {
-  return { serverId, globalItemId, positionX, positionY, data, roomIndex: 0, employee: { network: 0, networkUid: '', playfishUid: 0 } };
+function item(serverId, globalItemId, positionX, positionY, data = 0, employee = { network: 0, networkUid: '', playfishUid: 0 }) {
+  return { serverId, globalItemId, positionX, positionY, data, roomIndex: 0, employee };
 }
 
 test.after(async () => {
@@ -224,6 +225,81 @@ test('avatar wardrobe rows are exempt from phantom cleanup', async () => {
   ]);
   const delivered = await getPlayerProfile(account);
   assert.equal(delivered.ownedItems.filter((row) => row.globalItemId === 1040005).length, 2, 'avatar duplicates are never auto-deleted');
+});
+
+test('two employees can wear the same avatar item without stealing each other uniforms', async () => {
+  const account = await seedProfile('uniforms', []);
+  const current = await readOwnerProfile(account);
+  await savePlayerProfile(
+    savedProfile(current, account),
+    emptyAudit({
+      saveVersion: current.saveVersion,
+      timeOnClient: 25_000,
+      upsertOwnedItems: [
+        item(-1, 1040005, 0, 0, 0, { network: 2, networkUid: 'employee-a', playfishUid: 1 }),
+        item(-2, 1040005, 0, 0, 0, { network: 2, networkUid: 'employee-b', playfishUid: 2 }),
+      ],
+    }),
+  );
+  const shirts = (await ownedRows(account.networkUid)).filter((row) => row.globalItemId === 1040005);
+  assert.equal(shirts.length, 2);
+  assert.deepEqual(shirts.map((row) => row.employeeNetworkUid).sort(), ['employee-a', 'employee-b']);
+});
+
+test('selecting a new recipe creates it at level 1, never level 0', async () => {
+  const account = await seedProfile('waterrecipe', []);
+  const current = await readOwnerProfile(account);
+  await savePlayerProfile(
+    savedProfile(current, account),
+    emptyAudit({
+      saveVersion: current.saveVersion,
+      timeOnClient: 30_000,
+      inventoryChanges: [{ globalItemId: 5300000, delta: 0, selected: true }],
+    }),
+  );
+  const water = await prisma.inventoryItem.findUnique({
+    where: { userProfileId_globalItemId: { userProfileId: `facebook:${account.networkUid}`, globalItemId: 5300000 } },
+  });
+  assert.equal(water?.number, 1);
+  assert.equal(water?.isSelected, true);
+});
+
+test('the shipped Dummy0 fallback cannot overwrite a real owner profile', async () => {
+  const account = await seedProfile('fallbackguard', []);
+  await prisma.userProfile.update({
+    where: { networkUid: account.networkUid },
+    data: { restaurantName: 'Real Restaurant', userLevel: 24, gourmetPoint: 1_731_613, trashPoint: 9 },
+  });
+  const current = await readOwnerProfile(account);
+  await savePlayerProfile(
+    savedProfile(current, account, { restaurantName: 'Dummy0', userLevel: 11, gourmetPoint: 10_000, trashPoint: 0 }),
+    emptyAudit({ saveVersion: current.saveVersion, timeOnClient: 35_000 }),
+  );
+  const stored = await readOwnerProfile(account);
+  assert.equal(stored.restaurantName, 'Real Restaurant');
+  assert.equal(stored.userLevel, 24);
+  assert.equal(stored.gourmetPoint, 1_731_613);
+  assert.equal(stored.trashPoint, 9);
+});
+
+test('an already-corrupted Dummy0 profile recovers scalar progress from its clean snapshot', async () => {
+  const account = await seedProfile('fallbackrepair', []);
+  await prisma.userProfile.update({
+    where: { networkUid: account.networkUid },
+    data: { restaurantName: 'Recovered Restaurant', userLevel: 23, gourmetPoint: 900_000, credits: 50_000 },
+  });
+  await captureProfileSnapshot(account.networkUid, 'TEST_CLEAN', 'Before simulated fallback corruption');
+  await prisma.userProfile.update({
+    where: { networkUid: account.networkUid },
+    data: { restaurantName: 'Dummy0', userLevel: 11, gourmetPoint: 10_000, credits: 47_500 },
+  });
+
+  const recovered = await readOwnerProfile(account);
+  assert.equal(recovered.restaurantName, 'Recovered Restaurant');
+  assert.equal(recovered.userLevel, 23);
+  assert.equal(recovered.gourmetPoint, 900_000);
+  assert.equal(recovered.credits, 47_500, 'post-corruption coin state remains untouched');
+  assert.equal(await prisma.profileSnapshot.count({ where: { networkUid: account.networkUid, reason: 'AUTO_BEFORE_FALLBACK_RECOVERY' } }), 1);
 });
 
 test('moderation clocks compare only within one fence token and ignore sub-15s noise', async () => {

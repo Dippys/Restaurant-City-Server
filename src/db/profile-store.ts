@@ -20,7 +20,9 @@ import type { ActiveAccount } from '../session';
 import { hiredFriendRosterNetworkUids, ownerFirst } from '../rpc/friend-roster';
 import { gardenIngredientForSeed } from '../rpc/garden-plot';
 import { capturePreSaveSnapshotTx, recordAcceptedSaveTx, scanPlayer } from '../moderation/service';
+import { captureProfileSnapshotTx, type SnapshotPayloadV1 } from '../moderation/snapshots';
 import { isStackableItemId, isWallDecorationItemId } from './item-catalog';
+import { levelForGourmet } from '../moderation/rules';
 
 export type StoredProfile = UserProfile & {
   ownedItems: OwnedItem[];
@@ -109,7 +111,7 @@ export interface SaveFence {
 }
 
 export interface SaveResult {
-  readonly status: 'saved' | 'duplicate' | 'stale';
+  readonly status: 'saved' | 'duplicate' | 'stale' | 'rejected';
   readonly savedVersion: number;
 }
 
@@ -575,7 +577,14 @@ export async function savePlayerProfile(
     }
 
     const current = await tx.userProfile.findUniqueOrThrow({ where: { id: profileId } });
-    const saneUserLevel = boundedIntOrFallback(profile.userLevel, current.userLevel, 1, 99);
+    // RpcGetUserProfile's network-failure fallback is the shipped Dummy0
+    // profile (level 11 / 10,000 GP). It must never replace a real owner.
+    const fallbackOverwrite = isFallbackProfileValues(profile.restaurantName, profile.userLevel, profile.gourmetPoint)
+      && !isFallbackProfileValues(current.restaurantName, current.userLevel, current.gourmetPoint);
+    const saneUserLevel = fallbackOverwrite
+      ? current.userLevel
+      : boundedIntOrFallback(profile.userLevel, current.userLevel, 1, 99);
+    const saneGourmetPoint = fallbackOverwrite ? current.gourmetPoint : profile.gourmetPoint;
     // ADR-0038: the client stores activeFloorIndex as layout*2 (0/2/4) and
     // gates layouts by level; clamp modified-client values to the unlocked
     // layouts so a profile cannot hold an unearned or unrenderable layout.
@@ -585,19 +594,20 @@ export async function savePlayerProfile(
     // ADR-0035: the client never sends purchase credit deltas, so the server
     // prices purchases from game data. An unpriced/invalid purchase or an
     // unaffordable batch rejects the whole save atomically (the fence version
-    // is consumed so the client's next save is not blocked; the audit batch is
-    // dropped client-side on the already-done status). When purchases exist,
+    // is consumed so the client's next save is not blocked). The existing
+    // save-fail status tells the client that this batch did not persist; stale
+    // and already-done are reserved for actual fence conflicts. When purchases exist,
     // `newCredits` (never sent by the shipped client) is ignored so an
     // absolute-balance value cannot bypass the price.
     const pricing = await pricePurchases(audit.purchases ?? [], tx);
     if (pricing.invalid || pricing.cost < 0) {
-      return { status: 'stale', savedVersion: audit.saveVersion };
+      return { status: 'rejected', savedVersion: audit.saveVersion };
     }
     const nextCredits = (pricing.cost > 0
       ? current.credits + audit.creditDelta
       : (audit.newCredits ?? current.credits + audit.creditDelta)) - pricing.cost;
     if (nextCredits < 0) {
-      return { status: 'stale', savedVersion: audit.saveVersion };
+      return { status: 'rejected', savedVersion: audit.saveVersion };
     }
 
     await tx.userProfile.update({
@@ -606,15 +616,15 @@ export async function savePlayerProfile(
         network: profile.id.network,
         networkUid: profile.id.networkUid || PLAYER_NETWORK_UID,
         playfishUid: profile.id.playfishUid,
-        restaurantName: profile.restaurantName,
-        gourmetPoint: profile.gourmetPoint,
-        trashPoint: profile.trashPoint,
-        demandPoint: profile.demandPoint,
-        musicPlay: profile.musicPlay,
-        isInStreet: profile.isInStreet,
-        awards: profile.awards ? new Uint8Array(profile.awards) : null,
+        restaurantName: fallbackOverwrite ? current.restaurantName : profile.restaurantName,
+        gourmetPoint: saneGourmetPoint,
+        trashPoint: fallbackOverwrite ? current.trashPoint : profile.trashPoint,
+        demandPoint: fallbackOverwrite ? current.demandPoint : profile.demandPoint,
+        musicPlay: fallbackOverwrite ? current.musicPlay : profile.musicPlay,
+        isInStreet: fallbackOverwrite ? current.isInStreet : profile.isInStreet,
+        awards: fallbackOverwrite ? current.awards : (profile.awards ? new Uint8Array(profile.awards) : null),
         userLevel: saneUserLevel,
-        activeFloorIndex: saneActiveFloorIndex,
+        activeFloorIndex: fallbackOverwrite ? current.activeFloorIndex : saneActiveFloorIndex,
         credits: nextCredits,
         saveVersion: audit.saveVersion + 1,
         lastSave: Math.floor(Date.now() / 1000),
@@ -767,7 +777,7 @@ export async function savePlayerProfile(
       previousCredits: current.credits,
       credits: nextCredits,
       previousGourmet: current.gourmetPoint,
-      gourmetPoint: profile.gourmetPoint,
+      gourmetPoint: saneGourmetPoint,
       previousLevel: current.userLevel,
       userLevel: saneUserLevel,
       audit,
@@ -792,6 +802,96 @@ interface EnsureProfileOptions {
   readonly seedStarterItems?: boolean;
 }
 
+function isFallbackProfileValues(restaurantName: string, userLevel: number, gourmetPoint: number): boolean {
+  return /^Dummy\d+$/i.test(restaurantName.trim()) && userLevel === 11 && gourmetPoint === 10_000;
+}
+
+function snapshotPayload(value: string): SnapshotPayloadV1 | null {
+  try {
+    const payload = JSON.parse(value) as SnapshotPayloadV1;
+    return payload?.version === 1 && payload.profile ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Repairs the exact shipped fallback fingerprint from the most recent clean
+ * pre-save snapshot. Only scalar profile fields are restored: later item,
+ * coin, cash, ingredient, and employee state stays untouched.
+ */
+export async function recoverFallbackProfileScalars(networkUid: string): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.userProfile.findUnique({ where: { networkUid } });
+    if (!current || !/^Dummy\d+$/i.test(current.restaurantName.trim())) {
+      return false;
+    }
+
+    // Prefer the immutable snapshot linked to the exact 11/10,000 fallback
+    // transition. Profiles can earn more GP after corruption, so their current
+    // values no longer necessarily match the original fingerprint.
+    const fallbackFact = await tx.profileSaveFact.findFirst({
+      where: {
+        networkUid,
+        userLevel: 11,
+        gourmetPoint: 10_000,
+        OR: [{ previousLevel: { not: 11 } }, { previousGourmet: { not: 10_000 } }],
+      },
+      select: { snapshotId: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    const linkedSnapshot = fallbackFact?.snapshotId
+      ? await tx.profileSnapshot.findUnique({ where: { id: fallbackFact.snapshotId }, select: { payloadJson: true } })
+      : null;
+    let clean = linkedSnapshot ? snapshotPayload(linkedSnapshot.payloadJson) : null;
+    if (clean && /^Dummy\d+$/i.test(clean.profile.restaurantName.trim())) {
+      clean = null;
+    }
+
+    // The exact current fingerprint is itself sufficient evidence for older
+    // databases that predate save facts; use the newest clean snapshot.
+    if (!clean && isFallbackProfileValues(current.restaurantName, current.userLevel, current.gourmetPoint)) {
+      const snapshots = await tx.profileSnapshot.findMany({
+        where: { networkUid },
+        select: { payloadJson: true },
+        orderBy: { createdAt: 'desc' },
+        take: 250,
+      });
+      clean = snapshots
+        .map((row) => snapshotPayload(row.payloadJson))
+        .find((payload) => payload && !/^Dummy\d+$/i.test(payload.profile.restaurantName.trim())) ?? null;
+    }
+    if (!clean) {
+      return false;
+    }
+
+    const recoveredGourmetPoint = Math.max(current.gourmetPoint, clean.profile.gourmetPoint);
+    const recoveredUserLevel = Math.max(
+      clean.profile.userLevel,
+      Math.max(1, levelForGourmet(Math.floor(recoveredGourmetPoint / 10))),
+    );
+
+    await captureProfileSnapshotTx(tx, networkUid, 'AUTO_BEFORE_FALLBACK_RECOVERY', 'Before restoring Dummy fallback scalars');
+    await tx.userProfile.update({
+      where: { id: current.id },
+      data: {
+        restaurantName: clean.profile.restaurantName,
+        userLevel: recoveredUserLevel,
+        gourmetPoint: recoveredGourmetPoint,
+        trashPoint: clean.profile.trashPoint,
+        demandPoint: clean.profile.demandPoint,
+        musicPlay: clean.profile.musicPlay,
+        isInStreet: clean.profile.isInStreet,
+        activeFloorIndex: clean.profile.activeFloorIndex,
+        awards: clean.profile.awardsBase64
+          ? new Uint8Array(Buffer.from(clean.profile.awardsBase64, 'base64'))
+          : null,
+      },
+    });
+    return true;
+  });
+}
+
 async function ensureProfile(networkUid: string, options: EnsureProfileOptions = {}): Promise<StoredProfile> {
   const safeNetworkUid = networkUid || PLAYER_NETWORK_UID;
   const id = profileKey(safeNetworkUid);
@@ -801,6 +901,10 @@ async function ensureProfile(networkUid: string, options: EnsureProfileOptions =
   });
 
   if (existing) {
+    if (/^Dummy\d+$/i.test(existing.restaurantName.trim()) && await recoverFallbackProfileScalars(safeNetworkUid)) {
+      return ensureProfile(safeNetworkUid, options);
+    }
+
     if (needsProfileRepair(existing)) {
       await prisma.userProfile.update({
         where: { id },
@@ -899,6 +1003,8 @@ async function upsertOwnedItemReconciled(
     select: { id: true },
   });
   const sharesPositionLegitimately = item.serverId >= 0
+    || item.globalItemId < 3_000_000
+    || item.globalItemId >= 8_000_000
     || isStackableItemId(item.globalItemId)
     || isWallDecorationItemId(item.globalItemId)
     || FACADE_SINGLETON_GROUPS.has(Math.floor(item.globalItemId / 10_000));
@@ -1168,7 +1274,11 @@ async function changeInventoryItem(
   const existing = await tx.inventoryItem.findUnique({
     where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: change.globalItemId } },
   });
-  const nextNumber = Math.max(0, (existing?.number ?? 0) + change.delta);
+  const changedNumber = Math.max(0, (existing?.number ?? 0) + change.delta);
+  // Selecting a recipe is also proof that the recipe is owned. The shipped
+  // client sends delta=0 for selection, so a newly selected recipe starts at
+  // level 1 instead of an unusable level 0.
+  const nextNumber = change.selected === undefined ? changedNumber : Math.max(1, changedNumber);
 
   if (nextNumber === 0 && !change.selected) {
     await tx.inventoryItem.deleteMany({ where: { userProfileId: profileId, globalItemId: change.globalItemId } });

@@ -33,6 +33,7 @@ const KOI_POND = 3020123; // cash 15, no coin cost (PF-cash only)
 const SKILL_BOOK_PERK = 6000005; // perk.xml cost 100
 const CLASSIC_HAIR = 1040005; // avatar.xml cost 0 (starter outfit)
 const SEED_COST = 2000; // GardenPlot.as:15
+const OUTSIDE_AREA_7X6 = 3900000; // restaurant.xml cost 2500, level 10 garden expansion
 
 let seq = 0;
 async function seedProfile(name, credits = 50000) {
@@ -167,6 +168,36 @@ test('outdoor and facade decoration purchases are priced like any other item', a
   assert.equal(placed.some((item) => item.globalItemId === BASIC_WINDOW), true);
 });
 
+test('the level-10 garden expansion persists and charges its XML price', async () => {
+  const account = await seedProfile('gardenexpansion');
+  const fence = await setupFence(account);
+  const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
+    upsertOwnedItems: [{ ...ownedItem(-1, OUTSIDE_AREA_7X6), roomIndex: 1 }],
+    purchases: [{ kind: 'owned', itemId: OUTSIDE_AREA_7X6, qty: 1 }],
+  }), { ...fence, payloadDigest: 'garden-expansion-v1' });
+  assert.equal(result.status, 'saved');
+  assert.equal(await credits(account), 50000 - 2500);
+  assert.equal(await ownedCount(account, OUTSIDE_AREA_7X6), 1);
+});
+
+test('selling an owned item removes it and applies the client sale credit', async () => {
+  const account = await seedProfile('itemsale');
+  const profileId = `facebook:${account.networkUid}`;
+  await prisma.ownedItem.create({ data: {
+    id: `${profileId}:owned:7`, userProfileId: profileId, serverId: 7,
+    globalItemId: WHITE_ROOM_DIVIDER, positionX: 3, positionY: 4, data: 0,
+    roomIndex: 0, employeeNetwork: 0, employeeNetworkUid: '', employeePlayfishUid: 0,
+  } });
+  const fence = await setupFence(account);
+  const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
+    creditDelta: 100,
+    removeOwnedItemIds: [7],
+  }), { ...fence, payloadDigest: 'sale-v1' });
+  assert.equal(result.status, 'saved');
+  assert.equal(await credits(account), 50100);
+  assert.equal(await ownedCount(account, WHITE_ROOM_DIVIDER), 0);
+});
+
 test('inventory purchase resolves the hash token and charges cost × qty', async () => {
   const account = await seedProfile('inventorybuy');
   const fence = await setupFence(account);
@@ -224,7 +255,7 @@ test('ingredient purchase charges the enabled market price and rejects disabled 
     ingredientChanges: [{ globalItemId: 4000000, delta: 1 }],
     purchases: [{ kind: 'ingredient', itemId: 4000000, qty: 1 }],
   }), { ...fence, payloadDigest: 'ingredient-v2' });
-  assert.equal(rejected.status, 'stale');
+  assert.equal(rejected.status, 'rejected');
   assert.equal(await credits(account), 50000 - 1000);
 });
 
@@ -248,7 +279,7 @@ test('insufficient funds rejects the save atomically and does not wedge the save
     upsertOwnedItems: [ownedItem(-1, RED_BRICK_PILLAR)],
     purchases: [{ kind: 'owned', itemId: RED_BRICK_PILLAR, qty: 1 }],
   }), { ...fence, payloadDigest: 'poor-v1' });
-  assert.deepEqual(rejected, { status: 'stale', savedVersion: 1 });
+  assert.deepEqual(rejected, { status: 'rejected', savedVersion: 1 });
   assert.equal(await credits(account), 100);
   assert.equal(await ownedCount(account, RED_BRICK_PILLAR), 0);
 
@@ -265,7 +296,7 @@ test('cash-only items cannot be bought through the save audit', async () => {
     upsertOwnedItems: [ownedItem(-1, KOI_POND)],
     purchases: [{ kind: 'owned', itemId: KOI_POND, qty: 1 }],
   }), { ...fence, payloadDigest: 'cashonly-v1' });
-  assert.equal(result.status, 'stale');
+  assert.equal(result.status, 'rejected');
   assert.equal(await credits(account), 50000);
   assert.equal(await ownedCount(account, KOI_POND), 0);
 });
@@ -276,7 +307,7 @@ test('an unresolvable purchase token rejects the save', async () => {
   const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
     purchases: [{ kind: 'inventory', qty: 1, token: 'no-such-hash', unresolved: true }],
   }), { ...fence, payloadDigest: 'unknown-v1' });
-  assert.equal(result.status, 'stale');
+  assert.equal(result.status, 'rejected');
   assert.equal(await credits(account), 50000);
 });
 
@@ -307,7 +338,7 @@ test('the save parser records purchase actions and resolves inventory tokens by 
     writeU8(0), // activeFloorIndex
     writeVarint(1), // saveVersion
     writeVarint(500), // timeOnClient
-    writeVarint(4), // 4 audit changes
+    writeVarint(5), // 5 audit changes
     // 22 purchaseOwnedItem: token + OwnedItem
     writeU8(22), writeVarint(0), writeIntvar32(0),
     writeString('voNvhmQe5ogIYR21dTGXJa'),
@@ -322,6 +353,9 @@ test('the save parser records purchase actions and resolves inventory tokens by 
     // 38 seedPlant: plotId
     writeU8(38), writeVarint(0), writeIntvar32(0),
     writeVarint(2),
+    // 33 addRecipe: learning/leveling does not select the dish
+    writeU8(33), writeVarint(0), writeIntvar32(0),
+    writeString('jvHIr9RwSDIty3w4pyEJKvCi9R_hAp3Sv2gG3.T4AtJLJ0tugzlJKaZFQ0U1Umro'),
   ]);
 
   const parsed = parseSaveProfile(body);
@@ -331,6 +365,9 @@ test('the save parser records purchase actions and resolves inventory tokens by 
     { kind: 'ingredient', itemId: 4000000, qty: 1 },
     { kind: 'seed', qty: 1 },
   ]);
-  assert.deepEqual(parsed.audit.inventoryChanges, [{ globalItemId: RED_BRICK_PILLAR, delta: 2 }]);
+  assert.deepEqual(parsed.audit.inventoryChanges, [
+    { globalItemId: RED_BRICK_PILLAR, delta: 2 },
+    { globalItemId: 5000008, delta: 1 },
+  ]);
   assert.deepEqual(parsed.audit.gardenChanges, [{ plotId: 2, action: 'seed' }]);
 });

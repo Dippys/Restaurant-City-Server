@@ -5,7 +5,7 @@ import { FACEBOOK_NETWORK, PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, isNpcUid } fr
 import { getAllFriends, getProfiles, readOwnerProfile, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
 import { ensureDailyContent, sendNpcGift, grantMailItem } from './system-mail';
 import { resolveIngredientId, ingredientRarity, firstVisitIngredientId } from './ingredient-catalog';
-import { coinBundleForToken, ingredientCashCost, ownedItemCashCost } from './cash-catalog';
+import { coinBundleForToken, ingredientCashCost, ingredientIdForCashToken, ownedItemCashCost } from './cash-catalog';
 import type { ActiveAccount } from '../session';
 import { enqueueLiveMail, pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
 import { selectGourmetStreetProfiles, selectHireCandidateProfiles, selectRandomStreetProfiles } from '../rpc/street-roster';
@@ -232,7 +232,12 @@ export async function purchaseCashIngredients(account: ActiveAccount, tokens: re
   await prisma.$transaction(async (tx) => {
     await tx.userProfile.update({ where: { id: profileKey(account.networkUid) }, data: { cashBalance: nextBalance } });
     for (const token of tokens) {
-      const ingredientId = itemIdFromToken(token, 4000000);
+      // Ingredient hashes are opaque. Extracting their incidental digits
+      // credited rows such as ids 5/9/11 while charging for the real item.
+      const ingredientId = ingredientIdForCashToken(token);
+      if (ingredientId === null) {
+        throw new Error('Validated ingredient cash token disappeared from the catalog.');
+      }
       await tx.ingredientInventory.upsert({
         where: { userProfileId_globalItemId: { userProfileId: profileKey(account.networkUid), globalItemId: ingredientId } },
         update: { number: { increment: 1 }, isLocked: true },
@@ -246,7 +251,7 @@ export async function purchaseCashIngredients(account: ActiveAccount, tokens: re
       });
     }
     await tx.cashTransaction.create({
-      data: cashTransactionData(account.networkUid, 'purchaseCashItemIngredients', tokens.join(','), -cost, nextBalance),
+      data: cashTransactionData(account.networkUid, 'purchaseCashItemIngredientsV2', tokens.join(','), -cost, nextBalance),
     });
   });
 

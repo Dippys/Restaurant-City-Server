@@ -55,7 +55,7 @@ import { actOnLink, adminLifecycle, adminLinkDetail, cancelPlayerLink, createAdm
 import { renderSocialLanding } from './social-links/landing';
 import { forceDailyIngredientSync } from './daily-ingredients/scheduler';
 import { recordRpcActivity } from './moderation/service';
-import { createManualSnapshot, moderationOverview, moderationPlayerDetail, resetAllFindings, resetProfileToStarter, resolveAllSignalProfiles, reviewFinding, rollbackProfile, scanAllProfiles, setPlayerBan, terminatePlayerSessions } from './moderation/service';
+import { createManualSnapshot, moderationOverview, moderationPlayerDetail, resetAllFindings, resetProfileToStarter, reviewFinding, rollbackProfile, scanAllProfiles, setPlayerBan, terminatePlayerSessions } from './moderation/service';
 import { runModerationCycle } from './moderation/scheduler';
 
 const CROSSDOMAIN = [
@@ -570,12 +570,6 @@ async function handleModerationApi(config: ServerConfig, method: string, pathnam
       const reset = await resetAllFindings();
       const summary = await scanAllProfiles();
       sendJson(res, { ok: true, result: { ...summary, reset } });
-      return;
-    }
-    if (method === 'POST' && pathname === '/__api/moderation/resolve-signals') {
-      // Fire over-cap staff, deselect over-cap dishes, and catch levels up for
-      // every profile with an open staff/menu/level signal (snapshots + audit).
-      sendJson(res, { ok: true, result: await resolveAllSignalProfiles(actor) });
       return;
     }
     const finding = pathname.match(/^\/__api\/moderation\/findings\/([A-Za-z0-9-]+)$/);

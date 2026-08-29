@@ -15,7 +15,7 @@ process.env.RC_DB_PATH = testDbPath;
 const { prisma } = require('../dist/db/client.js');
 const { savePlayerProfile } = require('../dist/db/profile-store.js');
 const { evaluateProfile, levelForGourmet, unlocksForLevel } = require('../dist/moderation/rules.js');
-const { moderationPlayerDetail, recordLoginActivity, recordRpcActivity, resetAllFindings, resolveProfileSignals, scanPlayer, setPlayerBan, terminatePlayerSessions, rollbackProfile, resetProfileToStarter } = require('../dist/moderation/service.js');
+const { moderationPlayerDetail, recordLoginActivity, recordRpcActivity, resetAllFindings, scanPlayer, setPlayerBan, terminatePlayerSessions, rollbackProfile, resetProfileToStarter } = require('../dist/moderation/service.js');
 const { sendPendingAnomalyDigest, validateModerationWebhookUrl } = require('../dist/moderation/discord.js');
 const { claimGameInstance, activeGameInstance } = require('../dist/game-instances.js');
 const { touchOnline, listOnlineUsers } = require('../dist/live-events.js');
@@ -62,18 +62,22 @@ test('AS3 progression rules identify exact contradictions and keep context separ
     ingredients: [], gardenPlots: [{ ingredientId: 4000000 }], employees: [{}, {}, {}, {}], cashTransactions: [],
   }, { totalActiveSeconds: 5400, loginCount: 1, requestCount: 1, saveCount: 1 }, null, new Date());
   const ids = new Set(findings.map((finding) => finding.ruleId));
-  for (const expected of ['LEVEL_GOURMET_MISMATCH', 'EMPLOYEE_UNLOCK_EXCEEDED', 'GARDEN_UNLOCK_EXCEEDED', 'LAYOUT_UNLOCK_EXCEEDED', 'NEGATIVE_ITEM_QUANTITY', 'UNKNOWN_ITEM_IDENTITIES', 'COINS_VS_MEASURED_TIME']) assert.equal(ids.has(expected), true, expected);
+  for (const expected of ['LEVEL_GOURMET_MISMATCH', 'EMPLOYEE_UNLOCK_EXCEEDED', 'GARDEN_UNLOCK_EXCEEDED', 'LAYOUT_UNLOCK_EXCEEDED', 'NEGATIVE_ITEM_QUANTITY', 'UNKNOWN_ITEM_IDENTITIES']) assert.equal(ids.has(expected), true, expected);
   const ahead = findings.find((finding) => finding.ruleId === 'LEVEL_GOURMET_MISMATCH');
   assert.equal(ahead.severity, 'CRITICAL');
   assert.equal(ahead.evidence.direction, 'LEVEL_AHEAD');
 
-  const behind = evaluateProfile({
+  const normalCatchup = evaluateProfile({
     networkUid: 'level-catchup', credits: 0, cashBalance: 250, userLevel: 4, gourmetPoint: 14150,
-    activeFloorIndex: 0, createdAt: new Date(), ownedItems: [], inventoryItems: [], ingredients: [],
+    activeFloorIndex: 0, createdAt: new Date(), ownedItems: [], inventoryItems: [
+      { globalItemId: 5000000, number: 1, isSelected: true },
+      { globalItemId: 5000008, number: 2, isSelected: true },
+    ], ingredients: [],
     gardenPlots: [], employees: [], cashTransactions: [],
-  }, null, null, new Date()).find((finding) => finding.ruleId === 'LEVEL_GOURMET_MISMATCH');
-  assert.equal(behind.severity, 'HIGH');
-  assert.equal(behind.evidence.direction, 'LEVEL_BEHIND');
+  }, { totalActiveSeconds: 5400, loginCount: 1, requestCount: 1, saveCount: 1 }, null, new Date());
+  assert.equal(normalCatchup.some((finding) => finding.ruleId === 'LEVEL_GOURMET_MISMATCH'), false, 'one-level-at-a-time catch-up is normal');
+  assert.equal(normalCatchup.some((finding) => finding.ruleId === 'MENU_UNLOCK_EXCEEDED'), false, 'server-caused menu drift is not player misconduct');
+  assert.equal(normalCatchup.some((finding) => finding.ruleId.includes('MEASURED_TIME')), false, 'partial activity measurement cannot judge lifetime progress');
 });
 
 test('first scan creates one baseline rollback point and later scans do not duplicate it', async () => {
@@ -97,7 +101,7 @@ test('accepted saves create immutable facts and rollback restores state while re
   assert.equal(facts.length, 1);
   assert.equal(facts[0].gourmetDelta, 500000);
   assert.equal(facts[0].creditDelta, 2000000);
-  assert.equal((await moderationPlayerDetail(account.networkUid)).findings.some((finding) => finding.ruleId === 'LEVEL_GOURMET_MISMATCH'), true);
+  assert.equal((await moderationPlayerDetail(account.networkUid)).findings.some((finding) => finding.ruleId === 'LEVEL_GOURMET_MISMATCH'), false);
 
   await rollbackProfile(account.networkUid, snapshots[0].id, admin, 'Restore the last clean save');
   const restored = await prisma.userProfile.findUniqueOrThrow({ where: { networkUid: account.networkUid } });
@@ -203,39 +207,6 @@ test('reset all findings wipes the queue and a re-scan recreates fresh findings'
   assert.equal(await prisma.anomalyFinding.count({ where: { networkUid: account.networkUid } }), before);
 });
 
-test('resolve signals fires over-cap staff, deselects over-cap dishes, catches level up, and audits', async () => {
-  const account = await seed('81010', 'SignalChef', { profile: { userLevel: 4, gourmetPoint: 5000 } });
-  const profileId = `facebook:${account.networkUid}`;
-  // 6 employees at level 4/5 (cap 4); 3 selected dishes (course 50 x2, course 51 x1, cap 1/course);
-  // gourmet 5000 -> displayed 500 -> level 5.
-  await prisma.employee.createMany({ data: [1, 2, 3, 4, 5, 6].map((i) => ({
-    id: `${profileId}:emp:${i}`, userProfileId: profileId, networkUid: `emp-${i}`,
-    network: 2, playfishUid: i, createdAt: new Date(`2026-08-2${i}T00:00:00Z`),
-  })) });
-  await prisma.inventoryItem.createMany({ data: [5000000, 5000008, 5100003].map((gid, i) => ({
-    id: `${profileId}:inv:${gid}`, userProfileId: profileId, globalItemId: gid, number: 1, isSelected: true,
-    createdAt: new Date(`2026-08-2${i + 1}T00:00:00Z`),
-  })) });
-
-  const result = await resolveProfileSignals(account.networkUid, { id: 'admin-id', username: 'moderator' });
-  assert.equal(result.employeesFired, 2); // 6 - level-5 cap 4
-  assert.equal(result.dishesDeselected, 1); // course 50 had 2, cap 1
-  assert.equal(result.levelBumped, 1); // level 4 -> 5
-  assert.equal(result.changed, true);
-
-  const profile = await prisma.userProfile.findUniqueOrThrow({ where: { networkUid: account.networkUid } });
-  assert.equal(profile.userLevel, 5);
-  assert.equal(await prisma.employee.count({ where: { userProfileId: profileId } }), 4);
-  const selected = await prisma.inventoryItem.findMany({ where: { userProfileId: profileId, isSelected: true } });
-  assert.equal(selected.map((item) => item.globalItemId).sort((a, b) => a - b).join(','), '5000000,5100003');
-  assert.equal(await prisma.moderationAction.count({ where: { targetNetworkUid: account.networkUid, actionType: 'RESOLVE_SIGNALS' } }), 1);
-  assert.equal((await prisma.profileSnapshot.count({ where: { networkUid: account.networkUid, reason: 'SIGNAL_FIX' } })), 1);
-
-  await scanPlayer(account.networkUid);
-  const open = await prisma.anomalyFinding.findMany({ where: { networkUid: account.networkUid, status: 'OPEN' } });
-  assert.equal(open.length, 0);
-});
-
 test('save-fact client deltas are stored in seconds and reset across RPC sessions', async () => {
   const account = await seed('81008', 'TimeDeltaChef');
   await prisma.session.create({ data: { id: 'sess-a', tokenHash: 't-a', csrfToken: 'c', accountId: account.id, expiresAt: new Date('2035-01-01T00:00:00Z'), rpcSessionToken: 'rpc-time-a' } });
@@ -255,7 +226,7 @@ test('save-fact client deltas are stored in seconds and reset across RPC session
   assert.equal(facts[2].clientDeltaSeconds, 0);
 });
 
-test('clock rules use real seconds and the measured-time rules need a measured hour', () => {
+test('clock rules use real seconds while partial activity never judges lifetime progress', () => {
   const base = {
     networkUid: 'clock-rule', credits: 0, cashBalance: 250, userLevel: 5, gourmetPoint: 5000,
     activeFloorIndex: 0, createdAt: new Date(), ownedItems: [], inventoryItems: [], ingredients: [],
@@ -271,9 +242,7 @@ test('clock rules use real seconds and the measured-time rules need a measured h
   // ADR-0042: a real same-session reversal flags; sub-15 s timer noise does not
   assert.equal(evaluateProfile(base, null, fact(-20, 60), new Date()).some((f) => f.ruleId === 'CLIENT_TIME_REVERSED'), true);
   assert.equal(evaluateProfile(base, null, fact(-5, 60), new Date()).some((f) => f.ruleId === 'CLIENT_TIME_REVERSED'), false);
-  // lifetime gourmet vs a fresh activity tracker (<1 measured hour) is not flagged
-  const fresh = evaluateProfile({ ...base, gourmetPoint: 900000 }, { totalActiveSeconds: 1800, loginCount: 1, requestCount: 1, saveCount: 1 }, null, new Date());
-  assert.equal(fresh.some((f) => f.ruleId === 'GOURMET_VS_MEASURED_TIME'), false);
-  const measured = evaluateProfile({ ...base, gourmetPoint: 900000 }, { totalActiveSeconds: 5400, loginCount: 1, requestCount: 1, saveCount: 1 }, null, new Date());
-  assert.equal(measured.some((f) => f.ruleId === 'GOURMET_VS_MEASURED_TIME'), true);
+  const measured = evaluateProfile({ ...base, gourmetPoint: 900000, credits: 9_000_000 }, { totalActiveSeconds: 5400, loginCount: 1, requestCount: 1, saveCount: 1 }, null, new Date());
+  assert.equal(measured.some((f) => f.ruleId.includes('MEASURED_TIME')), false);
+  assert.equal(measured.some((f) => f.ruleId === 'RAPID_NEW_ACCOUNT_PROGRESSION'), false);
 });

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   coinBundleForToken,
   ingredientCashCost,
+  ingredientIdForCashToken,
   ownedItemCashCost,
 } = require('../dist/db/cash-catalog.js');
 
@@ -18,6 +19,12 @@ test('ingredient cash purchases sum each requested XML price', () => {
   assert.equal(ingredientCashCost(['jn7oj0vkTbuJkKA5QjzGda', 'dn5yovNc6QRAjcTpMYvSva']), 10);
   assert.equal(ingredientCashCost([]), null);
   assert.equal(ingredientCashCost(['vzQQjMQ7qyY6pB1QbGzMyW']), null);
+});
+
+test('ingredient cash hashes resolve to their XML ingredient ids', () => {
+  assert.equal(ingredientIdForCashToken('jn7oj0vkTbuJkKA5QjzGda'), 4000004);
+  assert.equal(ingredientIdForCashToken('dn5yovNc6QRAjcTpMYvSva'), 4000024);
+  assert.equal(ingredientIdForCashToken('vzQQjMQ7qyY6pB1QbGzMyW'), null);
 });
 
 test('coin conversion uses the XML PF cost and coin payout', () => {

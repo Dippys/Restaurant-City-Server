@@ -55,6 +55,7 @@ import {
   type StoredMail,
 } from '../db/rpc-store';
 import type { LiveEvent } from '../live-events';
+import { saveStatusCode } from './save-status';
 
 type RpcResponder = (
   request: ParsedRequest | ParsedSubRequest,
@@ -62,8 +63,6 @@ type RpcResponder = (
 ) => Buffer | null | Promise<Buffer | null>;
 
 const STATUS_OK = 0;
-const SAVE_STATUS_OK = 0;
-const SAVE_STATUS_ALREADY_DONE = 2;
 const EMPLOYEE_MAX_WORK_TIME_MS = 4 * 60 * 60 * 1000;
 const GARDEN_GROW_TIME_SECONDS = 48 * 60 * 60;
 const GARDEN_MAX_WETNESS_SECONDS = 9 * 60 * 60;
@@ -280,7 +279,7 @@ async function saveProfile(request: ParsedRequest | ParsedSubRequest, account: A
   });
 
   return Buffer.concat([
-    writeU8(result.status === 'stale' ? SAVE_STATUS_ALREADY_DONE : SAVE_STATUS_OK),
+    writeU8(saveStatusCode(result.status)),
     writeVarint(result.savedVersion),
     writeArray([]),
     writeBool(false),

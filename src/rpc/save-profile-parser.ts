@@ -237,7 +237,10 @@ function readAuditChanges(
           } else {
             const recipe = resolveRecipeEntry(token);
             const recipeId = recipe?.id ?? itemIdFromToken(token);
-            inventoryChanges.push({ globalItemId: recipeId, delta: 1, selected: true });
+            // SaveProfileHandler.addRecipe() means "learn/level this recipe".
+            // It carries no menu-selection flag; forcing selected=true here
+            // made ordinary upgrades exceed the shipped per-course menu cap.
+            inventoryChanges.push({ globalItemId: recipeId, delta: 1 });
             for (const ingredientId of recipe?.ingredientIds ?? []) {
               ingredientChanges.push({ globalItemId: ingredientId, delta: -1 });
             }
