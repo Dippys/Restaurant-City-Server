@@ -130,6 +130,31 @@ function main() {
     return;
   }
 
+  // Never write to a damaged SQLite file (a torn copy of a live DB is exactly
+  // the failure mode that produced phantom rows in the first place).
+  const health = new Database(dbPath, { readonly: true });
+  let healthy = true;
+  try {
+    const check = health.prepare('PRAGMA quick_check').all();
+    healthy = check.length === 1 && check[0].quick_check === 'ok';
+    if (healthy) {
+      const fk = health.prepare('PRAGMA foreign_key_check').all();
+      healthy = fk.length === 0;
+      if (!healthy) console.error(`foreign_key_check found ${fk.length} violations — refusing to write.`);
+    } else {
+      console.error(`quick_check failed: ${JSON.stringify(check)} — refusing to write.`);
+    }
+  } catch (error) {
+    console.error(`Database health check failed: ${error.message} — refusing to write.`);
+    healthy = false;
+  }
+  health.close();
+  if (!healthy) {
+    console.error('This copy of the database is damaged (likely copied while the server was writing).');
+    console.error('Stop the production server first, copy the database again, and re-run. Aborting.');
+    process.exit(1);
+  }
+
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupPath = `${dbPath}.bak-${stamp}`;
   fs.copyFileSync(dbPath, backupPath);
