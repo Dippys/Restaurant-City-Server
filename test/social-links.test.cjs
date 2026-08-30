@@ -118,7 +118,7 @@ test('expired held escrow is returned exactly once by scheduled maintenance', as
   await prisma.ingredientInventory.create({ data: { id: `facebook:${owner.networkUid}:ingredient:4000010`, userProfileId: `facebook:${owner.networkUid}`, globalItemId: 4000010, number: 1 } });
   const now = new Date('2026-08-22T08:00:00Z');
   await createPlayerLink(owner, { kind: 'directGift', itemId: 4000010, quantity: 1, expiresAt: new Date(now.getTime() + 1000).toISOString() }, now);
-  assert.equal((await prisma.ingredientInventory.findUnique({ where: { userProfileId_globalItemId: { userProfileId: `facebook:${owner.networkUid}`, globalItemId: 4000010 } } })).number, 0);
+  assert.equal(await prisma.ingredientInventory.findUnique({ where: { userProfileId_globalItemId: { userProfileId: `facebook:${owner.networkUid}`, globalItemId: 4000010 } } }), null);
   assert.equal(await sweepExpiredEscrow(new Date(now.getTime() + 1001)), 1);
   assert.equal(await sweepExpiredEscrow(new Date(now.getTime() + 2000)), 0);
   assert.equal((await prisma.ingredientInventory.findUnique({ where: { userProfileId_globalItemId: { userProfileId: `facebook:${owner.networkUid}`, globalItemId: 4000010 } } })).number, 1);

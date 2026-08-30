@@ -119,6 +119,16 @@ export function coinPriceForItemId(id: number): number | null {
   return Number.isInteger(cost) && cost >= 0 ? cost : null;
 }
 
+/** Shipped `GameWorld.getItemSellPrice`: cash × 330, else floor(cost / 3). */
+export function sellPriceForItemId(id: number): number | null {
+  const attrs = itemAttributes(id);
+  if (!attrs) return null;
+  const cash = Number(attrs.cash ?? 0);
+  if (Number.isInteger(cash) && cash > 0) return cash * 330;
+  const cost = Number(attrs.cost);
+  return Number.isInteger(cost) && cost >= 0 ? Math.floor(cost / 3) : null;
+}
+
 /** "Apple (4000000)" label for display, or the raw id if unknown. */
 export function catalogLabel(id: number): string {
   const entry = fullCatalog().find((candidate) => candidate.id === id);

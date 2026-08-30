@@ -24,6 +24,7 @@ test('existing customized layouts never regain missing starter furniture during 
       create: async () => assert.fail('an existing menu must not be backfilled'),
     },
     ingredientInventory: {
+      deleteMany: async () => ({ count: 0 }),
       create: async () => assert.fail('existing profile repair must not reach ingredient backfill'),
     },
     userProfile: {

@@ -96,7 +96,7 @@ export function evaluateProfile(
   void activity;
   void now;
   const isFallbackProfile = /^Dummy\d+$/i.test((profile.restaurantName ?? '').trim())
-    && profile.userLevel === 11 && profile.gourmetPoint === 10_000;
+    && profile.userLevel === 11 && profile.gourmetPoint < 100_000;
   const fallbackState = isFallbackProfile || Boolean(profile.knownFallbackRecovery);
 
   if (isFallbackProfile) {

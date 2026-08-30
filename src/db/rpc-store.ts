@@ -676,7 +676,8 @@ function readStoredNumberArray(value: string): number[] {
   }
 }
 
-// Reads/writes an ingredient count with a floor of 0, deleting empty non-locked rows.
+// Reads/writes an ingredient count with a floor of 0. The AS3 removes empty
+// ingredients from its array, so the durable row must disappear too.
 async function adjustIngredient(tx: any, networkUid: string, ingredientId: number, delta: number, lockReceived = false): Promise<void> {
   const profileId = profileKey(networkUid);
   const existing = await tx.ingredientInventory.findUnique({
@@ -684,7 +685,7 @@ async function adjustIngredient(tx: any, networkUid: string, ingredientId: numbe
   });
   const next = Math.max(0, (existing?.number ?? 0) + delta);
 
-  if (next === 0 && !existing?.isLocked) {
+  if (next === 0) {
     if (existing) {
       await tx.ingredientInventory.deleteMany({ where: { userProfileId: profileId, globalItemId: ingredientId } });
     }

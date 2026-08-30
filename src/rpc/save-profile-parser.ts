@@ -9,6 +9,7 @@ import type {
   NetworkUidData,
   OwnedItemData,
   PurchaseAuditData,
+  SaleAuditData,
   SaveAuditData,
   SavedProfileData,
 } from '../db/profile-store';
@@ -142,6 +143,7 @@ function readAuditChanges(
   const deleteMailIds: number[] = [];
   const visitedFriends: NetworkUidData[] = [];
   const purchases: PurchaseAuditData[] = [];
+  const sales: SaleAuditData[] = [];
   let creditDelta = 0;
   let newCredits: number | null = null;
   let unknownActionCount = 0;
@@ -204,16 +206,21 @@ function readAuditChanges(
         {
           const [item, nextPos] = readOwnedItem(body, pos);
           pos = nextPos;
-          [, pos] = readString(body, pos);
+          let token = '';
+          [token, pos] = readString(body, pos);
           removeOwnedItemIds.push(item.serverId);
+          sales.push({ kind: 'owned', itemId: item.globalItemId, qty: 1, token, serverId: item.serverId });
         }
         break;
       case ACTION_SELL_INVENTORY_ITEM:
         {
-          [, pos] = readString(body, pos);
+          let token = '';
+          [token, pos] = readString(body, pos);
           const [item, nextPos] = readInventoryItem(body, pos);
           pos = nextPos;
-          inventoryChanges.push({ globalItemId: item.globalItemId, delta: -Math.max(1, item.number), selected: item.isSelected });
+          const qty = Math.max(1, item.number);
+          inventoryChanges.push({ globalItemId: item.globalItemId, delta: -qty, selected: item.isSelected });
+          sales.push({ kind: 'inventory', itemId: item.globalItemId, qty, token });
         }
         break;
       case ACTION_PURCHASE_INVENTORY_ITEM:
@@ -382,6 +389,7 @@ function readAuditChanges(
     deleteMailIds,
     visitedFriends,
     purchases,
+    sales,
     actionCount: count,
     unknownActionCount,
     actionTypeCounts,

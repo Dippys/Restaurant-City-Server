@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
-import { coinPriceForItemId } from './item-catalog';
-import type { PurchaseAuditData } from './profile-store';
+import { coinPriceForItemId, itemIdForToken, sellPriceForItemId } from './item-catalog';
+import type { PurchaseAuditData, SaleAuditData } from './profile-store';
 
 /**
  * Coin price the shipped client charges for planting one garden seed.
@@ -59,4 +59,59 @@ export async function pricePurchases(
     cost += price * Math.max(1, purchase.qty);
   }
   return { cost, invalid: false };
+}
+
+export interface SalePricing {
+  readonly revenue: number;
+  readonly invalid: boolean;
+}
+
+/**
+ * Prices actions 4/19 from shipped data and verifies the player owns exactly
+ * what is being sold. The original client adds sale coins locally but writes
+ * neither `newCredits` nor `creditsDelta` into these audit rows.
+ */
+export async function priceSales(
+  sales: readonly SaleAuditData[],
+  userProfileId: string,
+  tx: Prisma.TransactionClient,
+): Promise<SalePricing> {
+  let revenue = 0;
+  const seenOwned = new Set<number>();
+  const inventoryRequired = new Map<number, number>();
+
+  for (const sale of sales) {
+    if (!Number.isSafeInteger(sale.qty) || sale.qty < 1 || itemIdForToken(sale.token) !== sale.itemId) {
+      return { revenue: 0, invalid: true };
+    }
+    const unitPrice = sellPriceForItemId(sale.itemId);
+    if (unitPrice === null) return { revenue: 0, invalid: true };
+
+    if (sale.kind === 'owned') {
+      if (sale.qty !== 1 || !Number.isSafeInteger(sale.serverId) || seenOwned.has(sale.serverId!)) {
+        return { revenue: 0, invalid: true };
+      }
+      seenOwned.add(sale.serverId!);
+      const row = await tx.ownedItem.findUnique({
+        where: { userProfileId_serverId: { userProfileId, serverId: sale.serverId! } },
+        select: { globalItemId: true },
+      });
+      if (row?.globalItemId !== sale.itemId) return { revenue: 0, invalid: true };
+    } else {
+      inventoryRequired.set(sale.itemId, (inventoryRequired.get(sale.itemId) ?? 0) + sale.qty);
+    }
+
+    revenue += unitPrice * sale.qty;
+    if (!Number.isSafeInteger(revenue)) return { revenue: 0, invalid: true };
+  }
+
+  for (const [globalItemId, required] of inventoryRequired) {
+    const row = await tx.inventoryItem.findUnique({
+      where: { userProfileId_globalItemId: { userProfileId, globalItemId } },
+      select: { number: true },
+    });
+    if ((row?.number ?? 0) < required) return { revenue: 0, invalid: true };
+  }
+
+  return { revenue, invalid: false };
 }

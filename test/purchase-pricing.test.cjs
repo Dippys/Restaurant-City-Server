@@ -180,7 +180,7 @@ test('the level-10 garden expansion persists and charges its XML price', async (
   assert.equal(await ownedCount(account, OUTSIDE_AREA_7X6), 1);
 });
 
-test('selling an owned item removes it and applies the client sale credit', async () => {
+test('selling items pays the shipped price even though the client sends no sale credit delta', async () => {
   const account = await seedProfile('itemsale');
   const profileId = `facebook:${account.networkUid}`;
   await prisma.ownedItem.create({ data: {
@@ -188,14 +188,40 @@ test('selling an owned item removes it and applies the client sale credit', asyn
     globalItemId: WHITE_ROOM_DIVIDER, positionX: 3, positionY: 4, data: 0,
     roomIndex: 0, employeeNetwork: 0, employeeNetworkUid: '', employeePlayfishUid: 0,
   } });
+  await prisma.inventoryItem.create({ data: {
+    id: `${profileId}:inventory:${RED_BRICK_PILLAR}`, userProfileId: profileId,
+    globalItemId: RED_BRICK_PILLAR, number: 2,
+  } });
   const fence = await setupFence(account);
   const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
-    creditDelta: 100,
     removeOwnedItemIds: [7],
+    inventoryChanges: [{ globalItemId: RED_BRICK_PILLAR, delta: -2 }],
+    sales: [
+      { kind: 'owned', itemId: WHITE_ROOM_DIVIDER, qty: 1, token: 'voNvhmQe5ogIYR21dTGXJa', serverId: 7 },
+      { kind: 'inventory', itemId: RED_BRICK_PILLAR, qty: 2, token: '3Sa4YP7xjnf.CerAt_gFna' },
+    ],
   }), { ...fence, payloadDigest: 'sale-v1' });
   assert.equal(result.status, 'saved');
-  assert.equal(await credits(account), 50100);
+  assert.equal(await credits(account), 50000 + Math.floor(200 / 3) + 2 * Math.floor(1100 / 3));
   assert.equal(await ownedCount(account, WHITE_ROOM_DIVIDER), 0);
+  assert.equal(await inventoryNumber(account, RED_BRICK_PILLAR), 0);
+});
+
+test('a forged or repeated sale rejects the whole save without minting coins', async () => {
+  const account = await seedProfile('invalidsale');
+  const profileId = `facebook:${account.networkUid}`;
+  await prisma.ownedItem.create({ data: {
+    id: `${profileId}:owned:9`, userProfileId: profileId, serverId: 9,
+    globalItemId: WHITE_ROOM_DIVIDER, positionX: 3, positionY: 4,
+  } });
+  const fence = await setupFence(account);
+  const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
+    removeOwnedItemIds: [9],
+    sales: [{ kind: 'owned', itemId: WHITE_ROOM_DIVIDER, qty: 1, token: 'wrong-token', serverId: 9 }],
+  }), { ...fence, payloadDigest: 'invalid-sale-v1' });
+  assert.equal(result.status, 'rejected');
+  assert.equal(await credits(account), 50000);
+  assert.equal(await ownedCount(account, WHITE_ROOM_DIVIDER), 1);
 });
 
 test('inventory purchase resolves the hash token and charges cost × qty', async () => {
@@ -338,7 +364,7 @@ test('the save parser records purchase actions and resolves inventory tokens by 
     writeU8(0), // activeFloorIndex
     writeVarint(1), // saveVersion
     writeVarint(500), // timeOnClient
-    writeVarint(5), // 5 audit changes
+    writeVarint(7), // 7 audit changes
     // 22 purchaseOwnedItem: token + OwnedItem
     writeU8(22), writeVarint(0), writeIntvar32(0),
     writeString('voNvhmQe5ogIYR21dTGXJa'),
@@ -356,6 +382,13 @@ test('the save parser records purchase actions and resolves inventory tokens by 
     // 33 addRecipe: learning/leveling does not select the dish
     writeU8(33), writeVarint(0), writeIntvar32(0),
     writeString('jvHIr9RwSDIty3w4pyEJKvCi9R_hAp3Sv2gG3.T4AtJLJ0tugzlJKaZFQ0U1Umro'),
+    // 4 sellOwnedItem: OwnedItem + token (no creditsDelta)
+    writeU8(4), writeVarint(0), writeIntvar32(0),
+    writeIntvar32(7), writeVarint(WHITE_ROOM_DIVIDER), writeIntvar32(3), writeIntvar32(4), writeU8(0),
+    writeNetworkUid(0, '', 0), writeU8(0), writeString('voNvhmQe5ogIYR21dTGXJa'),
+    // 19 sellInventoryItem: token + InventoryItem (no creditsDelta)
+    writeU8(19), writeVarint(0), writeIntvar32(0),
+    writeString('3Sa4YP7xjnf.CerAt_gFna'), writeVarint(RED_BRICK_PILLAR), writeVarint(2), writeBool(false),
   ]);
 
   const parsed = parseSaveProfile(body);
@@ -368,6 +401,11 @@ test('the save parser records purchase actions and resolves inventory tokens by 
   assert.deepEqual(parsed.audit.inventoryChanges, [
     { globalItemId: RED_BRICK_PILLAR, delta: 2 },
     { globalItemId: 5000008, delta: 1 },
+    { globalItemId: RED_BRICK_PILLAR, delta: -2, selected: false },
   ]);
   assert.deepEqual(parsed.audit.gardenChanges, [{ plotId: 2, action: 'seed' }]);
+  assert.deepEqual(parsed.audit.sales, [
+    { kind: 'owned', itemId: WHITE_ROOM_DIVIDER, qty: 1, token: 'voNvhmQe5ogIYR21dTGXJa', serverId: 7 },
+    { kind: 'inventory', itemId: RED_BRICK_PILLAR, qty: 2, token: '3Sa4YP7xjnf.CerAt_gFna' },
+  ]);
 });

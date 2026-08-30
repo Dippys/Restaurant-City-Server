@@ -302,6 +302,54 @@ test('an already-corrupted Dummy0 profile recovers scalar progress from its clea
   assert.equal(await prisma.profileSnapshot.count({ where: { networkUid: account.networkUid, reason: 'AUTO_BEFORE_FALLBACK_RECOVERY' } }), 1);
 });
 
+test('fallback recovery recognizes a Dummy save after it earned GP and preserves only later real gain', async () => {
+  const account = await seedProfile('fallback10100', []);
+  await prisma.userProfile.update({
+    where: { networkUid: account.networkUid },
+    data: { restaurantName: 'Before Dummy', userLevel: 4, gourmetPoint: 4_350, credits: 5_058 },
+  });
+  const snapshotId = await captureProfileSnapshot(account.networkUid, 'TEST_CLEAN', 'Before 10,100 GP fallback');
+  await prisma.userProfile.update({
+    where: { networkUid: account.networkUid },
+    data: { restaurantName: 'Dummy0', userLevel: 11, gourmetPoint: 10_175, credits: 5_000 },
+  });
+  await recordAcceptedSaveTx(prisma, {
+    networkUid: account.networkUid,
+    saveVersion: 2,
+    clientTime: 20_000,
+    previousCredits: 5_058,
+    credits: 5_000,
+    previousGourmet: 4_350,
+    gourmetPoint: 10_100,
+    previousLevel: 4,
+    userLevel: 11,
+    audit: emptyAudit({ actionCount: 1, actionTypeCounts: { 17: 1 } }),
+    snapshotId,
+    acceptedAt: new Date('2026-08-30T04:19:46Z'),
+    rpcSessionToken: 'fallback-session',
+  });
+
+  const recovered = await getPlayerProfile(account);
+  assert.equal(recovered.restaurantName, 'Before Dummy');
+  assert.equal(recovered.userLevel, 4);
+  assert.equal(recovered.gourmetPoint, 4_425, '75 GP earned after the fallback is retained');
+  assert.equal(recovered.credits, 5_000, 'post-corruption coin state remains untouched');
+});
+
+test('profile delivery removes locked zero-count ingredients instead of rendering ghost rows', async () => {
+  const account = await seedProfile('emptyingredient', []);
+  await prisma.ingredientInventory.create({ data: {
+    id: `facebook:${account.networkUid}:ingredient:4000061`,
+    userProfileId: `facebook:${account.networkUid}`,
+    globalItemId: 4000061,
+    number: 0,
+    isLocked: true,
+  } });
+  const profile = await getPlayerProfile(account);
+  assert.equal(profile.ingredients.some((ingredient) => ingredient.globalItemId === 4000061), false);
+  assert.equal(await prisma.ingredientInventory.count({ where: { userProfileId: `facebook:${account.networkUid}`, globalItemId: 4000061 } }), 0);
+});
+
 test('moderation clocks compare only within one fence token and ignore sub-15s noise', async () => {
   const account = await seedProfile('clockguard', []);
   const tx = prisma;

@@ -236,7 +236,8 @@ async function deduct(tx: Tx, networkUid: string, category: string, itemId: numb
   if (category === 'ingredient') {
     const row = await tx.ingredientInventory.findUnique({ where });
     if (!row || row.number < quantity) return false;
-    await tx.ingredientInventory.update({ where, data: { number: { decrement: quantity } } });
+    if (row.number === quantity) await tx.ingredientInventory.delete({ where });
+    else await tx.ingredientInventory.update({ where, data: { number: { decrement: quantity } } });
   } else {
     const row = await tx.inventoryItem.findUnique({ where });
     if (!row || row.number < quantity) return false;

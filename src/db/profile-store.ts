@@ -1,6 +1,6 @@
 import type { Employee, FriendVisit, GardenPlot, IngredientInventory, InventoryItem, OwnedItem, RestaurantFloor, UserProfile, Prisma } from '@prisma/client';
 import { prisma } from './client';
-import { pricePurchases } from './purchase-pricing';
+import { pricePurchases, priceSales } from './purchase-pricing';
 import { sanitizeActiveFloorIndex } from './layouts';
 import {
   FACEBOOK_NETWORK,
@@ -66,6 +66,15 @@ export interface PurchaseAuditData {
   readonly unresolved?: boolean;
 }
 
+/** A sale carried by actions 4/19. The shipped client sends no coin delta. */
+export interface SaleAuditData {
+  readonly kind: 'owned' | 'inventory';
+  readonly itemId: number;
+  readonly qty: number;
+  readonly token: string;
+  readonly serverId?: number;
+}
+
 export interface SavedProfileData {
   readonly id: NetworkUidData;
   readonly restaurantName: string;
@@ -98,6 +107,8 @@ export interface SaveAuditData {
   readonly visitedFriends: readonly NetworkUidData[];
   /** Coin purchases recorded from the audit (ADR-0035); empty/absent when none. */
   readonly purchases?: readonly PurchaseAuditData[];
+  /** Sales priced and ownership-validated by the server (ADR-0045). */
+  readonly sales?: readonly SaleAuditData[];
   /** ADR-0034: compact evidence about the client-supplied audit envelope. */
   readonly actionCount?: number;
   readonly unknownActionCount?: number;
@@ -578,7 +589,9 @@ export async function savePlayerProfile(
 
     const current = await tx.userProfile.findUniqueOrThrow({ where: { id: profileId } });
     // RpcGetUserProfile's network-failure fallback is the shipped Dummy0
-    // profile (level 11 / 10,000 GP). It must never replace a real owner.
+    // profile (level 11 / about 10,000 stored GP). The client may increment
+    // that GP before saving, so use the impossible sub-threshold level/name
+    // fingerprint rather than one exact total. It must never replace an owner.
     const fallbackOverwrite = isFallbackProfileValues(profile.restaurantName, profile.userLevel, profile.gourmetPoint)
       && !isFallbackProfileValues(current.restaurantName, current.userLevel, current.gourmetPoint);
     const saneUserLevel = fallbackOverwrite
@@ -600,13 +613,14 @@ export async function savePlayerProfile(
     // `newCredits` (never sent by the shipped client) is ignored so an
     // absolute-balance value cannot bypass the price.
     const pricing = await pricePurchases(audit.purchases ?? [], tx);
-    if (pricing.invalid || pricing.cost < 0) {
+    const salePricing = await priceSales(audit.sales ?? [], profileId, tx);
+    if (pricing.invalid || pricing.cost < 0 || salePricing.invalid || salePricing.revenue < 0) {
       return { status: 'rejected', savedVersion: audit.saveVersion };
     }
-    const nextCredits = (pricing.cost > 0
+    const nextCredits = (pricing.cost > 0 || (audit.sales?.length ?? 0) > 0
       ? current.credits + audit.creditDelta
-      : (audit.newCredits ?? current.credits + audit.creditDelta)) - pricing.cost;
-    if (nextCredits < 0) {
+      : (audit.newCredits ?? current.credits + audit.creditDelta)) - pricing.cost + salePricing.revenue;
+    if (!Number.isSafeInteger(nextCredits) || nextCredits < 0 || nextCredits > 2_147_483_647) {
       return { status: 'rejected', savedVersion: audit.saveVersion };
     }
 
@@ -658,16 +672,11 @@ export async function savePlayerProfile(
     }
 
     for (const change of audit.lockIngredientChanges) {
-      await tx.ingredientInventory.upsert({
-        where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: change.globalItemId } },
-        update: { isLocked: change.isLocked },
-        create: {
-          id: ingredientKey(profile.id.networkUid, change.globalItemId),
-          userProfileId: profileId,
-          globalItemId: change.globalItemId,
-          number: 0,
-          isLocked: change.isLocked,
-        },
+      // GameUser.removeIngredient removes a row at count 0. A stale lock audit
+      // must not recreate a visible zero-count ingredient on the next reload.
+      await tx.ingredientInventory.updateMany({
+        where: { userProfileId: profileId, globalItemId: change.globalItemId, number: { gt: 0 } },
+        data: { isLocked: change.isLocked },
       });
     }
 
@@ -803,7 +812,7 @@ interface EnsureProfileOptions {
 }
 
 function isFallbackProfileValues(restaurantName: string, userLevel: number, gourmetPoint: number): boolean {
-  return /^Dummy\d+$/i.test(restaurantName.trim()) && userLevel === 11 && gourmetPoint === 10_000;
+  return /^Dummy\d+$/i.test(restaurantName.trim()) && userLevel === 11 && gourmetPoint < 100_000;
 }
 
 function snapshotPayload(value: string): SnapshotPayloadV1 | null {
@@ -827,17 +836,17 @@ export async function recoverFallbackProfileScalars(networkUid: string): Promise
       return false;
     }
 
-    // Prefer the immutable snapshot linked to the exact 11/10,000 fallback
-    // transition. Profiles can earn more GP after corruption, so their current
-    // values no longer necessarily match the original fingerprint.
+    // Prefer the immutable snapshot linked to the level-11 Dummy transition.
+    // The same bad client state can earn GP before the save (dev.db70 captured
+    // 10,100 rather than exactly 10,000), so GP is not part of the fingerprint.
     const fallbackFact = await tx.profileSaveFact.findFirst({
       where: {
         networkUid,
         userLevel: 11,
-        gourmetPoint: 10_000,
-        OR: [{ previousLevel: { not: 11 } }, { previousGourmet: { not: 10_000 } }],
+        gourmetPoint: { lt: 100_000 },
+        previousLevel: { not: 11 },
       },
-      select: { snapshotId: true },
+      select: { snapshotId: true, gourmetPoint: true },
       orderBy: { createdAt: 'desc' },
     });
     const linkedSnapshot = fallbackFact?.snapshotId
@@ -865,7 +874,12 @@ export async function recoverFallbackProfileScalars(networkUid: string): Promise
       return false;
     }
 
-    const recoveredGourmetPoint = Math.max(current.gourmetPoint, clean.profile.gourmetPoint);
+    // Preserve only GP earned after the bad save; the fallback's built-in
+    // 10,000-ish GP is not player progress.
+    const postFallbackGain = fallbackFact
+      ? Math.max(0, current.gourmetPoint - fallbackFact.gourmetPoint)
+      : 0;
+    const recoveredGourmetPoint = clean.profile.gourmetPoint + postFallbackGain;
     const recoveredUserLevel = Math.max(
       clean.profile.userLevel,
       Math.max(1, levelForGourmet(Math.floor(recoveredGourmetPoint / 10))),
@@ -1128,12 +1142,15 @@ export async function repairProfileStateInTransaction(
   seedStarterItems: boolean,
   loadedProfile?: StoredProfile,
 ): Promise<boolean> {
+  const removedEmptyIngredients = await tx.ingredientInventory.deleteMany({
+    where: { userProfileId: profileId, number: { lte: 0 } },
+  });
   const floors = loadedProfile?.floors ?? await tx.restaurantFloor.findMany({ where: { userProfileId: profileId } });
   const gardenPlots = loadedProfile?.gardenPlots ?? await tx.gardenPlot.findMany({ where: { userProfileId: profileId } });
   const profileLevel = loadedProfile?.userLevel
     ?? (await tx.userProfile.findUnique({ where: { id: profileId }, select: { userLevel: true } }))?.userLevel
     ?? 1;
-  let repaired = false;
+  let repaired = removedEmptyIngredients.count > 0;
   if (seedStarterItems) {
     // Learned recipes are permanent, so an empty menu means this profile predates
     // food seeding (or was created before starter food existed). Backfill the
@@ -1393,7 +1410,7 @@ async function changeIngredient(
   });
   const nextNumber = Math.max(0, (existing?.number ?? 0) + change.delta);
 
-  if (nextNumber === 0 && !existing?.isLocked) {
+  if (nextNumber === 0) {
     await tx.ingredientInventory.deleteMany({ where: { userProfileId: profileId, globalItemId: change.globalItemId } });
     return;
   }
