@@ -19,6 +19,12 @@ export interface SessionResponse {
   account?: SessionAccount;
   csrfToken?: string;
 }
+export interface ImpersonationResponse {
+  ok: true;
+  account: SessionAccount;
+  expiresAt: string;
+  url: string;
+}
 
 // ---------- overview / assets ----------
 export interface OnlineUser {

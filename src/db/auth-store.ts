@@ -2,7 +2,7 @@ import { randomBytes, scrypt as nodeScrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util';
 import { prisma } from './client';
 import type { ActiveAccount } from '../session';
-import { accountFromUsername, cleanPersonName, cleanPin, cleanUsername, hashSessionToken, newCsrfToken, newSessionToken } from '../session';
+import { accountFromUsername, cleanPersonName, cleanPin, cleanUsername, hashSessionToken, IMPERSONATION_MAX_AGE_SECONDS, newCsrfToken, newSessionToken } from '../session';
 import { recordLoginActivity } from '../moderation/service';
 
 const scrypt = promisify(nodeScrypt);
@@ -62,6 +62,22 @@ export async function findSessionAccount(tokenHash: string): Promise<ActiveAccou
 
 export async function revokeSession(sessionId?: string): Promise<void> {
   if (sessionId) await prisma.session.delete({ where: { id: sessionId } }).catch(() => undefined);
+}
+
+/** Create a short-lived target session without kicking the player's own login. */
+export async function createImpersonationSession(networkUid: string, ip: string, userAgent: string): Promise<AuthResult> {
+  const account = await prisma.account.findUnique({ where: { networkUid } });
+  if (!account) throw new Error('This profile does not have a login account to impersonate.');
+  if (account.disabled) throw new Error('Disabled accounts cannot be impersonated.');
+
+  const rawToken = newSessionToken();
+  const csrfToken = newCsrfToken();
+  const session = await prisma.session.create({ data: {
+    id: randomBytes(16).toString('hex'), tokenHash: hashSessionToken(rawToken), csrfToken, accountId: account.id,
+    expiresAt: new Date(Date.now() + IMPERSONATION_MAX_AGE_SECONDS * 1000),
+    ipAddress: ip.slice(0, 100), userAgent: `impersonation:${userAgent}`.slice(0, 300),
+  } });
+  return { account: toActiveAccount(account, csrfToken, session.id), rawToken };
 }
 
 export async function updateAccountSettings(accountId: string, sessionId: string, input: { firstName?: string; lastName?: string; currentPin?: string; newPin?: string }): Promise<void> {

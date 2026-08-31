@@ -366,6 +366,132 @@ export function ensurePlayerDatalist(entries: ReadonlyArray<ComboEntry>): void {
   playerEntries = [...entries];
 }
 
+export interface MultiPlayerPicker {
+  readonly wrapper: HTMLElement;
+  readonly input: HTMLInputElement;
+  selectedIds(): string[];
+}
+
+/** Search players and add them one at a time to a removable recipient list. */
+export function buildMultiPlayerPicker(): MultiPlayerPicker {
+  const selected = new Map<string, ComboEntry>();
+  const input = h('input', {
+    type: 'text',
+    class: 'rc-input',
+    autocomplete: 'off',
+    placeholder: 'Type a player name or UID…',
+    'aria-label': 'Search for a recipient',
+    'aria-autocomplete': 'list',
+  });
+  const list = h('div', { class: 'rc-combobox-list', role: 'listbox' });
+  const chips = h('div', { class: 'rc-recipient-chips', 'aria-live': 'polite' });
+  const combo = h('div', { class: 'rc-combobox' }, input, list);
+  const wrapper = h('div', { class: 'rc-multi-combobox' }, combo, chips);
+  let results: ReadonlyArray<ComboEntry> = [];
+  let active = -1;
+
+  const setActive = (index: number) => {
+    active = index;
+    const items = list.querySelectorAll<HTMLElement>('.rc-combobox-item');
+    items.forEach((item, itemIndex) => item.classList.toggle('active', itemIndex === index));
+    if (index >= 0 && items[index]) items[index].scrollIntoView({ block: 'nearest' });
+  };
+
+  const renderChips = () => {
+    chips.textContent = '';
+    if (selected.size === 0) {
+      chips.append(h('span', { class: 'rc-recipient-empty' }, 'No specific recipients selected yet.'));
+      return;
+    }
+    for (const entry of selected.values()) {
+      const remove = h('button', {
+        type: 'button',
+        class: 'rc-recipient-chip',
+        'aria-label': `Remove ${entry.label}`,
+      }, h('span', {}, entry.label), h('span', { class: 'rc-recipient-chip-id' }, entry.id), h('span', { 'aria-hidden': 'true' }, '×'));
+      remove.addEventListener('click', () => {
+        selected.delete(entry.id);
+        renderChips();
+        renderResults();
+        input.focus();
+      });
+      chips.append(remove);
+    }
+  };
+
+  const add = (entry: ComboEntry) => {
+    selected.set(entry.id, entry);
+    input.value = '';
+    renderChips();
+    renderResults();
+    input.focus();
+  };
+
+  const renderResults = () => {
+    const query = input.value.trim().toLowerCase();
+    results = playerEntries
+      .filter((entry) => !selected.has(entry.id))
+      .filter((entry) => !query || entry.label.toLowerCase().includes(query) || entry.id.includes(query))
+      .slice(0, 30);
+    active = -1;
+    list.textContent = '';
+    if (results.length === 0) {
+      list.append(h('div', { class: 'rc-combobox-empty' }, query ? 'No matching players.' : 'All matching players are selected.'));
+      return;
+    }
+    results.forEach((entry, index) => {
+      const item = h('div', { class: 'rc-combobox-item', role: 'option' },
+        h('span', { class: 'rc-combobox-name' }, entry.label),
+        h('span', { class: 'rc-combobox-id' }, entry.id),
+      );
+      item.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        add(entry);
+      });
+      item.addEventListener('mouseenter', () => setActive(index));
+      list.append(item);
+    });
+  };
+
+  const open = () => {
+    list.classList.add('open');
+    renderResults();
+  };
+  input.addEventListener('focus', open);
+  input.addEventListener('input', open);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (!list.classList.contains('open')) open();
+      setActive(Math.min(active + 1, results.length - 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActive(Math.max(active - 1, 0));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const exact = results.find((entry) => entry.id === input.value.trim()
+        || entry.label.toLowerCase() === input.value.trim().toLowerCase());
+      const entry = active >= 0 ? results[active] : exact ?? (results.length === 1 ? results[0] : undefined);
+      if (entry) {
+        add(entry);
+      }
+    } else if (event.key === 'Backspace' && !input.value && selected.size > 0) {
+      const lastId = [...selected.keys()].at(-1);
+      if (lastId) {
+        selected.delete(lastId);
+        renderChips();
+        renderResults();
+      }
+    } else if (event.key === 'Escape') {
+      list.classList.remove('open');
+    }
+  });
+  input.addEventListener('blur', () => setTimeout(() => list.classList.remove('open'), 150));
+  renderChips();
+
+  return { wrapper, input, selectedIds: () => [...selected.keys()] };
+}
+
 /** Resolve "Name (uid)" (or a bare uid) back to the uid string. */
 export function playerTextToId(text: string): string {
   const raw = String(text ?? '').trim();

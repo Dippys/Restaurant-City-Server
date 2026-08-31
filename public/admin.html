@@ -84,7 +84,14 @@
     border-radius:8px; padding:7px 10px; font-size:13px; font-family:inherit;
   }
   .rc-form textarea { resize:vertical; }
-  .rc-mail-recipients { min-height:180px; }
+  .rc-recipient-field { display:flex; flex-direction:column; gap:4px; }
+  .rc-recipient-field > label { font-size:12px; color:var(--muted); font-weight:600; }
+  .rc-multi-combobox { display:flex; flex-direction:column; gap:7px; }
+  .rc-recipient-chips { display:flex; flex-wrap:wrap; gap:6px; min-height:25px; }
+  .rc-recipient-empty { color:var(--muted); font-size:11px; font-weight:500; padding:3px 0; }
+  .rc-recipient-chip { display:inline-flex; align-items:center; gap:6px; border:1px solid rgba(98,180,125,.38); border-radius:999px; background:rgba(98,180,125,.13); color:var(--text); padding:4px 8px 4px 10px; font:600 11.5px var(--sans); cursor:pointer; }
+  .rc-recipient-chip:hover { background:rgba(98,180,125,.24); }
+  .rc-recipient-chip-id { color:var(--accent2); font:600 10.5px var(--mono); }
   .rc-note { font-size:11px; color:var(--muted); font-weight:500; }
   .rc-msg { min-height:18px; font-size:12.5px; font-weight:600; }
   .rc-msg.ok { color:var(--accent); }

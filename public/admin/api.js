@@ -45,6 +45,7 @@ export const api = {
     // session / auth
     session: () => request('GET', '/__api/session'),
     logout: () => request('POST', '/__api/logout'),
+    impersonateUser: (uid) => request('POST', '/__api/admin/impersonation', { networkUid: uid }),
     // server overview
     overview: () => request('GET', '/__api/admin/overview'),
     assets: () => request('GET', '/__api/admin/assets'),

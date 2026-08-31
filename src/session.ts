@@ -15,7 +15,9 @@ export interface ActiveAccount {
 }
 
 export const SESSION_COOKIE = 'rc_session';
+export const IMPERSONATION_COOKIE = 'rc_impersonation';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+export const IMPERSONATION_MAX_AGE_SECONDS = 60 * 30;
 const DEFAULT_USERNAME = 'Player';
 
 export function defaultAccount(): ActiveAccount {
@@ -53,6 +55,14 @@ export function sessionCookie(token: string, secure: boolean): string {
 
 export function logoutCookie(secure: boolean): string {
   return `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+}
+
+export function impersonationCookie(token: string, secure: boolean): string {
+  return `${IMPERSONATION_COOKIE}=${token}; Path=/; Max-Age=${IMPERSONATION_MAX_AGE_SECONDS}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+}
+
+export function clearImpersonationCookie(secure: boolean): string {
+  return `${IMPERSONATION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
 }
 
 export function cleanUsername(value: string): string {

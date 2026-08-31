@@ -1,6 +1,6 @@
 // Game tools: live alerts, online players, quick mail, danger zone.
 import { api } from '../api.js';
-import { also, confirmDialog, ensureCatalogDatalist, ensurePlayerDatalist, fmt, h, openModal, relTime, renderForm, table, toast } from '../ui.js';
+import { also, buildMultiPlayerPicker, confirmDialog, ensureCatalogDatalist, ensurePlayerDatalist, fmt, h, openModal, relTime, renderForm, table, toast } from '../ui.js';
 import type { FieldSpec } from '../ui.js';
 import type { OnlineUser } from '../types.js';
 
@@ -195,11 +195,11 @@ async function openMailComposer(): Promise<void> {
     const scopeLabel = h('label', {}, 'Recipients', scopeSelect,
       h('small', { class: 'rc-note' }, 'Online uses current live sessions; Everyone uses every enabled player account.'),
     );
-    const recipientSelect = h('select', { class: 'rc-input rc-mail-recipients', multiple: true, size: 9 },
-      ...users.map((user) => h('option', { value: user.networkUid }, `${user.fullName || user.firstName || user.networkUid} (${user.networkUid})`)),
-    );
-    const recipientLabel = h('label', {}, 'Specific people', recipientSelect,
-      h('small', { class: 'rc-note' }, 'Use Ctrl/Cmd or Shift to select several people.'),
+    const recipientPicker = buildMultiPlayerPicker();
+    const recipientLabel = h('div', { class: 'rc-recipient-field' },
+      h('label', {}, 'Specific people'),
+      recipientPicker.wrapper,
+      h('small', { class: 'rc-note' }, 'Search by player name or UID, then click a result or press Enter to add it.'),
     );
     recipientLabel.hidden = true;
 
@@ -214,7 +214,7 @@ async function openMailComposer(): Promise<void> {
       const fields = mailFields(type, layout);
       const systemMailType = [2, 3, 5, 7, 10, 11, 13].includes(type);
       const form = renderForm(fields, { senderNetworkUid: systemMailType ? '1' : firstPlayerSender }, async (values) => {
-        const recipients = Array.from(recipientSelect.selectedOptions, (option) => option.value);
+        const recipients = recipientPicker.selectedIds();
         const result = await api.sendMail({
           scope: scopeSelect.value as 'online' | 'everyone' | 'specific',
           recipientNetworkUids: scopeSelect.value === 'specific' ? recipients : undefined,

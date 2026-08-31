@@ -25,6 +25,7 @@ import type {
   PurchasableItemInput,
   ReindexResponse,
   SessionResponse,
+  ImpersonationResponse,
   UserMutationResponse,
   UsersResponse,
   DailyIngredientSyncResponse,
@@ -87,6 +88,7 @@ export const api = {
   // session / auth
   session: () => request<SessionResponse>('GET', '/__api/session'),
   logout: () => request<{ ok: true }>('POST', '/__api/logout'),
+  impersonateUser: (uid: string) => request<ImpersonationResponse>('POST', '/__api/admin/impersonation', { networkUid: uid }),
 
   // server overview
   overview: () => request<OverviewResponse>('GET', '/__api/admin/overview'),

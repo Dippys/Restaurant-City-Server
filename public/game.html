@@ -137,6 +137,9 @@
     <button id="logoutButton" class="rc-btn small hidden" type="button">Log out</button>
   </nav>
 </header>
+<div id="impersonationBanner" class="hidden" style="background:#8a5a00;color:#fff4d1;padding:9px 18px;text-align:center;font-weight:800;font-size:13px;letter-spacing:.01em">
+  Diagnostic mode: changes made in the game affect this player's real profile. The session ends automatically after 30 minutes.
+</div>
 <main id="main"></main>
 <footer class="rc-footer" style="margin-top:0; padding:8px 20px 10px; border-top:1px solid rgba(255,255,255,.55);">
   <span>© Restaurant City Reborn</span>
@@ -151,7 +154,10 @@
 const main = document.getElementById("main");
 const statusEl = document.getElementById("accountStatus");
 const logoutButton = document.getElementById("logoutButton");
+const impersonationBanner = document.getElementById("impersonationBanner");
 let csrfToken = "";
+let impersonating = false;
+let impersonatedUid = "";
 window.rcSocialCsrf = "";
 const instanceId = crypto.randomUUID();
 let claimTimer = null;
@@ -193,7 +199,7 @@ function rcLegacyFeedTemplate(raw) {
 async function rcCreateSocialLink(template) {
   const response = await fetch("/__api/social-links", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": window.rcSocialCsrf || "" },
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": window.rcSocialCsrf || "", "X-RC-Game-Session": "1" },
     body: JSON.stringify(template),
   });
   if (response.status === 401) {
@@ -204,7 +210,7 @@ async function rcCreateSocialLink(template) {
   if (!response.ok || !result.ok) throw new Error(result.error || "Could not create social link.");
   let state = null;
   try {
-    const prepared = await fetch(`/__api/social-links/${encodeURIComponent(result.slug)}`, { headers: { "Accept": "application/json" } });
+    const prepared = await fetch(`/__api/social-links/${encodeURIComponent(result.slug)}`, { headers: { "Accept": "application/json", "X-RC-Game-Session": "1" } });
     const body = await prepared.json();
     if (prepared.ok && body.ok) state = body.link;
   } catch {}
@@ -270,6 +276,8 @@ async function init() {
     const session = await requestJson("/__api/session");
     if (session.loggedIn && session.account) {
       csrfToken = session.csrfToken || "";
+      impersonating = Boolean(session.impersonating);
+      impersonatedUid = impersonating ? session.account.networkUid : "";
       window.rcSocialCsrf = csrfToken;
       // Claim this game instance: only the newest instance may run (hard kick).
       try {
@@ -293,7 +301,11 @@ async function init() {
 }
 
 function showGame(account) {
-  statusEl.textContent = `Playing as ${account.username}`;
+  statusEl.textContent = impersonating ? `Diagnosing ${account.username}` : `Playing as ${account.username}`;
+  if (impersonating) {
+    impersonationBanner.classList.remove("hidden");
+    logoutButton.textContent = "Stop impersonating";
+  }
   logoutButton.classList.remove("hidden");
   main.innerHTML = "";
 
@@ -521,6 +533,11 @@ function kick() {
 }
 
 logoutButton.addEventListener("click", async () => {
+  if (impersonating) {
+    await requestJson("/__api/game/impersonation", { method: "DELETE", headers: { "X-CSRF-Token": csrfToken } });
+    location.replace(`/admin#/users/${encodeURIComponent(impersonatedUid)}`);
+    return;
+  }
   await requestJson("/__api/logout", { method: "POST", headers: { "X-CSRF-Token": csrfToken } });
   location.replace("/");
 });
@@ -530,6 +547,7 @@ async function requestJson(url, options = {}) {
     ...options,
     headers: {
       "Content-Type": "application/json",
+      "X-RC-Game-Session": "1",
       ...(options.headers || {}),
     },
   });

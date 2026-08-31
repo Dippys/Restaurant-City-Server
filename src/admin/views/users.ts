@@ -90,6 +90,7 @@ async function renderList(container: HTMLElement): Promise<void> {
                 window.location.hash = `#/users/${encodeURIComponent(user.networkUid)}`;
               });
             }),
+            impersonateButton(user, true),
             also(h('button', { class: 'rc-btn small danger', type: 'button' }, 'Delete'), (btn) => {
               btn.addEventListener('click', async () => {
                 if (!(await confirmDialog('Delete player?', `${user.networkUid} (${user.firstName}) and ALL their data (items, mail, images, …) will be deleted permanently.`, true))) return;
@@ -163,6 +164,7 @@ async function renderDetail(container: HTMLElement, networkUid: string): Promise
       ),
     ),
     h('div', { class: 'rc-row-actions' },
+      impersonateButton(user),
       also(h('button', { class: 'rc-btn', type: 'button' }, 'Edit profile'), (btn) => {
         btn.addEventListener('click', () => openProfileEditor(user!, refresh));
       }),
@@ -297,6 +299,37 @@ async function renderDetail(container: HTMLElement, networkUid: string): Promise
     staleIdBanner(user) ?? h('span', { class: 'hidden' }),
     sections,
   );
+}
+
+function impersonateButton(user: AdminUser, small = false): HTMLButtonElement {
+  return also(h('button', { class: `rc-btn${small ? ' small' : ''}`, type: 'button' }, 'Impersonate'), (button) => {
+    button.title = `Open the game as ${user.fullName || user.firstName || user.networkUid}`;
+    button.addEventListener('click', async () => {
+      const gameWindow = window.open('', '_blank');
+      if (!gameWindow) {
+        toast('Allow pop-ups for this site to open an impersonated game.', false);
+        return;
+      }
+      gameWindow.document.title = 'Preparing diagnostic game…';
+      gameWindow.document.body.textContent = 'Waiting for administrator confirmation…';
+      try {
+        const confirmed = await confirmDialog(
+          'Impersonate this player?',
+          `The game will load as ${user.fullName || user.firstName || user.networkUid}. Any play or saves affect their real profile, and opening it may displace their currently running game.`,
+          true,
+        );
+        if (!confirmed) { gameWindow.close(); return; }
+        gameWindow.document.body.textContent = `Opening Restaurant City as ${user.fullName || user.firstName || user.networkUid}…`;
+        const result = await api.impersonateUser(user.networkUid);
+        gameWindow.opener = null;
+        gameWindow.location.replace(result.url);
+        toast(`Opened a 30-minute diagnostic session for ${user.firstName || user.networkUid}`);
+      } catch (error) {
+        gameWindow.close();
+        toast(error instanceof Error ? error.message : String(error), false);
+      }
+    });
+  });
 }
 
 /** Rows whose item ids are not in the current item databases (legacy save data). */

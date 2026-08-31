@@ -74,7 +74,7 @@ async function renderList(container) {
                 btn.addEventListener('click', () => {
                     window.location.hash = `#/users/${encodeURIComponent(user.networkUid)}`;
                 });
-            }), also(h('button', { class: 'rc-btn small danger', type: 'button' }, 'Delete'), (btn) => {
+            }), impersonateButton(user, true), also(h('button', { class: 'rc-btn small danger', type: 'button' }, 'Delete'), (btn) => {
                 btn.addEventListener('click', async () => {
                     if (!(await confirmDialog('Delete player?', `${user.networkUid} (${user.firstName}) and ALL their data (items, mail, images, …) will be deleted permanently.`, true)))
                         return;
@@ -123,7 +123,7 @@ async function renderDetail(container, networkUid) {
         return;
     }
     const refresh = async () => renderDetail(container, networkUid);
-    const header = h('section', { class: 'rc-panel rc-profile' }, h('div', { class: 'rc-profile-id' }, h('h1', { class: 'rc-title' }, esc(user.firstName), h('span', { class: 'rc-dim' }, ` ${esc(user.fullName)}`)), h('p', { class: 'rc-sub' }, `UID ${user.networkUid} · playfish ${fmt(user.playfishUid)} · ${esc(user.restaurantName)}`), h('div', { class: 'rc-badges' }, badge(`Lv ${user.userLevel}`, 'ok'), badge(user.isInStreet ? 'in street' : 'in restaurant', 'muted'), badge(user.activeFloorIndex > 0 ? `floor ${user.activeFloorIndex}` : 'ground floor', 'muted'), badge(`${fmt(user.credits)} coins`, 'ok'), badge(`${fmt(user.cashBalance)} cash`, 'warn'), badge(`${fmt(user.gourmetPoint)} gourmet`, 'muted'), badge(`play count ${fmt(user.playCount)}`, 'muted'), badge(`updated ${relTime(Math.floor(new Date(user.updatedAt).getTime() / 1000))}`, 'muted'))), h('div', { class: 'rc-row-actions' }, also(h('button', { class: 'rc-btn', type: 'button' }, 'Edit profile'), (btn) => {
+    const header = h('section', { class: 'rc-panel rc-profile' }, h('div', { class: 'rc-profile-id' }, h('h1', { class: 'rc-title' }, esc(user.firstName), h('span', { class: 'rc-dim' }, ` ${esc(user.fullName)}`)), h('p', { class: 'rc-sub' }, `UID ${user.networkUid} · playfish ${fmt(user.playfishUid)} · ${esc(user.restaurantName)}`), h('div', { class: 'rc-badges' }, badge(`Lv ${user.userLevel}`, 'ok'), badge(user.isInStreet ? 'in street' : 'in restaurant', 'muted'), badge(user.activeFloorIndex > 0 ? `floor ${user.activeFloorIndex}` : 'ground floor', 'muted'), badge(`${fmt(user.credits)} coins`, 'ok'), badge(`${fmt(user.cashBalance)} cash`, 'warn'), badge(`${fmt(user.gourmetPoint)} gourmet`, 'muted'), badge(`play count ${fmt(user.playCount)}`, 'muted'), badge(`updated ${relTime(Math.floor(new Date(user.updatedAt).getTime() / 1000))}`, 'muted'))), h('div', { class: 'rc-row-actions' }, impersonateButton(user), also(h('button', { class: 'rc-btn', type: 'button' }, 'Edit profile'), (btn) => {
         btn.addEventListener('click', () => openProfileEditor(user, refresh));
     }), also(h('button', { class: 'rc-btn danger', type: 'button' }, 'Delete player'), (btn) => {
         btn.addEventListener('click', async () => {
@@ -237,6 +237,36 @@ async function renderDetail(container, networkUid) {
     }), imagesSection(user), otherRecordsSection(user));
     container.textContent = '';
     container.append(also(h('button', { class: 'rc-btn small', type: 'button' }, '← Back to players'), (btn) => btn.addEventListener('click', () => (window.location.hash = '#/users'))), header, staleIdBanner(user) ?? h('span', { class: 'hidden' }), sections);
+}
+function impersonateButton(user, small = false) {
+    return also(h('button', { class: `rc-btn${small ? ' small' : ''}`, type: 'button' }, 'Impersonate'), (button) => {
+        button.title = `Open the game as ${user.fullName || user.firstName || user.networkUid}`;
+        button.addEventListener('click', async () => {
+            const gameWindow = window.open('', '_blank');
+            if (!gameWindow) {
+                toast('Allow pop-ups for this site to open an impersonated game.', false);
+                return;
+            }
+            gameWindow.document.title = 'Preparing diagnostic game…';
+            gameWindow.document.body.textContent = 'Waiting for administrator confirmation…';
+            try {
+                const confirmed = await confirmDialog('Impersonate this player?', `The game will load as ${user.fullName || user.firstName || user.networkUid}. Any play or saves affect their real profile, and opening it may displace their currently running game.`, true);
+                if (!confirmed) {
+                    gameWindow.close();
+                    return;
+                }
+                gameWindow.document.body.textContent = `Opening Restaurant City as ${user.fullName || user.firstName || user.networkUid}…`;
+                const result = await api.impersonateUser(user.networkUid);
+                gameWindow.opener = null;
+                gameWindow.location.replace(result.url);
+                toast(`Opened a 30-minute diagnostic session for ${user.firstName || user.networkUid}`);
+            }
+            catch (error) {
+                gameWindow.close();
+                toast(error instanceof Error ? error.message : String(error), false);
+            }
+        });
+    });
 }
 /** Rows whose item ids are not in the current item databases (legacy save data). */
 function staleIdBanner(user) {
