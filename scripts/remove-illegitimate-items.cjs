@@ -21,7 +21,6 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
 const Database = require('better-sqlite3');
 
 const SYSTEM_NETWORK_UID = '1';
@@ -124,19 +123,19 @@ function main() {
   if (!fs.existsSync(dbPath)) { console.error(`Database not found: ${dbPath}`); process.exit(1); }
   const dataDir = path.resolve(__dirname, '..', 'public', 'data');
   const sets = buildCatalogSets(dataDir);
+  const db = new Database(dbPath, { readonly: true });
   const legitSenders = legitimateSenderUids(db);
   console.log(`Database: ${dbPath}`);
   console.log(`Catalog: ${sets.known.size} known ids, ${sets.invisible.size} invisible, ${sets.award.size} award, ${sets.foodKing.size} foodKing`);
   console.log(`Legitimate mail senders: ${[...legitSenders].join(', ') || '(none)'}`);
 
-  const db = new Database(dbPath, { readonly: true });
   const kept = new Set(options.keep);
   const forced = new Set(options.items);
   const flagged = new Map(); // profileId -> { rows: [...], mail: [...] }
 
   const legitMailByProfile = new Map();
   const mailRows = db.prepare(`
-    SELECT recipientProfileId, senderNetworkUid, globalItemIdsJson, type
+    SELECT id, recipientProfileId, senderNetworkUid, globalItemIdsJson, type
     FROM Mail WHERE deleted = 0
   `).all();
   for (const m of mailRows) {
@@ -159,14 +158,14 @@ function main() {
   }
 
   function scanTable(table, idColumn, profileColumn) {
-    const rows = db.prepare(`SELECT id, ${profileColumn} AS profileId, ${idColumn} AS itemId, number FROM ${table}`).all();
+    const rows = db.prepare(`SELECT id, ${profileColumn} AS profileId, ${idColumn} AS itemId FROM ${table}`).all();
     for (const row of rows) {
       const id = Number(row.itemId);
       if (!illegitimate(id)) continue;
       // An invisible item granted by a legitimate mail is operator-sanctioned.
       if (!forced.has(id) && sets.invisible.has(id) && legitMailByProfile.get(row.profileId)?.has(id)) continue;
       const bucket = flagged.get(row.profileId) || { rows: [], mail: [] };
-      bucket.rows.push({ table, rowId: row.id, itemId: id, number: row.number });
+      bucket.rows.push({ table, rowId: row.id, itemId: id });
       flagged.set(row.profileId, bucket);
     }
   }
