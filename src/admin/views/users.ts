@@ -148,6 +148,23 @@ async function renderDetail(container: HTMLElement, networkUid: string): Promise
   }
 
   const refresh = async () => renderDetail(container, networkUid);
+  const fallbackRepair = /^Dummy\d+$/i.test(user.restaurantName.trim())
+    ? also(h('button', { class: 'rc-btn primary', type: 'button' }, 'Fix Dummy profile'), (btn) => {
+      btn.title = 'Restore the clean profile scalars while preserving the restaurant and inventory data.';
+      btn.addEventListener('click', async () => {
+        if (!(await confirmDialog('Fix Dummy profile?', 'Restore this player from the clean rollback snapshot. Their placed items, recipes, ingredients, floors, garden, mail, and employees will be preserved.', false))) return;
+        btn.disabled = true;
+        try {
+          await api.fixFallbackPlayer(user!.networkUid);
+          toast('Profile fixed; gameplay state preserved');
+          await refresh();
+        } catch (error) {
+          btn.disabled = false;
+          toast(error instanceof Error ? error.message : String(error), false);
+        }
+      });
+    })
+    : null;
   const header = h('section', { class: 'rc-panel rc-profile' },
     h('div', { class: 'rc-profile-id' },
       h('h1', { class: 'rc-title' }, esc(user.firstName), h('span', { class: 'rc-dim' }, ` ${esc(user.fullName)}`)),
@@ -165,6 +182,7 @@ async function renderDetail(container: HTMLElement, networkUid: string): Promise
     ),
     h('div', { class: 'rc-row-actions' },
       impersonateButton(user),
+      fallbackRepair,
       also(h('button', { class: 'rc-btn', type: 'button' }, 'Edit profile'), (btn) => {
         btn.addEventListener('click', () => openProfileEditor(user!, refresh));
       }),

@@ -55,7 +55,7 @@ import { actOnLink, adminLifecycle, adminLinkDetail, cancelPlayerLink, createAdm
 import { renderSocialLanding } from './social-links/landing';
 import { forceDailyIngredientSync } from './daily-ingredients/scheduler';
 import { recordRpcActivity } from './moderation/service';
-import { createManualSnapshot, moderationOverview, moderationPlayerDetail, resetAllFindings, resetProfileToStarter, reviewFinding, rollbackProfile, scanAllProfiles, setPlayerBan, terminatePlayerSessions } from './moderation/service';
+import { createManualSnapshot, moderationOverview, moderationPlayerDetail, repairFallbackPlayer, resetAllFindings, resetProfileToStarter, reviewFinding, rollbackProfile, scanAllProfiles, setPlayerBan, terminatePlayerSessions } from './moderation/service';
 import { runModerationCycle } from './moderation/scheduler';
 import { impersonationFromRequest, startImpersonation, stopImpersonation } from './impersonation';
 import { clearImpersonationCookie, impersonationCookie } from './session';
@@ -614,7 +614,7 @@ async function handleModerationApi(config: ServerConfig, method: string, pathnam
       sendJson(res, { ok: true, finding: await reviewFinding(finding[1], actor, String(input.status || ''), String(input.note || '')) });
       return;
     }
-    const player = pathname.match(/^\/__api\/moderation\/players\/([^/]+)(?:\/(snapshots|rollback|reset|ban|unban|terminate))?$/);
+    const player = pathname.match(/^\/__api\/moderation\/players\/([^/]+)(?:\/(snapshots|rollback|reset|ban|unban|terminate|fix-fallback))?$/);
     if (player) {
       const networkUid = decodeURIComponent(player[1]);
       const operation = player[2] || '';
@@ -640,6 +640,9 @@ async function handleModerationApi(config: ServerConfig, method: string, pathnam
       }
       if (method === 'POST' && operation === 'terminate') {
         sendJson(res, { ok: true, result: await terminatePlayerSessions(networkUid, actor, String(input.reason || '')) }); return;
+      }
+      if (method === 'POST' && operation === 'fix-fallback') {
+        sendJson(res, { ok: true, result: await repairFallbackPlayer(networkUid, actor) }); return;
       }
     }
     sendJson(res, { ok: false, error: 'not found' }, 404);

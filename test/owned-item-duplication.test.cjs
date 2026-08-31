@@ -25,7 +25,7 @@ process.env.RC_DB_PATH = testDbPath;
 
 const { prisma } = require('../dist/db/client.js');
 const { getPlayerProfile, readOwnerProfile, savePlayerProfile } = require('../dist/db/profile-store.js');
-const { recordAcceptedSaveTx } = require('../dist/moderation/service.js');
+const { recordAcceptedSaveTx, repairFallbackPlayer } = require('../dist/moderation/service.js');
 const { captureProfileSnapshot } = require('../dist/moderation/snapshots.js');
 const { evaluateProfile } = require('../dist/moderation/rules.js');
 
@@ -334,6 +334,26 @@ test('fallback recovery recognizes a Dummy save after it earned GP and preserves
   assert.equal(recovered.userLevel, 4);
   assert.equal(recovered.gourmetPoint, 4_425, '75 GP earned after the fallback is retained');
   assert.equal(recovered.credits, 5_000, 'post-corruption coin state remains untouched');
+});
+
+test('admin fallback repair preserves every gameplay collection and records the repair', async () => {
+  const account = await seedProfile('fallbackbutton', [
+    { serverId: 42, globalItemId: 3040001, positionX: 7, positionY: 8, roomIndex: 1 },
+  ]);
+  await prisma.inventoryItem.create({ data: { id: `facebook:${account.networkUid}:inventory:5300000`, userProfileId: `facebook:${account.networkUid}`, globalItemId: 5300000, number: 4, isSelected: true } });
+  await prisma.ingredientInventory.create({ data: { id: `facebook:${account.networkUid}:ingredient:4000001`, userProfileId: `facebook:${account.networkUid}`, globalItemId: 4000001, number: 9, isLocked: true } });
+  await captureProfileSnapshot(account.networkUid, 'TEST_CLEAN', 'Button repair baseline');
+  await prisma.userProfile.update({ where: { networkUid: account.networkUid }, data: { restaurantName: 'Dummy0', userLevel: 11, gourmetPoint: 10_000 } });
+
+  const result = await repairFallbackPlayer(account.networkUid, { id: 'admin-id', username: 'admin', networkUid: 'admin', role: 'ADMIN' });
+  const repaired = await readOwnerProfile(account);
+  assert.equal(result.recovered, true);
+  assert.equal(repaired.restaurantName, "fallbackbutton's Restaurant");
+  assert.equal(repaired.userLevel, 6);
+  assert.equal(repaired.ownedItems.length, 1);
+  assert.equal(repaired.inventoryItems[0].number, 4);
+  assert.equal(repaired.ingredients[0].number, 9);
+  assert.equal(await prisma.moderationAction.count({ where: { targetNetworkUid: account.networkUid, actionType: 'REPAIR_FALLBACK_PROFILE' } }), 1);
 });
 
 test('profile delivery removes locked zero-count ingredients instead of rendering ghost rows', async () => {

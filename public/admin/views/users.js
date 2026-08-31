@@ -123,7 +123,26 @@ async function renderDetail(container, networkUid) {
         return;
     }
     const refresh = async () => renderDetail(container, networkUid);
-    const header = h('section', { class: 'rc-panel rc-profile' }, h('div', { class: 'rc-profile-id' }, h('h1', { class: 'rc-title' }, esc(user.firstName), h('span', { class: 'rc-dim' }, ` ${esc(user.fullName)}`)), h('p', { class: 'rc-sub' }, `UID ${user.networkUid} · playfish ${fmt(user.playfishUid)} · ${esc(user.restaurantName)}`), h('div', { class: 'rc-badges' }, badge(`Lv ${user.userLevel}`, 'ok'), badge(user.isInStreet ? 'in street' : 'in restaurant', 'muted'), badge(user.activeFloorIndex > 0 ? `floor ${user.activeFloorIndex}` : 'ground floor', 'muted'), badge(`${fmt(user.credits)} coins`, 'ok'), badge(`${fmt(user.cashBalance)} cash`, 'warn'), badge(`${fmt(user.gourmetPoint)} gourmet`, 'muted'), badge(`play count ${fmt(user.playCount)}`, 'muted'), badge(`updated ${relTime(Math.floor(new Date(user.updatedAt).getTime() / 1000))}`, 'muted'))), h('div', { class: 'rc-row-actions' }, impersonateButton(user), also(h('button', { class: 'rc-btn', type: 'button' }, 'Edit profile'), (btn) => {
+    const fallbackRepair = /^Dummy\d+$/i.test(user.restaurantName.trim())
+        ? also(h('button', { class: 'rc-btn primary', type: 'button' }, 'Fix Dummy profile'), (btn) => {
+            btn.title = 'Restore the clean profile scalars while preserving the restaurant and inventory data.';
+            btn.addEventListener('click', async () => {
+                if (!(await confirmDialog('Fix Dummy profile?', 'Restore this player from the clean rollback snapshot. Their placed items, recipes, ingredients, floors, garden, mail, and employees will be preserved.', false)))
+                    return;
+                btn.disabled = true;
+                try {
+                    await api.fixFallbackPlayer(user.networkUid);
+                    toast('Profile fixed; gameplay state preserved');
+                    await refresh();
+                }
+                catch (error) {
+                    btn.disabled = false;
+                    toast(error instanceof Error ? error.message : String(error), false);
+                }
+            });
+        })
+        : null;
+    const header = h('section', { class: 'rc-panel rc-profile' }, h('div', { class: 'rc-profile-id' }, h('h1', { class: 'rc-title' }, esc(user.firstName), h('span', { class: 'rc-dim' }, ` ${esc(user.fullName)}`)), h('p', { class: 'rc-sub' }, `UID ${user.networkUid} · playfish ${fmt(user.playfishUid)} · ${esc(user.restaurantName)}`), h('div', { class: 'rc-badges' }, badge(`Lv ${user.userLevel}`, 'ok'), badge(user.isInStreet ? 'in street' : 'in restaurant', 'muted'), badge(user.activeFloorIndex > 0 ? `floor ${user.activeFloorIndex}` : 'ground floor', 'muted'), badge(`${fmt(user.credits)} coins`, 'ok'), badge(`${fmt(user.cashBalance)} cash`, 'warn'), badge(`${fmt(user.gourmetPoint)} gourmet`, 'muted'), badge(`play count ${fmt(user.playCount)}`, 'muted'), badge(`updated ${relTime(Math.floor(new Date(user.updatedAt).getTime() / 1000))}`, 'muted'))), h('div', { class: 'rc-row-actions' }, impersonateButton(user), fallbackRepair, also(h('button', { class: 'rc-btn', type: 'button' }, 'Edit profile'), (btn) => {
         btn.addEventListener('click', () => openProfileEditor(user, refresh));
     }), also(h('button', { class: 'rc-btn danger', type: 'button' }, 'Delete player'), (btn) => {
         btn.addEventListener('click', async () => {

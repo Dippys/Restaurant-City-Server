@@ -170,6 +170,7 @@ export const api = {
   banPlayer: (uid: string, reason: string) => request<{ ok: true; result: Record<string, unknown> }>('POST', `/__api/moderation/players/${enc(uid)}/ban`, { reason }),
   unbanPlayer: (uid: string, reason: string) => request<{ ok: true; result: Record<string, unknown> }>('POST', `/__api/moderation/players/${enc(uid)}/unban`, { reason }),
   terminatePlayer: (uid: string, reason: string) => request<{ ok: true; result: Record<string, unknown> }>('POST', `/__api/moderation/players/${enc(uid)}/terminate`, { reason }),
+  fixFallbackPlayer: (uid: string) => request<{ ok: true; result: Record<string, unknown> }>('POST', `/__api/moderation/players/${enc(uid)}/fix-fallback`, {}),
 
   socialLinks: () => request<{ ok: true; links: SocialLinkAdmin[] }>('GET', '/__api/admin/social-links'),
   socialLink: (id: string) => request<{ ok: true; link: SocialLinkAdmin }>('GET', `/__api/admin/social-links/${enc(id)}`),

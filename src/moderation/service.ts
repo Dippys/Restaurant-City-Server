@@ -236,6 +236,31 @@ export async function createManualSnapshot(networkUid: string, actor: ActiveAcco
   return { snapshotId };
 }
 
+/**
+ * Repair the shipped network-failure fallback without rolling back gameplay.
+ * The recovery helper deliberately changes only scalar profile fields; item,
+ * inventory, ingredient, floor, garden, mail, and employee rows remain as-is.
+ */
+export async function repairFallbackPlayer(networkUid: string, actor: ActiveAccount) {
+  const recovered = await recoverFallbackProfileScalars(networkUid);
+  if (!recovered) throw new Error('This player is not in a recoverable Dummy fallback state, or has no clean snapshot.');
+
+  const result = await prisma.$transaction(async (tx) => {
+    const revokedSessions = (await tx.session.deleteMany({
+      where: { account: { networkUid } },
+    })).count;
+    await tx.moderationAction.create({ data: {
+      id: randomUUID(), targetNetworkUid: networkUid, actorAccountId: actor.id, actorUsername: actor.username,
+      actionType: 'REPAIR_FALLBACK_PROFILE',
+      reason: 'Repair shipped Dummy fallback while preserving gameplay state.',
+      detailsJson: JSON.stringify({ preservedGameplayState: true, revokedSessions }),
+    } });
+    return { recovered, revokedSessions };
+  });
+  terminateRuntime(networkUid);
+  return result;
+}
+
 export { rollbackProfile, resetProfileToStarter };
 
 async function persistFindings(networkUid: string, active: readonly RuleFinding[], now: Date): Promise<ScanSummary> {
