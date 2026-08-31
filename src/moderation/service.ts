@@ -241,13 +241,16 @@ export async function createManualSnapshot(networkUid: string, actor: ActiveAcco
  * The recovery helper deliberately changes only scalar profile fields; item,
  * inventory, ingredient, floor, garden, mail, and employee rows remain as-is.
  */
-export async function repairFallbackPlayer(networkUid: string, actor: ActiveAccount) {
+export async function repairFallbackPlayer(networkUid: string, actor: ActiveAccount, preserveSessionId?: string) {
   const recovered = await recoverFallbackProfileScalars(networkUid);
   if (!recovered) throw new Error('This player is not in a recoverable Dummy fallback state, or has no clean snapshot.');
 
   const result = await prisma.$transaction(async (tx) => {
     const revokedSessions = (await tx.session.deleteMany({
-      where: { account: { networkUid } },
+      where: {
+        account: { networkUid },
+        ...(preserveSessionId ? { id: { not: preserveSessionId } } : {}),
+      },
     })).count;
     await tx.moderationAction.create({ data: {
       id: randomUUID(), targetNetworkUid: networkUid, actorAccountId: actor.id, actorUsername: actor.username,

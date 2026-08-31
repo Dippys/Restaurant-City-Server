@@ -119,6 +119,8 @@ export interface SaveFence {
   readonly authSessionId?: string;
   readonly rpcSessionToken?: string;
   readonly payloadDigest?: string;
+  /** The client profile carried the shipped local Dummy fallback identity. */
+  readonly fallbackProfile?: boolean;
 }
 
 export interface SaveResult {
@@ -592,8 +594,16 @@ export async function savePlayerProfile(
     // profile (level 11 / about 10,000 stored GP). The client may increment
     // that GP before saving, so use the impossible sub-threshold level/name
     // fingerprint rather than one exact total. It must never replace an owner.
-    const fallbackOverwrite = isFallbackProfileValues(profile.restaurantName, profile.userLevel, profile.gourmetPoint)
-      && !isFallbackProfileValues(current.restaurantName, current.userLevel, current.gourmetPoint);
+    const fallbackOverwrite = Boolean(fence.fallbackProfile)
+      || (isFallbackProfileValues(profile.restaurantName, profile.userLevel, profile.gourmetPoint)
+        && !isFallbackProfileValues(current.restaurantName, current.userLevel, current.gourmetPoint));
+    if (fallbackOverwrite && !isFallbackProfileValues(current.restaurantName, current.userLevel, current.gourmetPoint)) {
+      // A failed profile RPC can leave the running Flash client holding a
+      // complete Dummy0 world. A successful response is still required to
+      // advance the per-session save fence, but none of that fallback state—
+      // scalar or gameplay audit—may be persisted over a real owner.
+      return { status: 'saved', savedVersion: audit.saveVersion };
+    }
     const saneUserLevel = fallbackOverwrite
       ? current.userLevel
       : boundedIntOrFallback(profile.userLevel, current.userLevel, 1, 99);

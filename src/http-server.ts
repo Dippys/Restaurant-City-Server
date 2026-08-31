@@ -479,7 +479,7 @@ async function handleRequest(
   if (pathname.startsWith('/__api/moderation')) {
     const actor = await requireAdminMutationForMethod(req, res);
     if (!actor) return;
-    await handleModerationApi(config, req.method || 'GET', pathname, body, actor, res);
+    await handleModerationApi(config, req, req.method || 'GET', pathname, body, actor, res);
     return;
   }
 
@@ -589,7 +589,7 @@ async function handleRequest(
   requestLog.record(entry);
 }
 
-async function handleModerationApi(config: ServerConfig, method: string, pathname: string, body: Buffer, actor: ActiveAccount, res: ServerResponse): Promise<void> {
+async function handleModerationApi(config: ServerConfig, req: IncomingMessage, method: string, pathname: string, body: Buffer, actor: ActiveAccount, res: ServerResponse): Promise<void> {
   try {
     if (method === 'GET' && pathname === '/__api/moderation') {
       sendJson(res, { ok: true, ...(await moderationOverview()) });
@@ -642,7 +642,14 @@ async function handleModerationApi(config: ServerConfig, method: string, pathnam
         sendJson(res, { ok: true, result: await terminatePlayerSessions(networkUid, actor, String(input.reason || '')) }); return;
       }
       if (method === 'POST' && operation === 'fix-fallback') {
-        sendJson(res, { ok: true, result: await repairFallbackPlayer(networkUid, actor) }); return;
+        // Keep the active diagnostic session usable after the repair. The old
+        // implementation revoked it but left the impersonation cookie/record
+        // alive; the next boot then failed RPC init and Flash created Dummy0.
+        const impersonation = await impersonationFromRequest(req);
+        const activeTargetSessionId = impersonation.account?.networkUid === networkUid
+          ? impersonation.account.sessionId
+          : undefined;
+        sendJson(res, { ok: true, result: await repairFallbackPlayer(networkUid, actor, activeTargetSessionId) }); return;
       }
     }
     sendJson(res, { ok: false, error: 'not found' }, 404);

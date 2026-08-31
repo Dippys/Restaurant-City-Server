@@ -282,6 +282,29 @@ test('the shipped Dummy0 fallback cannot overwrite a real owner profile', async 
   assert.equal(stored.trashPoint, 9);
 });
 
+test('an authenticated fallback identity cannot apply its default-world audit', async () => {
+  const account = await seedProfile('fallbackpayload', [item(41, 3040001, 8, 8)]);
+  const before = await readOwnerProfile(account);
+  const result = await savePlayerProfile(
+    savedProfile(before, account, {
+      restaurantName: 'Dummy0',
+      gourmetPoint: 10_000,
+      userLevel: 11,
+    }),
+    emptyAudit({
+      removeOwnedItemIds: [41],
+      upsertOwnedItems: [item(42, 3040002, 2, 2)],
+      floorChanges: [{ floorIndex: 0, tiles: [3040002] }],
+    }),
+    { fallbackProfile: true },
+  );
+  assert.equal(result.status, 'saved');
+  const after = await readOwnerProfile(account);
+  assert.equal(after.restaurantName, before.restaurantName);
+  assert.deepEqual((await ownedRows(account.networkUid)).map((row) => row.serverId), [41]);
+  assert.deepEqual((await prisma.restaurantFloor.findMany({ where: { userProfileId: `facebook:${account.networkUid}` }, orderBy: { floorIndex: 'asc' } })).map((row) => row.floorIndex), [0, 1]);
+});
+
 test('an already-corrupted Dummy0 profile recovers scalar progress from its clean snapshot', async () => {
   const account = await seedProfile('fallbackrepair', []);
   await prisma.userProfile.update({

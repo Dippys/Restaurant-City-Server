@@ -265,6 +265,9 @@ async function readBookmarkCountForAccount(_request: ParsedRequest | ParsedSubRe
 async function saveProfile(request: ParsedRequest | ParsedSubRequest, account: ActiveAccount): Promise<Buffer> {
   const { profile, audit } = parseSaveProfile(requestBody(request));
   const body = requestBody(request);
+  const fallbackProfile = profile.id.networkUid === '0'
+    || profile.id.playfishUid === 0
+    || /^Dummy\d+$/i.test(profile.restaurantName.trim());
   const result = await savePlayerProfile({
     ...profile,
     id: {
@@ -276,6 +279,7 @@ async function saveProfile(request: ParsedRequest | ParsedSubRequest, account: A
     authSessionId: account.sessionId,
     rpcSessionToken: request.session,
     payloadDigest: createHash('sha256').update(body).digest('hex'),
+    fallbackProfile,
   });
 
   return Buffer.concat([
