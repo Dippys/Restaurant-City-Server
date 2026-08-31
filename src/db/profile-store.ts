@@ -341,9 +341,14 @@ export async function prepareOwnedItemsForProfileDelivery(networkUid: string): P
     for (const id of duplicateIds) {
       const item = placed.find((candidate) => candidate.id === id);
       if (!item) continue;
-      await tx.ownedItem.delete({ where: { id } });
-      await changeInventoryItem(tx, profileId, networkUid, { globalItemId: item.globalItemId, delta: 1 });
-      changed = true;
+      // Delivery preparation can run concurrently with another profile read
+      // (notably admin rebuild + game boot). Treat a row already removed by
+      // the other transaction as idempotent cleanup, not a failed rebuild.
+      const deleted = await tx.ownedItem.deleteMany({ where: { id } });
+      if (deleted.count > 0) {
+        await changeInventoryItem(tx, profileId, networkUid, { globalItemId: item.globalItemId, delta: 1 });
+        changed = true;
+      }
     }
 
     const duplicateSet = new Set(duplicateIds);
@@ -424,8 +429,8 @@ export async function prepareOwnedItemsForProfileDelivery(networkUid: string): P
       if (group.length < 2) continue;
       group.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
       for (const phantom of group.slice(1)) {
-        await tx.ownedItem.delete({ where: { id: phantom.id } });
-        changed = true;
+        const deleted = await tx.ownedItem.deleteMany({ where: { id: phantom.id } });
+        if (deleted.count > 0) changed = true;
       }
     }
 
