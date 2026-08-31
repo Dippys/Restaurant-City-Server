@@ -5,6 +5,7 @@ import { FACEBOOK_NETWORK, PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, isNpcUid } fr
 import { getAllFriends, getProfiles, readOwnerProfile, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
 import { ensureDailyContent, sendNpcGift, grantMailItem } from './system-mail';
 import { resolveIngredientId, ingredientRarity, firstVisitIngredientId } from './ingredient-catalog';
+import { isGiftableItemId } from './item-catalog';
 import { coinBundleForToken, ingredientCashCost, ingredientIdForCashToken, ownedItemCashCost } from './cash-catalog';
 import type { ActiveAccount } from '../session';
 import { enqueueLiveMail, pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
@@ -294,6 +295,14 @@ export async function sendMail(account: ActiveAccount, mail: {
     if (!isNpcUid(recipientUid) && !(await isFriendOf(account.networkUid, recipientUid))) {
       return STATUS_INVALID_TOKEN;
     }
+  }
+
+  // A player-to-player gift must carry a real, giftable, shop-available item.
+  // Without this check a crafted sendMail could mint any item id — including
+  // invisible/unavailable rows like the 3 Million Fans Statue (3500093) — into
+  // the recipient's inventory via grantMailItem below.
+  if (mail.type === MAIL_TYPE_GIFT && !isGiftableItemId(mail.globalItemIds[0] ?? 0)) {
+    return STATUS_INVALID_TOKEN;
   }
 
   await ensureProfileByUid(recipientUid);
@@ -728,7 +737,17 @@ async function deliverTradeConfirmation(
 
 export async function buyMysteryBox(account: ActiveAccount, category: string, tokens: readonly string[]): Promise<number> {
   await ensureAccountProfile(account);
-  const chosen = itemIdFromToken(tokens[0] ?? category, 3040001);
+  // Resolve the client-supplied token strictly: no free fallback item. The old
+  // code defaulted to 3040001 (Classic Chair), so ANY crafted token minted a
+  // chair for free — and any embedded id was minted unchecked.
+  const chosen = itemIdFromToken(tokens[0] ?? category, 0);
+  // The mystery box RPC is not called by the shipped client, but if it ever is
+  // the resolved item must be a real, giftable, shop-available catalog item.
+  // Previously any positive integer embedded in the token was minted for free
+  // (e.g. token "3500093" minted the invisible 3 Million Fans Statue).
+  if (!isGiftableItemId(chosen)) {
+    return STATUS_INVALID_TOKEN;
+  }
   await prisma.inventoryItem.upsert({
     where: { userProfileId_globalItemId: { userProfileId: profileKey(account.networkUid), globalItemId: chosen } },
     update: { number: { increment: 1 } },

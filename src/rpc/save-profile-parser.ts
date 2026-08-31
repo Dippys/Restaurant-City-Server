@@ -243,12 +243,20 @@ function readAuditChanges(
             });
           } else {
             const recipe = resolveRecipeEntry(token);
-            const recipeId = recipe?.id ?? itemIdFromToken(token);
+            // Never mint a recipe id from an unresolvable token: a crafted save
+            // audit could otherwise add any 5xxxxxx recipe for free by embedding
+            // its digits in the token. Unknown tokens stay unresolved so the
+            // save is rejected by the purchase pricing (ADR-0035).
+            if (!recipe) {
+              purchases.push({ kind: 'inventory', itemId: itemIdForToken(token), qty: 1, token, unresolved: true });
+              break;
+            }
+            const recipeId = recipe.id;
             // SaveProfileHandler.addRecipe() means "learn/level this recipe".
             // It carries no menu-selection flag; forcing selected=true here
             // made ordinary upgrades exceed the shipped per-course menu cap.
             inventoryChanges.push({ globalItemId: recipeId, delta: 1 });
-            for (const ingredientId of recipe?.ingredientIds ?? []) {
+            for (const ingredientId of recipe.ingredientIds) {
               ingredientChanges.push({ globalItemId: ingredientId, delta: -1 });
             }
           }
@@ -564,9 +572,4 @@ function normalizeNetworkUid(value: NetworkUidData): NetworkUidData {
     networkUid: value.networkUid,
     playfishUid: value.playfishUid,
   };
-}
-
-function itemIdFromToken(token: string): number {
-  const match = String(token).match(/\d+/);
-  return match ? Number.parseInt(match[0] ?? '0', 10) : 0;
 }

@@ -114,6 +114,11 @@ export function itemIdForToken(token: string): number | undefined {
 export function coinPriceForItemId(id: number): number | null {
   const attrs = itemAttributes(id);
   if (!attrs) return null;
+  // The save-audit purchase path must never price an invisible/non-shop row:
+  // such items cannot be bought in the shop, so a priced purchase would mint
+  // an unavailable item for the token's coin cost (e.g. the 3 Million Fans
+  // Statue, id 3500093, carries cost="1" while invisible="true").
+  if (attrs.invisible === 'true') return null;
   if (!Object.prototype.hasOwnProperty.call(attrs, 'cost')) return null;
   const cost = Number(attrs.cost);
   return Number.isInteger(cost) && cost >= 0 ? cost : null;
@@ -265,6 +270,22 @@ export function isWallDecorationItemId(globalItemId: number): boolean {
 
 export function isFoodKingEligibleItem(id: number): boolean {
   return itemAttributes(id)?.foodKingFeed === 'true';
+}
+
+/**
+ * Whether a player may gift this item through the sendMail RPC. Mirrors the
+ * shipped client's onGiftItem gate (WorldRestaurantEditor.as / ItemChooser):
+ * the item must be a real catalog row that is not shop-hidden and not flagged
+ * notGiftable. Without this the server minted any positive item id a crafted
+ * gift request carried — e.g. invisible/unavailable rows like the 3 Million
+ * Fans Statue (3500093) arrived even though they are not obtainable.
+ */
+export function isGiftableItemId(id: number): boolean {
+  const attrs = itemAttributes(id);
+  if (!attrs) return false;
+  if (attrs.invisible === 'true') return false;
+  if (/\bnotGiftable\b/.test(attrs.type ?? '')) return false;
+  return true;
 }
 
 export function isEmployeeSnackItem(id: number): boolean {
