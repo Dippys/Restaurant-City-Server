@@ -821,6 +821,13 @@ interface EnsureProfileOptions {
   readonly seedStarterItems?: boolean;
 }
 
+/** Re-read and normalize the authoritative stored collections for an admin rebuild. */
+export async function rebuildPlayerProfile(networkUid: string): Promise<StoredProfile> {
+  const account = await prisma.account.findUnique({ where: { networkUid }, select: { username: true, playfishUid: true } });
+  if (!account) throw new Error('Player account was not found.');
+  return getPlayerProfile({ username: account.username, networkUid, playfishUid: account.playfishUid });
+}
+
 function isFallbackProfileValues(restaurantName: string, userLevel: number, gourmetPoint: number): boolean {
   return /^Dummy\d+$/i.test(restaurantName.trim()) && userLevel === 11 && gourmetPoint < 100_000;
 }

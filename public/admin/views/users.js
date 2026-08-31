@@ -142,7 +142,24 @@ async function renderDetail(container, networkUid) {
             });
         })
         : null;
-    const header = h('section', { class: 'rc-panel rc-profile' }, h('div', { class: 'rc-profile-id' }, h('h1', { class: 'rc-title' }, esc(user.firstName), h('span', { class: 'rc-dim' }, ` ${esc(user.fullName)}`)), h('p', { class: 'rc-sub' }, `UID ${user.networkUid} · playfish ${fmt(user.playfishUid)} · ${esc(user.restaurantName)}`), h('div', { class: 'rc-badges' }, badge(`Lv ${user.userLevel}`, 'ok'), badge(user.isInStreet ? 'in street' : 'in restaurant', 'muted'), badge(user.activeFloorIndex > 0 ? `floor ${user.activeFloorIndex}` : 'ground floor', 'muted'), badge(`${fmt(user.credits)} coins`, 'ok'), badge(`${fmt(user.cashBalance)} cash`, 'warn'), badge(`${fmt(user.gourmetPoint)} gourmet`, 'muted'), badge(`play count ${fmt(user.playCount)}`, 'muted'), badge(`updated ${relTime(Math.floor(new Date(user.updatedAt).getTime() / 1000))}`, 'muted'))), h('div', { class: 'rc-row-actions' }, impersonateButton(user), fallbackRepair, also(h('button', { class: 'rc-btn', type: 'button' }, 'Edit profile'), (btn) => {
+    const rebuildSave = also(h('button', { class: 'rc-btn primary', type: 'button' }, 'Rebuild save'), (btn) => {
+        btn.title = 'Re-read and checkpoint this player from the stored restaurant data.';
+        btn.addEventListener('click', async () => {
+            if (!(await confirmDialog('Rebuild player save?', 'Rebuild the client-facing save from the stored profile, items, inventory, ingredients, floors, garden, mail, and employees. No gameplay collections will be reset.', false)))
+                return;
+            btn.disabled = true;
+            try {
+                await api.rebuildPlayerSave(user.networkUid);
+                toast('Save rebuilt; refresh the game session');
+                await refresh();
+            }
+            catch (error) {
+                btn.disabled = false;
+                toast(error instanceof Error ? error.message : String(error), false);
+            }
+        });
+    });
+    const header = h('section', { class: 'rc-panel rc-profile' }, h('div', { class: 'rc-profile-id' }, h('h1', { class: 'rc-title' }, esc(user.firstName), h('span', { class: 'rc-dim' }, ` ${esc(user.fullName)}`)), h('p', { class: 'rc-sub' }, `UID ${user.networkUid} · playfish ${fmt(user.playfishUid)} · ${esc(user.restaurantName)}`), h('div', { class: 'rc-badges' }, badge(`Lv ${user.userLevel}`, 'ok'), badge(user.isInStreet ? 'in street' : 'in restaurant', 'muted'), badge(user.activeFloorIndex > 0 ? `floor ${user.activeFloorIndex}` : 'ground floor', 'muted'), badge(`${fmt(user.credits)} coins`, 'ok'), badge(`${fmt(user.cashBalance)} cash`, 'warn'), badge(`${fmt(user.gourmetPoint)} gourmet`, 'muted'), badge(`play count ${fmt(user.playCount)}`, 'muted'), badge(`updated ${relTime(Math.floor(new Date(user.updatedAt).getTime() / 1000))}`, 'muted'))), h('div', { class: 'rc-row-actions' }, impersonateButton(user), fallbackRepair, rebuildSave, also(h('button', { class: 'rc-btn', type: 'button' }, 'Edit profile'), (btn) => {
         btn.addEventListener('click', () => openProfileEditor(user, refresh));
     }), also(h('button', { class: 'rc-btn danger', type: 'button' }, 'Delete player'), (btn) => {
         btn.addEventListener('click', async () => {

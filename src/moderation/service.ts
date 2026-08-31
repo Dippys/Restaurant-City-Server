@@ -5,7 +5,7 @@ import type { SaveAuditData } from '../db/profile-store';
 import type { ActiveAccount } from '../session';
 import { disconnectOnlineUser, listOnlineUsers } from '../live-events';
 import { terminateGameInstance } from '../game-instances';
-import { recoverFallbackProfileScalars } from '../db/profile-store';
+import { rebuildPlayerProfile, recoverFallbackProfileScalars } from '../db/profile-store';
 import { evaluateProfile, type RuleFinding } from './rules';
 import { captureProfileSnapshot, captureProfileSnapshotTx, listProfileSnapshots, resetProfileToStarter, rollbackProfile } from './snapshots';
 
@@ -259,6 +259,25 @@ export async function repairFallbackPlayer(networkUid: string, actor: ActiveAcco
       detailsJson: JSON.stringify({ preservedGameplayState: true, revokedSessions }),
     } });
     return { recovered, revokedSessions };
+  });
+  terminateRuntime(networkUid);
+  return result;
+}
+
+/** Rebuild a player's client-facing save from the authoritative stored rows. */
+export async function rebuildPlayerSave(networkUid: string, actor: ActiveAccount, preserveSessionId?: string) {
+  const profile = await rebuildPlayerProfile(networkUid);
+  const snapshotId = await captureProfileSnapshot(networkUid, 'ADMIN_REBUILD_SAVE', 'Before admin save rebuild', actor);
+  const result = await prisma.$transaction(async (tx) => {
+    const revokedSessions = (await tx.session.deleteMany({
+      where: { account: { networkUid }, ...(preserveSessionId ? { id: { not: preserveSessionId } } : {}) },
+    })).count;
+    await tx.moderationAction.create({ data: {
+      id: randomUUID(), targetNetworkUid: networkUid, actorAccountId: actor.id, actorUsername: actor.username,
+      actionType: 'REBUILD_PLAYER_SAVE', reason: 'Rebuilt client-facing save from authoritative stored state.', snapshotId,
+      detailsJson: JSON.stringify({ preservedGameplayState: true, revokedSessions, ownedItems: profile.ownedItems.length, inventoryItems: profile.inventoryItems.length, ingredients: profile.ingredients.length, floors: profile.floors.length, employees: profile.employees.length }),
+    } });
+    return { snapshotId, revokedSessions };
   });
   terminateRuntime(networkUid);
   return result;

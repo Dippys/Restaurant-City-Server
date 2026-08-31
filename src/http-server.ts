@@ -55,7 +55,7 @@ import { actOnLink, adminLifecycle, adminLinkDetail, cancelPlayerLink, createAdm
 import { renderSocialLanding } from './social-links/landing';
 import { forceDailyIngredientSync } from './daily-ingredients/scheduler';
 import { recordRpcActivity } from './moderation/service';
-import { createManualSnapshot, moderationOverview, moderationPlayerDetail, repairFallbackPlayer, resetAllFindings, resetProfileToStarter, reviewFinding, rollbackProfile, scanAllProfiles, setPlayerBan, terminatePlayerSessions } from './moderation/service';
+import { createManualSnapshot, moderationOverview, moderationPlayerDetail, rebuildPlayerSave, repairFallbackPlayer, resetAllFindings, resetProfileToStarter, reviewFinding, rollbackProfile, scanAllProfiles, setPlayerBan, terminatePlayerSessions } from './moderation/service';
 import { runModerationCycle } from './moderation/scheduler';
 import { impersonationFromRequest, startImpersonation, stopImpersonation } from './impersonation';
 import { clearImpersonationCookie, impersonationCookie } from './session';
@@ -614,7 +614,7 @@ async function handleModerationApi(config: ServerConfig, req: IncomingMessage, m
       sendJson(res, { ok: true, finding: await reviewFinding(finding[1], actor, String(input.status || ''), String(input.note || '')) });
       return;
     }
-    const player = pathname.match(/^\/__api\/moderation\/players\/([^/]+)(?:\/(snapshots|rollback|reset|ban|unban|terminate|fix-fallback))?$/);
+    const player = pathname.match(/^\/__api\/moderation\/players\/([^/]+)(?:\/(snapshots|rollback|reset|ban|unban|terminate|fix-fallback|rebuild-save))?$/);
     if (player) {
       const networkUid = decodeURIComponent(player[1]);
       const operation = player[2] || '';
@@ -650,6 +650,13 @@ async function handleModerationApi(config: ServerConfig, req: IncomingMessage, m
           ? impersonation.account.sessionId
           : undefined;
         sendJson(res, { ok: true, result: await repairFallbackPlayer(networkUid, actor, activeTargetSessionId) }); return;
+      }
+      if (method === 'POST' && operation === 'rebuild-save') {
+        const impersonation = await impersonationFromRequest(req);
+        const activeTargetSessionId = impersonation.account?.networkUid === networkUid
+          ? impersonation.account.sessionId
+          : undefined;
+        sendJson(res, { ok: true, result: await rebuildPlayerSave(networkUid, actor, activeTargetSessionId) }); return;
       }
     }
     sendJson(res, { ok: false, error: 'not found' }, 404);

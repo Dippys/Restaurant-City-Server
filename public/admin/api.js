@@ -110,6 +110,7 @@ export const api = {
     unbanPlayer: (uid, reason) => request('POST', `/__api/moderation/players/${enc(uid)}/unban`, { reason }),
     terminatePlayer: (uid, reason) => request('POST', `/__api/moderation/players/${enc(uid)}/terminate`, { reason }),
     fixFallbackPlayer: (uid) => request('POST', `/__api/moderation/players/${enc(uid)}/fix-fallback`, {}),
+    rebuildPlayerSave: (uid) => request('POST', `/__api/moderation/players/${enc(uid)}/rebuild-save`, {}),
     socialLinks: () => request('GET', '/__api/admin/social-links'),
     socialLink: (id) => request('GET', `/__api/admin/social-links/${enc(id)}`),
     createSocialLink: (input) => request('POST', '/__api/admin/social-links', input),
