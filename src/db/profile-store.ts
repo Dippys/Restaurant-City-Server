@@ -19,7 +19,7 @@ import {
 import type { ActiveAccount } from '../session';
 import { hiredFriendRosterNetworkUids, ownerFirst } from '../rpc/friend-roster';
 import { gardenIngredientForSeed } from '../rpc/garden-plot';
-import { capturePreSaveSnapshotTx, recordAcceptedSaveTx, scanPlayer } from '../moderation/service';
+import { capturePreSaveSnapshotTx, recordAcceptedSaveTx, recordSaveEventFindingTx, scanPlayer } from '../moderation/service';
 import { captureProfileSnapshotTx, type SnapshotPayloadV1 } from '../moderation/snapshots';
 import { isStackableItemId, isWallDecorationItemId } from './item-catalog';
 import { levelForGourmet } from '../moderation/rules';
@@ -97,6 +97,11 @@ export interface SaveAuditData {
   readonly removeOwnedItemIds: readonly number[];
   readonly inventoryChanges: readonly InventoryItemData[];
   readonly bulkInventoryMoves: readonly BulkInventoryMoveData[];
+  /**
+   * Item/floor mutations in the exact order sent by the Flash client.
+   * Older internal callers may omit this and use the grouped arrays above.
+   */
+  readonly orderedMutations?: readonly SaveMutation[];
   readonly ingredientChanges: readonly IngredientChangeData[];
   readonly lockIngredientChanges: readonly IngredientLockData[];
   readonly gardenChanges: readonly GardenChangeData[];
@@ -124,7 +129,7 @@ export interface SaveFence {
 }
 
 export interface SaveResult {
-  readonly status: 'saved' | 'duplicate' | 'stale' | 'rejected';
+  readonly status: 'saved' | 'duplicate' | 'stale';
   readonly savedVersion: number;
 }
 
@@ -607,6 +612,17 @@ export async function savePlayerProfile(
       // complete Dummy0 world. A successful response is still required to
       // advance the per-session save fence, but none of that fallback state—
       // scalar or gameplay audit—may be persisted over a real owner.
+      await recordSaveEventFindingTx(tx, profile.id.networkUid, {
+        ruleId: 'FALLBACK_PROFILE_BLOCKED', severity: 'HIGH', score: 75,
+        title: 'Client fallback profile was blocked',
+        summary: `Save ${audit.saveVersion} carried the shipped fallback world; the player's authoritative profile was preserved.`,
+        evidence: {
+          saveVersion: audit.saveVersion, storedRestaurantName: current.restaurantName,
+          storedLevel: current.userLevel, storedGourmetPoint: current.gourmetPoint,
+          receivedRestaurantName: profile.restaurantName, receivedLevel: profile.userLevel,
+          receivedGourmetPoint: profile.gourmetPoint,
+        },
+      }, acceptedAt);
       return { status: 'saved', savedVersion: audit.saveVersion };
     }
     const saneUserLevel = fallbackOverwrite
@@ -619,24 +635,35 @@ export async function savePlayerProfile(
     const saneActiveFloorIndex = sanitizeActiveFloorIndex(profile.activeFloorIndex, current.activeFloorIndex, saneUserLevel);
     const snapshotId = await capturePreSaveSnapshotTx(tx, profile.id.networkUid, audit.saveVersion);
 
-    // ADR-0035: the client never sends purchase credit deltas, so the server
-    // prices purchases from game data. An unpriced/invalid purchase or an
-    // unaffordable batch rejects the whole save atomically (the fence version
-    // is consumed so the client's next save is not blocked). The existing
-    // save-fail status tells the client that this batch did not persist; stale
-    // and already-done are reserved for actual fence conflicts. When purchases exist,
-    // `newCredits` (never sent by the shipped client) is ignored so an
-    // absolute-balance value cannot bypass the price.
+    // Price valid client purchases authoritatively, but never discard the rest
+    // of a player's save because one price/ownership check is suspicious. A
+    // durable moderation event records the discrepancy for operator review.
+    // When purchases exist, `newCredits` is ignored so an absolute balance
+    // cannot bypass prices that are known.
     const pricing = await pricePurchases(audit.purchases ?? [], tx);
     const salePricing = await priceSales(audit.sales ?? [], profileId, tx);
-    if (pricing.invalid || pricing.cost < 0 || salePricing.invalid || salePricing.revenue < 0) {
-      return { status: 'rejected', savedVersion: audit.saveVersion };
-    }
-    const nextCredits = (pricing.cost > 0 || (audit.sales?.length ?? 0) > 0
+    const chargeableCost = pricing.invalid || pricing.cost < 0 ? 0 : pricing.cost;
+    const payableRevenue = salePricing.invalid || salePricing.revenue < 0 ? 0 : salePricing.revenue;
+    const rawNextCredits = (chargeableCost > 0 || (audit.sales?.length ?? 0) > 0
       ? current.credits + audit.creditDelta
-      : (audit.newCredits ?? current.credits + audit.creditDelta)) - pricing.cost + salePricing.revenue;
-    if (!Number.isSafeInteger(nextCredits) || nextCredits < 0 || nextCredits > 2_147_483_647) {
-      return { status: 'rejected', savedVersion: audit.saveVersion };
+      : (audit.newCredits ?? current.credits + audit.creditDelta)) - chargeableCost + payableRevenue;
+    const creditsOutOfRange = !Number.isSafeInteger(rawNextCredits) || rawNextCredits < 0 || rawNextCredits > 2_147_483_647;
+    const nextCredits = Number.isSafeInteger(rawNextCredits)
+      ? Math.max(0, Math.min(2_147_483_647, rawNextCredits))
+      : current.credits;
+    if (pricing.invalid || pricing.cost < 0 || salePricing.invalid || salePricing.revenue < 0 || creditsOutOfRange) {
+      await recordSaveEventFindingTx(tx, profile.id.networkUid, {
+        ruleId: 'SAVE_PRICING_WARNING', severity: 'HIGH', score: 70,
+        title: 'Save required lossless pricing fallback',
+        summary: `Save ${audit.saveVersion} was preserved, but one or more purchase, sale, or balance checks could not be applied normally.`,
+        evidence: {
+          saveVersion: audit.saveVersion, purchaseCount: audit.purchases?.length ?? 0,
+          saleCount: audit.sales?.length ?? 0, purchasePricingInvalid: pricing.invalid,
+          salePricingInvalid: salePricing.invalid, authoritativeCost: pricing.cost,
+          authoritativeRevenue: salePricing.revenue, previousCredits: current.credits,
+          clientCreditDelta: audit.creditDelta, rawNextCredits, appliedCredits: nextCredits,
+        },
+      }, acceptedAt);
     }
 
     await tx.userProfile.update({
@@ -660,26 +687,28 @@ export async function savePlayerProfile(
       },
     });
 
-    for (const serverId of audit.removeOwnedItemIds) {
-      await tx.ownedItem.deleteMany({ where: { userProfileId: profileId, serverId } });
-    }
-
     // ADR-0039: stale negative ids (legacy rows whose id does not match their
     // serverId) can collide with a fresh client uid in the create branch of
     // the upsert below ("Unique constraint failed on the fields: (id)"), which
     // previously aborted the whole save. Repair them before upserting.
     await repairOwnedItemKeyMismatches(tx, profile.id.networkUid, profileId);
-
-    for (const item of audit.upsertOwnedItems) {
-      await upsertOwnedItemReconciled(tx, profileId, profile.id.networkUid, item);
-    }
-
-    for (const change of audit.inventoryChanges) {
-      await changeInventoryItem(tx, profileId, profile.id.networkUid, change);
-    }
-
-    for (const move of audit.bulkInventoryMoves) {
-      await moveInGameItemsToInventory(tx, profileId, profile.id.networkUid, move);
+    const placedItemsBefore = await tx.ownedItem.count({ where: { userProfileId: profileId } });
+    const orderedMutations = audit.orderedMutations;
+    if (orderedMutations) {
+      await applyOrderedSaveMutations(tx, profileId, profile.id.networkUid, orderedMutations);
+    } else {
+      for (const serverId of audit.removeOwnedItemIds) {
+        await tx.ownedItem.deleteMany({ where: { userProfileId: profileId, serverId } });
+      }
+      for (const item of audit.upsertOwnedItems) {
+        await upsertOwnedItemReconciled(tx, profileId, profile.id.networkUid, item);
+      }
+      for (const change of audit.inventoryChanges) {
+        await changeInventoryItem(tx, profileId, profile.id.networkUid, change);
+      }
+      for (const move of audit.bulkInventoryMoves) {
+        await moveInGameItemsToInventory(tx, profileId, profile.id.networkUid, move);
+      }
     }
 
     for (const change of audit.ingredientChanges) {
@@ -699,21 +728,30 @@ export async function savePlayerProfile(
       await applyGardenChange(tx, profileId, profile.id.networkUid, change);
     }
 
-    for (const floor of audit.floorChanges) {
-      await tx.restaurantFloor.upsert({
-        where: { userProfileId_floorIndex: { userProfileId: profileId, floorIndex: floor.floorIndex } },
-        update: { tilesJson: JSON.stringify(floor.tiles) },
-        create: {
-          id: floorKey(profile.id.networkUid, floor.floorIndex),
-          userProfileId: profileId,
-          floorIndex: floor.floorIndex,
-          tilesJson: JSON.stringify(floor.tiles),
-        },
-      });
+    if (!orderedMutations) {
+      for (const floor of audit.floorChanges) {
+        await upsertRestaurantFloor(tx, profileId, profile.id.networkUid, floor);
+      }
     }
 
-    if (audit.floorChanges.length > 0) {
+    if (audit.floorChanges.length > 0 || orderedMutations?.some((mutation) => mutation.kind === 'floor')) {
       await ensureFloorTileInventoryCounts(tx, profileId, profile.id.networkUid);
+    }
+
+    const placedItemsAfter = await tx.ownedItem.count({ where: { userProfileId: profileId } });
+    const removedPlacedItems = placedItemsBefore - placedItemsAfter;
+    if (removedPlacedItems >= 20 && placedItemsAfter * 2 <= placedItemsBefore) {
+      await recordSaveEventFindingTx(tx, profile.id.networkUid, {
+        ruleId: 'LARGE_LAYOUT_CLEAR', severity: 'MEDIUM', score: 45,
+        title: 'Large restaurant layout clear was saved',
+        summary: `Save ${audit.saveVersion} reduced placed items from ${placedItemsBefore} to ${placedItemsAfter}; the pre-save snapshot remains available.`,
+        evidence: {
+          saveVersion: audit.saveVersion, snapshotId, placedItemsBefore,
+          placedItemsAfter, removedPlacedItems,
+          bulkMoveCount: audit.bulkInventoryMoves.length,
+          actionCount: audit.actionCount ?? 0,
+        },
+      }, acceptedAt);
     }
 
     for (const employee of audit.employeeChanges) {
@@ -825,6 +863,13 @@ interface EnsureProfileOptions {
   readonly playfishUid?: number;
   readonly seedStarterItems?: boolean;
 }
+
+export type SaveMutation =
+  | { readonly kind: 'removeOwned'; readonly serverId: number }
+  | { readonly kind: 'upsertOwned'; readonly item: OwnedItemData }
+  | { readonly kind: 'inventory'; readonly change: InventoryItemData }
+  | { readonly kind: 'bulkInventory'; readonly move: BulkInventoryMoveData }
+  | { readonly kind: 'floor'; readonly floor: FloorData };
 
 /** Re-read and normalize the authoritative stored collections for an admin rebuild. */
 export async function rebuildPlayerProfile(networkUid: string): Promise<StoredProfile> {
@@ -1336,6 +1381,51 @@ async function changeInventoryItem(
       globalItemId: change.globalItemId,
       number: nextNumber,
       isSelected: Boolean(change.selected),
+    },
+  });
+}
+
+async function applyOrderedSaveMutations(
+  tx: Prisma.TransactionClient,
+  profileId: string,
+  networkUid: string,
+  mutations: readonly SaveMutation[],
+): Promise<void> {
+  for (const mutation of mutations) {
+    switch (mutation.kind) {
+      case 'removeOwned':
+        await tx.ownedItem.deleteMany({ where: { userProfileId: profileId, serverId: mutation.serverId } });
+        break;
+      case 'upsertOwned':
+        await upsertOwnedItemReconciled(tx, profileId, networkUid, mutation.item);
+        break;
+      case 'inventory':
+        await changeInventoryItem(tx, profileId, networkUid, mutation.change);
+        break;
+      case 'bulkInventory':
+        await moveInGameItemsToInventory(tx, profileId, networkUid, mutation.move);
+        break;
+      case 'floor':
+        await upsertRestaurantFloor(tx, profileId, networkUid, mutation.floor);
+        break;
+    }
+  }
+}
+
+async function upsertRestaurantFloor(
+  tx: Prisma.TransactionClient,
+  profileId: string,
+  networkUid: string,
+  floor: FloorData,
+): Promise<void> {
+  await tx.restaurantFloor.upsert({
+    where: { userProfileId_floorIndex: { userProfileId: profileId, floorIndex: floor.floorIndex } },
+    update: { tilesJson: JSON.stringify(floor.tiles) },
+    create: {
+      id: floorKey(networkUid, floor.floorIndex),
+      userProfileId: profileId,
+      floorIndex: floor.floorIndex,
+      tilesJson: JSON.stringify(floor.tiles),
     },
   });
 }

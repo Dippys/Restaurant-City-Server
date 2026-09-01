@@ -236,6 +236,39 @@ export async function createManualSnapshot(networkUid: string, actor: ActiveAcco
   return { snapshotId };
 }
 
+const DURABLE_EVENT_RULES = new Set(['SAVE_PRICING_WARNING', 'LARGE_LAYOUT_CLEAR', 'FALLBACK_PROFILE_BLOCKED']);
+
+/** Records an operator-facing event without blocking or rolling back gameplay. */
+export async function recordSaveEventFindingTx(
+  tx: Prisma.TransactionClient,
+  networkUid: string,
+  finding: RuleFinding,
+  now = new Date(),
+): Promise<void> {
+  const fingerprint = `${networkUid}:${finding.ruleId}`;
+  const evidenceJson = JSON.stringify(finding.evidence);
+  const existing = await tx.anomalyFinding.findUnique({ where: { fingerprint } });
+  if (!existing) {
+    await tx.anomalyFinding.create({ data: {
+      id: randomUUID(), fingerprint, networkUid, ruleId: finding.ruleId,
+      severity: finding.severity, score: finding.score, title: finding.title,
+      summary: finding.summary, evidenceJson, firstSeenAt: now, lastSeenAt: now,
+    } });
+    return;
+  }
+  const changed = existing.evidenceJson !== evidenceJson
+    || existing.summary !== finding.summary
+    || existing.severity !== finding.severity
+    || existing.score !== finding.score;
+  const reopen = existing.status === 'RESOLVED' || existing.status === 'DISMISSED';
+  await tx.anomalyFinding.update({ where: { id: existing.id }, data: {
+    severity: finding.severity, score: finding.score, title: finding.title,
+    summary: finding.summary, evidenceJson, lastSeenAt: now,
+    occurrenceCount: { increment: 1 }, evidenceVersion: changed ? { increment: 1 } : undefined,
+    status: reopen ? 'OPEN' : undefined, resolvedAt: reopen ? null : undefined,
+  } });
+}
+
 /**
  * Repair the shipped network-failure fallback without rolling back gameplay.
  * The recovery helper deliberately changes only scalar profile fields; item,
@@ -305,6 +338,7 @@ async function persistFindings(networkUid: string, active: readonly RuleFinding[
       }
     }
     for (const old of existing) {
+      if (DURABLE_EVENT_RULES.has(old.ruleId)) continue;
       if (!activeRules.has(old.ruleId) && (old.status === 'OPEN' || old.status === 'REVIEWED')) {
         await tx.anomalyFinding.update({ where: { id: old.id }, data: { status: 'RESOLVED', resolvedAt: now, lastSeenAt: now } });
         summary.findingsResolved += 1;

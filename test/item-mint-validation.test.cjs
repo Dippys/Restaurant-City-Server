@@ -90,7 +90,7 @@ test('buyMysteryBox refuses non-catalog or invisible tokens and mints nothing', 
   assert.equal(await inventoryItem(player, 3040001), null); // no fallback mint either
 });
 
-test('a save-audit purchase of an invisible item is rejected atomically', async () => {
+test('a suspicious save-audit purchase preserves gameplay and alerts moderation', async () => {
   const player = await seedProfile('savebuyer');
   const profile = await prisma.userProfile.findUnique({ where: { id: `facebook:${player.networkUid}` } });
   const saved = {
@@ -125,6 +125,7 @@ test('a save-audit purchase of an invisible item is rejected atomically', async 
     purchases: [{ kind: 'inventory', itemId: INVISIBLE_STATUE, qty: 1, token: 'SVL.plZzqrs7dHEmsbzxsq', unresolved: false }],
   };
   const result = await savePlayerProfile(saved, audit);
-  assert.equal(result.status, 'rejected');
-  assert.equal(await inventoryItem(player, INVISIBLE_STATUE), null);
+  assert.equal(result.status, 'saved');
+  assert.equal((await inventoryItem(player, INVISIBLE_STATUE))?.number, 1);
+  assert.equal((await prisma.anomalyFinding.findUnique({ where: { fingerprint: `${player.networkUid}:SAVE_PRICING_WARNING` } }))?.status, 'OPEN');
 });

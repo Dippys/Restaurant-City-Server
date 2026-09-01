@@ -3,9 +3,8 @@ const assert = require('node:assert/strict');
 
 const { saveStatusCode } = require('../dist/rpc/save-status.js');
 
-test('save rejection is failure while a stale fence is already-done', () => {
+test('only a stale fence is already-done; persistence warnings are accepted upstream', () => {
   assert.equal(saveStatusCode('saved'), 0);
   assert.equal(saveStatusCode('duplicate'), 0);
-  assert.equal(saveStatusCode('rejected'), 1);
   assert.equal(saveStatusCode('stale'), 2);
 });

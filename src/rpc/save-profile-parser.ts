@@ -10,6 +10,7 @@ import type {
   OwnedItemData,
   PurchaseAuditData,
   SaleAuditData,
+  SaveMutation,
   SaveAuditData,
   SavedProfileData,
 } from '../db/profile-store';
@@ -134,6 +135,7 @@ function readAuditChanges(
   const removeOwnedItemIds: number[] = [];
   const inventoryChanges: InventoryItemData[] = [];
   const bulkInventoryMoves: BulkInventoryMoveData[] = [];
+  const orderedMutations: SaveMutation[] = [];
   const ingredientChanges: IngredientChangeData[] = [];
   const lockIngredientChanges: IngredientLockData[] = [];
   const gardenChanges: GardenChangeData[] = [];
@@ -175,6 +177,10 @@ function readAuditChanges(
           pos = nextPos;
           removeOwnedItemIds.push(item.serverId);
           inventoryChanges.push({ globalItemId: item.globalItemId, delta: 1 });
+          orderedMutations.push(
+            { kind: 'removeOwned', serverId: item.serverId },
+            { kind: 'inventory', change: { globalItemId: item.globalItemId, delta: 1 } },
+          );
         }
         break;
       case ACTION_FROM_INVENTORY_TO_GAME:
@@ -183,6 +189,10 @@ function readAuditChanges(
           pos = nextPos;
           upsertOwnedItems.push(item);
           inventoryChanges.push({ globalItemId: item.globalItemId, delta: -1 });
+          orderedMutations.push(
+            { kind: 'upsertOwned', item },
+            { kind: 'inventory', change: { globalItemId: item.globalItemId, delta: -1 } },
+          );
         }
         break;
       case ACTION_SAVE_OWNED_ITEM:
@@ -190,6 +200,7 @@ function readAuditChanges(
           const [item, nextPos] = readOwnedItem(body, pos);
           pos = nextPos;
           upsertOwnedItems.push(item);
+          orderedMutations.push({ kind: 'upsertOwned', item });
         }
         break;
       case ACTION_PURCHASE_OWNED_ITEM:
@@ -199,6 +210,7 @@ function readAuditChanges(
           const [item, itemNextPos] = readOwnedItem(body, pos);
           pos = itemNextPos;
           upsertOwnedItems.push(item);
+          orderedMutations.push({ kind: 'upsertOwned', item });
           purchases.push({ kind: 'owned', itemId: item.globalItemId, qty: 1, token });
         }
         break;
@@ -209,6 +221,7 @@ function readAuditChanges(
           let token = '';
           [token, pos] = readString(body, pos);
           removeOwnedItemIds.push(item.serverId);
+          orderedMutations.push({ kind: 'removeOwned', serverId: item.serverId });
           sales.push({ kind: 'owned', itemId: item.globalItemId, qty: 1, token, serverId: item.serverId });
         }
         break;
@@ -220,6 +233,7 @@ function readAuditChanges(
           pos = nextPos;
           const qty = Math.max(1, item.number);
           inventoryChanges.push({ globalItemId: item.globalItemId, delta: -qty, selected: item.isSelected });
+          orderedMutations.push({ kind: 'inventory', change: { globalItemId: item.globalItemId, delta: -qty, selected: item.isSelected } });
           sales.push({ kind: 'inventory', itemId: item.globalItemId, qty, token });
         }
         break;
@@ -234,6 +248,7 @@ function readAuditChanges(
             [qty, pos] = readVarint(body, pos);
             const itemId = itemIdForToken(token);
             inventoryChanges.push({ globalItemId: itemId ?? 0, delta: Math.max(1, qty) });
+            orderedMutations.push({ kind: 'inventory', change: { globalItemId: itemId ?? 0, delta: Math.max(1, qty) } });
             purchases.push({
               kind: action === ACTION_PURCHASE_PERKS ? 'perk' : 'inventory',
               itemId,
@@ -246,7 +261,7 @@ function readAuditChanges(
             // Never mint a recipe id from an unresolvable token: a crafted save
             // audit could otherwise add any 5xxxxxx recipe for free by embedding
             // its digits in the token. Unknown tokens stay unresolved so the
-            // save is rejected by the purchase pricing (ADR-0035).
+            // save is preserved and flagged by the pricing audit.
             if (!recipe) {
               purchases.push({ kind: 'inventory', itemId: itemIdForToken(token), qty: 1, token, unresolved: true });
               break;
@@ -256,6 +271,7 @@ function readAuditChanges(
             // It carries no menu-selection flag; forcing selected=true here
             // made ordinary upgrades exceed the shipped per-course menu cap.
             inventoryChanges.push({ globalItemId: recipeId, delta: 1 });
+            orderedMutations.push({ kind: 'inventory', change: { globalItemId: recipeId, delta: 1 } });
             for (const ingredientId of recipe.ingredientIds) {
               ingredientChanges.push({ globalItemId: ingredientId, delta: -1 });
             }
@@ -296,6 +312,7 @@ function readAuditChanges(
           let flag = false;
           [flag, pos] = readBool(body, pos);
           inventoryChanges.push({ globalItemId: itemId, delta: 0, selected: flag });
+          orderedMutations.push({ kind: 'inventory', change: { globalItemId: itemId, delta: 0, selected: flag } });
         }
         break;
       case ACTION_SEED_PLANT:
@@ -325,6 +342,7 @@ function readAuditChanges(
           let itemId = 0;
           [itemId, pos] = readVarint(body, pos);
           inventoryChanges.push({ globalItemId: itemId, delta: -1 });
+          orderedMutations.push({ kind: 'inventory', change: { globalItemId: itemId, delta: -1 } });
         }
         break;
       case ACTION_CREDIT_VISIT_FRIEND:
@@ -348,6 +366,7 @@ function readAuditChanges(
           let tiles: number[] = [];
           [tiles, pos] = readArray(body, pos, (itemPos) => readVarint(body, itemPos));
           floorChanges.push({ floorIndex: 0, tiles });
+          orderedMutations.push({ kind: 'floor', floor: { floorIndex: 0, tiles } });
         }
         break;
       case ACTION_SAVE_FLOORS:
@@ -355,6 +374,7 @@ function readAuditChanges(
           let floors: FloorData[] = [];
           [floors, pos] = readArray(body, pos, (itemPos) => readFloor(body, itemPos));
           floorChanges.push(...floors);
+          orderedMutations.push(...floors.map((floor) => ({ kind: 'floor' as const, floor })));
         }
         break;
       case ACTION_HIRE_EMPLOYEE:
@@ -373,6 +393,7 @@ function readAuditChanges(
           let itemTypeId = 0;
           [itemTypeId, pos] = readVarint(body, pos);
           bulkInventoryMoves.push({ floorIndex, itemTypeId });
+          orderedMutations.push({ kind: 'bulkInventory', move: { floorIndex, itemTypeId } });
         }
         break;
       default:
@@ -388,6 +409,7 @@ function readAuditChanges(
     removeOwnedItemIds,
     inventoryChanges,
     bulkInventoryMoves,
+    orderedMutations,
     ingredientChanges,
     lockIngredientChanges,
     gardenChanges,

@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { coinPriceForItemId, itemIdForToken, sellPriceForItemId } from './item-catalog';
+import { coinPriceForItemId, itemAttributes, itemIdForToken, sellPriceForItemId } from './item-catalog';
 import type { PurchaseAuditData, SaleAuditData } from './profile-store';
 
 /**
@@ -52,7 +52,12 @@ export async function pricePurchases(
       cost += market.price * Math.max(1, purchase.qty);
       continue;
     }
-    const price = coinPriceForItemId(purchase.itemId ?? -1);
+    let price = coinPriceForItemId(purchase.itemId ?? -1);
+    if (purchase.kind === 'perk') {
+      const attrs = itemAttributes(purchase.itemId ?? -1);
+      const perkCost = attrs && Object.prototype.hasOwnProperty.call(attrs, 'cost') ? Number(attrs.cost) : Number.NaN;
+      price = Number.isInteger(perkCost) && perkCost >= 0 ? perkCost : null;
+    }
     if (price === null) {
       return { cost: 0, invalid: true };
     }

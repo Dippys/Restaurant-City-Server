@@ -164,6 +164,38 @@ test('a save reusing a stale negative uid updates the renumbered twin instead of
   assert.equal(after[0].data, 2, 'the audit rotation landed on the twin');
 });
 
+test('bulk layout clears replay in wire order so later placements remain placed', async () => {
+  const account = await seedProfile('orderedlayout', [
+    { serverId: 1, globalItemId: 3040001, positionX: 1, positionY: 1, roomIndex: 0 },
+    { serverId: 2, globalItemId: 3040001, positionX: 2, positionY: 2, roomIndex: 1 },
+  ]);
+  const profileId = `facebook:${account.networkUid}`;
+  await prisma.inventoryItem.create({ data: {
+    id: `${profileId}:inventory:3040001`, userProfileId: profileId,
+    globalItemId: 3040001, number: 2,
+  } });
+  const current = await readOwnerProfile(account);
+  const placedAfterClear0 = { ...item(-1, 3040001, 5, 5), roomIndex: 0 };
+  const placedAfterClear1 = { ...item(-2, 3040001, 6, 6), roomIndex: 1 };
+  const result = await savePlayerProfile(savedProfile(current, account), emptyAudit({
+    bulkInventoryMoves: [{ floorIndex: 0, itemTypeId: 3 }, { floorIndex: 1, itemTypeId: 3 }],
+    upsertOwnedItems: [placedAfterClear0, placedAfterClear1],
+    inventoryChanges: [{ globalItemId: 3040001, delta: -1 }, { globalItemId: 3040001, delta: -1 }],
+    orderedMutations: [
+      { kind: 'bulkInventory', move: { floorIndex: 0, itemTypeId: 3 } },
+      { kind: 'bulkInventory', move: { floorIndex: 1, itemTypeId: 3 } },
+      { kind: 'upsertOwned', item: placedAfterClear0 },
+      { kind: 'inventory', change: { globalItemId: 3040001, delta: -1 } },
+      { kind: 'upsertOwned', item: placedAfterClear1 },
+      { kind: 'inventory', change: { globalItemId: 3040001, delta: -1 } },
+    ],
+  }));
+  assert.equal(result.status, 'saved');
+  const placed = await ownedRows(account.networkUid);
+  assert.deepEqual(placed.map((row) => [row.roomIndex, row.positionX, row.positionY]).sort((a, b) => a[0] - b[0]), [[0, 5, 5], [1, 6, 6]]);
+  assert.equal((await prisma.inventoryItem.findUnique({ where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: 3040001 } } })).number, 2);
+});
+
 test('a fresh negative uid with no twin still creates normally', async () => {
   const account = await seedProfile('freshnegative', []);
   const current = await readOwnerProfile(account);

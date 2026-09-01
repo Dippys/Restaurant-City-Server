@@ -6,8 +6,8 @@ const { spawnSync } = require('node:child_process');
 
 // ADR-0035: coin purchases are priced server-side at save-apply time. The
 // shipped client deducts the price only from its local balance and sends no
-// credit delta, so the server must charge the authoritative price and reject
-// unaffordable or invalid purchase batches.
+// credit delta. Valid prices remain authoritative; suspicious batches persist
+// losslessly and create an operator-visible moderation finding.
 
 const testDbName = `.purchase-pricing-test-${process.pid}.db`;
 const testDbPath = path.join(__dirname, '..', testDbName);
@@ -207,7 +207,7 @@ test('selling items pays the shipped price even though the client sends no sale 
   assert.equal(await inventoryNumber(account, RED_BRICK_PILLAR), 0);
 });
 
-test('a forged or repeated sale rejects the whole save without minting coins', async () => {
+test('a forged or repeated sale preserves the save without minting coins and alerts moderation', async () => {
   const account = await seedProfile('invalidsale');
   const profileId = `facebook:${account.networkUid}`;
   await prisma.ownedItem.create({ data: {
@@ -219,9 +219,10 @@ test('a forged or repeated sale rejects the whole save without minting coins', a
     removeOwnedItemIds: [9],
     sales: [{ kind: 'owned', itemId: WHITE_ROOM_DIVIDER, qty: 1, token: 'wrong-token', serverId: 9 }],
   }), { ...fence, payloadDigest: 'invalid-sale-v1' });
-  assert.equal(result.status, 'rejected');
+  assert.equal(result.status, 'saved');
   assert.equal(await credits(account), 50000);
-  assert.equal(await ownedCount(account, WHITE_ROOM_DIVIDER), 1);
+  assert.equal(await ownedCount(account, WHITE_ROOM_DIVIDER), 0);
+  assert.equal((await prisma.anomalyFinding.findUnique({ where: { fingerprint: `${account.networkUid}:SAVE_PRICING_WARNING` } }))?.status, 'OPEN');
 });
 
 test('inventory purchase resolves the hash token and charges cost × qty', async () => {
@@ -258,7 +259,7 @@ test('seed planting charges GardenPlot.SEED_COST per seed', async () => {
   assert.equal(await credits(account), 50000 - SEED_COST);
 });
 
-test('ingredient purchase charges the enabled market price and rejects disabled markets', async () => {
+test('ingredient purchase charges the enabled market price and preserves disabled-market saves with an alert', async () => {
   const account = await seedProfile('ingredientbuy');
   const fence = await setupFence(account);
   const profileId = `facebook:${account.networkUid}`;
@@ -277,12 +278,14 @@ test('ingredient purchase charges the enabled market price and rejects disabled 
   assert.equal((await prisma.ingredientInventory.findUnique({ where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: 4000000 } } }))?.number, 1);
 
   await prisma.ingredientMarketItem.update({ where: { ingredientId: 4000000 }, data: { enabled: false } });
-  const rejected = await savePlayerProfile(await savedProfile(account), emptyAudit(2, 200, {
+  const preserved = await savePlayerProfile(await savedProfile(account), emptyAudit(2, 200, {
     ingredientChanges: [{ globalItemId: 4000000, delta: 1 }],
     purchases: [{ kind: 'ingredient', itemId: 4000000, qty: 1 }],
   }), { ...fence, payloadDigest: 'ingredient-v2' });
-  assert.equal(rejected.status, 'rejected');
+  assert.equal(preserved.status, 'saved');
   assert.equal(await credits(account), 50000 - 1000);
+  assert.equal((await prisma.ingredientInventory.findUnique({ where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: 4000000 } } }))?.number, 2);
+  assert.equal((await prisma.anomalyFinding.findUnique({ where: { fingerprint: `${account.networkUid}:SAVE_PRICING_WARNING` } }))?.status, 'OPEN');
 });
 
 test('cost-0 starter avatar items are granted for free', async () => {
@@ -297,44 +300,47 @@ test('cost-0 starter avatar items are granted for free', async () => {
   assert.equal(await ownedCount(account, CLASSIC_HAIR), 1);
 });
 
-test('insufficient funds rejects the save atomically and does not wedge the save fence', async () => {
+test('insufficient funds preserves items, clamps coins, and alerts moderation', async () => {
   const account = await seedProfile('poor', 100);
   const fence = await setupFence(account);
 
-  const rejected = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
+  const preserved = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
     upsertOwnedItems: [ownedItem(-1, RED_BRICK_PILLAR)],
     purchases: [{ kind: 'owned', itemId: RED_BRICK_PILLAR, qty: 1 }],
   }), { ...fence, payloadDigest: 'poor-v1' });
-  assert.deepEqual(rejected, { status: 'rejected', savedVersion: 1 });
-  assert.equal(await credits(account), 100);
-  assert.equal(await ownedCount(account, RED_BRICK_PILLAR), 0);
+  assert.deepEqual(preserved, { status: 'saved', savedVersion: 1 });
+  assert.equal(await credits(account), 0);
+  assert.equal(await ownedCount(account, RED_BRICK_PILLAR), 1);
+  assert.equal((await prisma.anomalyFinding.findUnique({ where: { fingerprint: `${account.networkUid}:SAVE_PRICING_WARNING` } }))?.status, 'OPEN');
 
   // The fence version was consumed, so the next (solvent) save still lands.
   const next = await savePlayerProfile(await savedProfile(account), emptyAudit(2, 200), { ...fence, payloadDigest: 'poor-v2' });
   assert.deepEqual(next, { status: 'saved', savedVersion: 2 });
-  assert.equal(await credits(account), 100);
+  assert.equal(await credits(account), 0);
 });
 
-test('cash-only items cannot be bought through the save audit', async () => {
+test('cash-only save-audit items persist and alert moderation instead of dropping the save', async () => {
   const account = await seedProfile('cashonly');
   const fence = await setupFence(account);
   const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
     upsertOwnedItems: [ownedItem(-1, KOI_POND)],
     purchases: [{ kind: 'owned', itemId: KOI_POND, qty: 1 }],
   }), { ...fence, payloadDigest: 'cashonly-v1' });
-  assert.equal(result.status, 'rejected');
+  assert.equal(result.status, 'saved');
   assert.equal(await credits(account), 50000);
-  assert.equal(await ownedCount(account, KOI_POND), 0);
+  assert.equal(await ownedCount(account, KOI_POND), 1);
+  assert.equal((await prisma.anomalyFinding.findUnique({ where: { fingerprint: `${account.networkUid}:SAVE_PRICING_WARNING` } }))?.status, 'OPEN');
 });
 
-test('an unresolvable purchase token rejects the save', async () => {
+test('an unresolvable purchase token preserves the save and alerts moderation', async () => {
   const account = await seedProfile('unknowntoken');
   const fence = await setupFence(account);
   const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
     purchases: [{ kind: 'inventory', qty: 1, token: 'no-such-hash', unresolved: true }],
   }), { ...fence, payloadDigest: 'unknown-v1' });
-  assert.equal(result.status, 'rejected');
+  assert.equal(result.status, 'saved');
   assert.equal(await credits(account), 50000);
+  assert.equal((await prisma.anomalyFinding.findUnique({ where: { fingerprint: `${account.networkUid}:SAVE_PRICING_WARNING` } }))?.status, 'OPEN');
 });
 
 test('newCredits cannot bypass purchase pricing', async () => {
@@ -407,5 +413,8 @@ test('the save parser records purchase actions and resolves inventory tokens by 
   assert.deepEqual(parsed.audit.sales, [
     { kind: 'owned', itemId: WHITE_ROOM_DIVIDER, qty: 1, token: 'voNvhmQe5ogIYR21dTGXJa', serverId: 7 },
     { kind: 'inventory', itemId: RED_BRICK_PILLAR, qty: 2, token: '3Sa4YP7xjnf.CerAt_gFna' },
+  ]);
+  assert.deepEqual(parsed.audit.orderedMutations.map((mutation) => mutation.kind), [
+    'upsertOwned', 'inventory', 'inventory', 'removeOwned', 'inventory',
   ]);
 });
