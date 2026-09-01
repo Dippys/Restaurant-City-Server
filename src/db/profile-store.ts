@@ -156,7 +156,6 @@ export interface IngredientLockData {
 
 export interface GardenChangeData {
   readonly plotId: number;
-  readonly ingredientId?: number;
   readonly action: 'seed' | 'water' | 'harvest';
 }
 
@@ -725,7 +724,7 @@ export async function savePlayerProfile(
     }
 
     for (const change of audit.gardenChanges) {
-      await applyGardenChange(tx, profileId, profile.id.networkUid, change);
+      await applyGardenChange(tx, profileId, profile.id.networkUid, saneUserLevel, change);
     }
 
     if (!orderedMutations) {
@@ -1547,6 +1546,7 @@ async function applyGardenChange(
   tx: any,
   profileId: string,
   networkUid: string,
+  playerLevel: number,
   change: GardenChangeData,
 ): Promise<void> {
   if (change.action === 'harvest') {
@@ -1573,7 +1573,7 @@ async function applyGardenChange(
     return;
   }
 
-  const ingredientId = change.ingredientId ?? gardenIngredientForSeed(String(change.plotId));
+  const ingredientId = gardenIngredientForSeed(playerLevel);
   await tx.gardenPlot.upsert({
     where: { userProfileId_plotId: { userProfileId: profileId, plotId: change.plotId } },
     update: {

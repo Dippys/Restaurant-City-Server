@@ -324,6 +324,25 @@ test('save fencing applies each RPC-session version once and rejects stale resta
   );
 });
 
+test('profile planting persists a level-appropriate crop across reloads', async () => {
+  const account = await seedProfile('levelgarden');
+  const before = await getPlayerProfile(account);
+
+  assert.deepEqual(
+    await savePlayerProfile(
+      savedProfile(account, before, { userLevel: 1 }),
+      emptyAudit(1, 1000, { gardenChanges: [{ plotId: 0, action: 'seed' }] }),
+    ),
+    { status: 'saved', savedVersion: 1 },
+  );
+
+  const firstLoad = await getPlayerProfile(account);
+  const planted = firstLoad.gardenPlots.find((plot) => plot.plotId === 0);
+  assert.ok(planted);
+  assert.equal(new Set([4000003, 4000015, 4000058]).has(planted.ingredientId), true);
+  assert.equal((await getPlayerProfile(account)).gardenPlots.find((plot) => plot.plotId === 0)?.ingredientId, planted.ingredientId);
+});
+
 test('profile delivery restores only facade and restaurant-door defaults with exact legacy-slot collision evidence', async () => {
   const account = await seedProfile('facadecollision', [
     { serverId: -1, globalItemId: 2060000 },
