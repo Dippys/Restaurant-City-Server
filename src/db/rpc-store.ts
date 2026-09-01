@@ -10,6 +10,7 @@ import { coinBundleForToken, ingredientCashCost, ingredientIdForCashToken, owned
 import type { ActiveAccount } from '../session';
 import { enqueueLiveMail, pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
 import { selectGourmetStreetProfiles, selectHireCandidateProfiles, selectRandomStreetProfiles } from '../rpc/street-roster';
+import { queueDiscordNotification } from '../discord-notifications';
 
 const STATUS_OK = 0;
 const STATUS_NOT_ENOUGH_CASH = 1;
@@ -326,6 +327,9 @@ export async function sendMail(account: ActiveAccount, mail: {
   // "item added"), so the server persists it to the recipient — matching PlayFish.
   if (mail.type === MAIL_TYPE_GIFT) {
     await grantMailItem(recipientUid, mail.globalItemIds[0] ?? 0);
+    queueDiscordNotification(recipientUid, `🎁 ${sender.firstName || account.username} sent you a gift in Restaurant City Reborn!`);
+  } else if (mail.type === MAIL_TYPE_SECURECHANGE) {
+    queueDiscordNotification(recipientUid, `🔄 ${sender.firstName || account.username} sent you an ingredient trade request in Restaurant City Reborn.`);
   }
   return STATUS_OK;
 }

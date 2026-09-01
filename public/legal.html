@@ -51,7 +51,7 @@
       <h2>2. Accounts</h2>
       <ul>
         <li>You need an account to play: a unique username, a first and last name, and a 6–12 digit PIN. Your PIN is stored only as a salted, one-way hash — we cannot read it.</li>
-        <li>You must provide accurate account information and keep your PIN secret. You are responsible for all activity on your account.</li>
+        <li>You must provide accurate account information and keep your PIN and linked sign-in accounts secure. You are responsible for all activity on your account.</li>
         <li>One account per person, unless we say otherwise. Do not share accounts or let others use your credentials.</li>
         <li>Tell us promptly if you believe your account has been accessed without your permission.</li>
       </ul>
@@ -97,7 +97,7 @@
 
     <section id="privacy">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 2 August 2026</p>
+      <p class="updated">Last updated: 1 September 2026</p>
       <p>This Privacy Policy explains what data this Restaurant City Reborn server (the "Service"), operated by the Restaurant City Reborn project ("we", "us", "our"), collects, why we collect it, and the choices you have.</p>
 
       <h2>1. What we collect</h2>
@@ -105,6 +105,7 @@
       <ul>
         <li>Username, first name, and last name.</li>
         <li>Your PIN — stored only as a salted scrypt hash, so we cannot read or recover it.</li>
+        <li>If you connect Discord: your Discord user ID, username, display name, avatar identifier, email address, link date, and notification preference. Discord-only profiles do not have a usable PIN until you set one.</li>
       </ul>
       <h3>Gameplay data</h3>
       <ul>
@@ -123,6 +124,7 @@
       <h2>2. How we use your data</h2>
       <ul>
         <li>To authenticate you and keep you signed in;</li>
+        <li>to link your Discord and game identities, add you to the community server with your permission, and send enabled gift or trade-request notifications;</li>
         <li>to save, restore, and display your gameplay;</li>
         <li>to provide support and respond to your requests;</li>
         <li>to prevent abuse, detect fraud, and keep the Service secure;</li>
@@ -136,18 +138,20 @@
       <p>We do not sell your personal data. We share it only:</p>
       <ul>
         <li>with service providers who host or operate components of the Service, only as necessary to run it;</li>
+        <li>with Discord when you choose Discord sign-in, account linking, server joining, or bot notifications;</li>
         <li>when required by law, regulation, or legal process;</li>
         <li>to protect the rights, property, or safety of the Service, our users, or others;</li>
         <li>in connection with a transfer of ownership of the Service.</li>
       </ul>
 
       <h2>5. Cookies</h2>
-      <p>We use one essential session cookie (<code>rc_session</code>) to keep you signed in. It is not used for advertising or tracking. See the <a href="/cookies">Cookie Policy</a> for details.</p>
+      <p>We use the essential session cookie <code>rc_session</code>. During Discord sign-in we also use short-lived, HttpOnly <code>rc_discord_oauth</code> and <code>rc_discord_ticket</code> cookies for OAuth security and first-login completion. They are not used for advertising or tracking. See the <a href="/cookies">Cookie Policy</a> for details.</p>
 
       <h2>6. Retention</h2>
       <ul>
         <li>Session cookie: expires after 30 days or when you log out.</li>
         <li>Session records: expire after 30 days.</li>
+        <li>Discord OAuth state expires after 10 minutes and an unfinished first-login ticket expires after 15 minutes. Linked Discord identity data remains until it is unlinked or the account is deleted.</li>
         <li>Request-log buffer: capped (500 entries by default); older entries are discarded.</li>
         <li>Account and gameplay data: kept while your account is active, and for up to 30 days after you request deletion, unless a longer period is required by law or needed to resolve disputes or abuse.</li>
       </ul>
@@ -173,14 +177,14 @@
 
     <section id="cookies">
       <h1>Cookie Policy</h1>
-      <p class="updated">Last updated: 2 August 2026</p>
+      <p class="updated">Last updated: 1 September 2026</p>
 
       <h2>What we use</h2>
-      <p>This Service uses exactly one cookie: <code>rc_session</code>. It is an essential session cookie that keeps you signed in and protects your account. It is:</p>
+      <p>This Service uses the essential <code>rc_session</code> cookie to keep you signed in. When you use Discord authentication it temporarily uses <code>rc_discord_oauth</code> to validate the redirect and <code>rc_discord_ticket</code> to finish first-time profile setup. These cookies are:</p>
       <ul>
         <li><strong>HttpOnly</strong> — not readable by scripts;</li>
         <li><strong>SameSite=Lax</strong> — not sent with cross-site requests;</li>
-        <li>set to expire after <strong>30 days</strong>, or immediately when you log out;</li>
+        <li>set to expire after <strong>30 days</strong> for the session, <strong>10 minutes</strong> for OAuth state, or <strong>15 minutes</strong> for first-login completion;</li>
         <li>marked <strong>Secure</strong> when the Service is served over HTTPS.</li>
       </ul>
 

@@ -10,6 +10,7 @@ export interface ActiveAccount {
   readonly networkUid: string;
   readonly playfishUid: number;
   readonly role?: string;
+  readonly pinEnabled?: boolean;
   readonly csrfToken?: string;
   readonly sessionId?: string;
 }
@@ -28,7 +29,7 @@ export function accountFromUsername(value: string): ActiveAccount {
   const username = cleanUsername(value);
   const hash = hashUsername(username);
   const playfishUid = 700000000 + (hash % 1000000000);
-  return { username, networkUid: String(playfishUid), playfishUid };
+  return { username, networkUid: String(playfishUid), playfishUid, pinEnabled: false };
 }
 
 export async function accountFromRequest(req: IncomingMessage): Promise<ActiveAccount | null> {

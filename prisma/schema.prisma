@@ -14,6 +14,7 @@ model Account {
   lastName     String
   pinHash      String
   pinSalt      String
+  pinEnabled   Boolean   @default(true)
   networkUid   String    @unique
   playfishUid  Int       @unique
   role         String    @default("USER")
@@ -21,7 +22,9 @@ model Account {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   lastLoginAt  DateTime?
+  discordLinkPromptedAt DateTime?
   sessions     Session[]
+  discordIdentity DiscordIdentity?
   socialLinksCreated SocialLink[] @relation("SocialLinkCreator")
   socialLinksAdministered SocialLink[] @relation("SocialLinkAdmin")
   socialActions SocialLinkAction[]
@@ -30,6 +33,39 @@ model Account {
   friendRequestsReceived FriendRequest[] @relation("FriendRequestRecipient")
   friendshipsA Friendship[] @relation("FriendshipA")
   friendshipsB Friendship[] @relation("FriendshipB")
+}
+
+// A Discord identity is an alternate credential for exactly one game account.
+// OAuth access/refresh tokens are deliberately not retained; the bot only needs
+// the stable Discord user id to deliver opt-in direct-message notifications.
+model DiscordIdentity {
+  discordUserId         String   @id
+  accountId             String   @unique
+  username              String
+  globalName            String   @default("")
+  email                 String?
+  avatarHash            String   @default("")
+  dmNotificationsEnabled Boolean @default(true)
+  linkedAt              DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  lastLoginAt           DateTime?
+  account               Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+// Short-lived, single-use handoff after Discord OAuth when the Discord user has
+// not yet chosen whether to link an existing profile or create a new one.
+model DiscordLoginTicket {
+  tokenHash     String   @id
+  discordUserId String
+  username      String
+  globalName    String   @default("")
+  email         String?
+  avatarHash    String   @default("")
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([discordUserId])
 }
 
 model Session {

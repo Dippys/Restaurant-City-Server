@@ -11,6 +11,7 @@
   .rc-btn.block { width: 100%; margin-top: 4px; }
   .id-line { font-weight: 700; color: var(--ink-soft); margin: 0 0 18px; }
   .id-line strong { color: var(--tomato-dk); }
+  .discord-card{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}.discord-user{font-weight:800;color:#5865f2}.discord-actions{display:flex;gap:10px;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -18,7 +19,7 @@
   <a class="rc-brand" href="/"><span class="rc-plate"></span><span class="rc-wordmark">Restaurant City Reborn</span></a>
   <div style="flex:1"></div>
   <nav style="display:flex;gap:10px">
-    <a class="rc-btn ghost small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
+    <a id="discordLinkTop" class="rc-btn ghost small" href="/auth/discord?intent=link&next=/account">Link Discord</a>
     <a class="rc-btn ghost small" href="/">Home</a>
     <a class="rc-btn green small" href="/game">Play</a>
     <button id="logoutButton" class="rc-btn small" type="button">Log out</button>
@@ -41,6 +42,18 @@
     </form>
   </div>
 
+  <div class="rc-panel">
+    <div class="discord-card">
+      <div><h2 style="margin:0 0 6px">Discord</h2><p id="discordStatus" class="rc-note" style="margin:0">Checking connection…</p></div>
+      <div class="discord-actions">
+        <label id="discordNotifyLabel" class="rc-check hidden"><input id="discordNotify" type="checkbox"> <span>Gift and trade DMs</span></label>
+        <a id="discordLinkButton" class="rc-btn" href="/auth/discord?intent=link&next=/account">Link Discord</a>
+        <button id="discordUnlink" class="rc-btn danger hidden" type="button">Unlink</button>
+      </div>
+    </div>
+    <div id="discordMsg" class="rc-msg" aria-live="polite"></div>
+  </div>
+
   <footer class="rc-footer">
     <span>© Restaurant City Reborn</span>
     <a href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
@@ -59,7 +72,10 @@ for (const field of document.querySelectorAll('.rc-pin-input')) {
   });
   field.addEventListener('input', () => { field.value = field.value.replace(/\D/g, ''); });
 }
-let csrf='';fetch('/__api/session').then(r=>r.json()).then(s=>{if(!s.loggedIn)return location.replace('/login?next=/account');csrf=s.csrfToken;username.textContent=s.account.username;form.firstName.value=s.account.firstName||'';form.lastName.value=s.account.lastName||''});
+let csrf='',sessionState=null;fetch('/__api/session').then(r=>r.json()).then(s=>{if(!s.loggedIn)return location.replace('/login?next=/account');sessionState=s;csrf=s.csrfToken;username.textContent=s.account.username;form.firstName.value=s.account.firstName||'';form.lastName.value=s.account.lastName||'';if(!s.account.pinEnabled){form.currentPin.required=false;form.currentPin.closest('label').classList.add('hidden');form.newPin.closest('label').querySelector('.rc-pin-label').textContent='Set a PIN (optional) — numbers only'}renderDiscord(s)});
+function renderDiscord(s){const d=s.discord||{};if(!d.configured&&!d.linked){discordStatus.textContent='Discord linking is not configured on this server.';discordLinkButton.classList.add('hidden');discordLinkTop.classList.add('hidden');return}if(d.linked){const name=d.globalName||d.username||'Discord account';discordStatus.innerHTML='Linked as <span class="discord-user"></span>';discordStatus.querySelector('span').textContent=name;discordLinkButton.classList.add('hidden');discordUnlink.classList.remove('hidden');discordNotifyLabel.classList.remove('hidden');discordNotify.checked=d.dmNotificationsEnabled!==false;discordLinkTop.textContent='Discord linked';discordLinkTop.href='/account'}else{discordStatus.textContent='Link Discord to sign in and receive gift or trade request notifications.'}}
+discordNotify.addEventListener('change',async()=>{try{const r=await fetch('/__api/account/discord',{method:'PATCH',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({dmNotificationsEnabled:discordNotify.checked})});const j=await r.json();if(!r.ok)throw new Error(j.error);discordMsg.textContent='Discord notification preference saved.';discordMsg.className='rc-msg ok'}catch(e){discordNotify.checked=!discordNotify.checked;discordMsg.textContent=e.message||String(e);discordMsg.className='rc-msg error'}});
+discordUnlink.addEventListener('click',async()=>{if(!confirm('Unlink Discord from this profile?'))return;try{const r=await fetch('/__api/account/discord',{method:'DELETE',headers:{'X-CSRF-Token':csrf}});const j=await r.json();if(!r.ok)throw new Error(j.error);location.reload()}catch(e){discordMsg.textContent=e.message||String(e);discordMsg.className='rc-msg error'}});
 document.getElementById('logoutButton')?.addEventListener('click', async () => {
   try {
     await fetch('/__api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf } });

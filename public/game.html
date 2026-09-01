@@ -132,7 +132,7 @@
   <span class="game-status" id="accountStatus">Checking login…</span>
   <div style="flex:1"></div>
   <nav style="display:flex;gap:10px">
-    <a class="rc-btn ghost small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
+    <a id="discordLinkTop" class="rc-btn ghost small" href="/auth/discord?intent=link&next=/game">Link Discord</a>
     <a class="rc-btn ghost small" href="/">Home</a>
     <button id="logoutButton" class="rc-btn small hidden" type="button">Log out</button>
   </nav>
@@ -279,6 +279,7 @@ async function init() {
       impersonating = Boolean(session.impersonating);
       impersonatedUid = impersonating ? session.account.networkUid : "";
       window.rcSocialCsrf = csrfToken;
+      configureDiscord(session.discord || {});
       // Claim this game instance: only the newest instance may run (hard kick).
       try {
         await requestJson("/__api/game/claim", {
@@ -298,6 +299,24 @@ async function init() {
   }
 
   location.replace("/login?next=/game");
+}
+
+function configureDiscord(discord) {
+  const link = document.getElementById("discordLinkTop");
+  if (!discord.configured && !discord.linked) { link.classList.add("hidden"); return; }
+  if (discord.linked) { link.textContent = "Discord linked"; link.href = "/account"; return; }
+  if (discord.showLinkPrompt && !impersonating) showDiscordLinkPrompt();
+}
+
+function showDiscordLinkPrompt() {
+  const overlay = document.createElement("div");
+  overlay.setAttribute("role", "dialog"); overlay.setAttribute("aria-modal", "true");
+  overlay.style.cssText = "position:fixed;inset:0;z-index:1200;background:rgba(5,15,22,.82);display:grid;place-items:center;padding:20px";
+  overlay.innerHTML = `<section class="rc-panel" style="width:min(500px,100%);text-align:left"><p style="margin:0 0 6px;color:#5865f2;font-weight:900;text-transform:uppercase;letter-spacing:.08em;font-size:12px">Stay connected</p><h2 style="margin-top:0">Link your Discord account?</h2><p>Use Discord for quicker sign-in and get direct notifications when another chef sends you a gift or trade request.</p><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px"><button id="rcDiscordLinkNow" class="rc-btn green">Link Discord</button><button id="rcDiscordLater" class="rc-btn ghost">Not now</button></div></section>`;
+  document.body.append(overlay);
+  const dismiss = () => fetch('/__api/account/discord/prompt', { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken}, body:'{}', keepalive:true }).catch(()=>{});
+  overlay.querySelector('#rcDiscordLinkNow').onclick = async () => { await dismiss(); location.href='/auth/discord?intent=link&next=/game'; };
+  overlay.querySelector('#rcDiscordLater').onclick = () => { dismiss(); overlay.remove(); };
 }
 
 function showGame(account) {

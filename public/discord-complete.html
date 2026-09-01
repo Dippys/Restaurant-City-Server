@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Finish Discord sign-in — Restaurant City Reborn</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  .auth-wrap{max-width:520px;margin:0 auto;padding:30px 20px 60px}.rc-btn.block{width:100%}.choices{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0}.choice{padding:18px;text-align:left}.choice strong{display:block;font-size:17px;margin-bottom:5px}.choice.active{outline:3px solid #5865f2}.discord-name{color:#5865f2;font-weight:800}.hidden{display:none!important}@media(max-width:520px){.choices{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="auth-wrap">
+  <a href="/" style="text-decoration:none"><h1 class="rc-logo">Restaurant <span class="thin">City Reborn</span></h1></a>
+  <section class="rc-panel">
+    <h2>Discord connected</h2>
+    <p>Signed in to Discord as <span id="discordName" class="discord-name">…</span>. Do you already have a Restaurant City profile?</p>
+    <div class="choices">
+      <button id="existingChoice" class="rc-btn ghost choice" type="button"><strong>Yes, link it</strong>Use your current username and PIN once.</button>
+      <button id="newChoice" class="rc-btn ghost choice" type="button"><strong>No, create one</strong>Start a fresh restaurant linked to Discord.</button>
+    </div>
+    <form id="existingForm" class="rc-form hidden">
+      <label>Existing username<input class="rc-input" name="username" minlength="3" maxlength="24" autocomplete="username" required></label>
+      <label>PIN<input class="rc-input rc-pin-input" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" autocomplete="current-password" required></label>
+      <button class="rc-btn green block">Link profile and continue</button>
+    </form>
+    <form id="newForm" class="rc-form hidden">
+      <label>Game username<input class="rc-input" name="username" minlength="3" maxlength="24" pattern="[A-Za-z0-9_.-]{3,24}" autocomplete="username" required></label>
+      <label>First name<input class="rc-input" name="firstName" maxlength="50" autocomplete="given-name" required></label>
+      <label>Last name<input class="rc-input" name="lastName" maxlength="50" autocomplete="family-name" required></label>
+      <p class="rc-note">This profile signs in through Discord. You can add a PIN later from Account settings.</p>
+      <button class="rc-btn gold block">Create profile and play</button>
+    </form>
+    <div id="message" class="rc-msg error" aria-live="polite"></div>
+  </section>
+</main>
+<script>
+function safeReturnPath(value){if(!value||!value.startsWith('/')||value.startsWith('//')||value.includes('\\')||/[\u0000-\u001f]/.test(value))return '/game';try{const u=new URL(value,location.origin);return u.origin===location.origin?u.pathname+u.search+u.hash:'/game'}catch{return '/game'}}
+const next=safeReturnPath(new URLSearchParams(location.search).get('next'));
+fetch('/__api/discord/pending').then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.error);discordName.textContent=j.discord.globalName||j.discord.username;newForm.username.value=String(j.discord.username||'').replace(/[^A-Za-z0-9_.-]/g,'').slice(0,24);newForm.firstName.value=(j.discord.globalName||j.discord.username||'Chef').split(/\s+/)[0].slice(0,50);newForm.lastName.value='Chef'}).catch(e=>{message.textContent=e.message||String(e)});
+function choose(mode){existingForm.classList.toggle('hidden',mode!=='existing');newForm.classList.toggle('hidden',mode!=='new');existingChoice.classList.toggle('active',mode==='existing');newChoice.classList.toggle('active',mode==='new');(mode==='existing'?existingForm:newForm).querySelector('input').focus()}
+existingChoice.onclick=()=>choose('existing');newChoice.onclick=()=>choose('new');
+for(const field of document.querySelectorAll('.rc-pin-input'))field.addEventListener('input',()=>field.value=field.value.replace(/\D/g,''));
+for(const [form,mode] of [[existingForm,'existing'],[newForm,'new']])form.addEventListener('submit',async event=>{event.preventDefault();message.textContent='';const button=form.querySelector('button');button.disabled=true;try{const payload={...Object.fromEntries(new FormData(form)),mode,next};const response=await fetch('/__api/discord/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Could not finish sign-in.');location.replace(result.next||next)}catch(error){message.textContent=error.message||String(error);button.disabled=false}});
+</script>
+</body>
+</html>

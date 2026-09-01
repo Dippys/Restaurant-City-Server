@@ -41,7 +41,9 @@ import {
 } from './db/admin-store';
 import { ensureLoginAccount } from './db/profile-store';
 import { activeGameInstance, claimGameInstance } from './game-instances';
-import { loginAccount, purgeExpiredSessions, registerAccount, revokeSession, updateAccountSettings } from './db/auth-store';
+import { createSessionForAccountId, discordStateForAccount, dismissDiscordLinkPrompt, linkDiscordIdentity, loginAccount, loginAndLinkDiscord, markDiscordLogin, purgeExpiredSessions, registerAccount, registerDiscordAccount, revokeSession, setDiscordNotifications, unlinkDiscordIdentity, updateAccountSettings } from './db/auth-store';
+import { clearDiscordCookie, consumeDiscordLoginTicket, createDiscordLoginTicket, discordAuthorization, discordOAuthConfigured, DISCORD_STATE_COOKIE, DISCORD_TICKET_COOKIE, exchangeDiscordCode, peekDiscordLoginTicket, purgeExpiredDiscordTickets, readDiscordLoginTicket, readDiscordOAuthState, safeReturnPath } from './discord-oauth';
+import { prisma } from './db/client';
 import { latestStoredImage } from './db/rpc-store';
 import { RequestLog } from './request-log';
 import { StaticFileIndex } from './static-files';
@@ -91,6 +93,7 @@ export function createServer(config: ServerConfig): RestaurantCityServer {
   });
 
   purgeExpiredSessions().catch((error) => console.error('Session cleanup failed:', error));
+  purgeExpiredDiscordTickets().catch((error) => console.error('Discord ticket cleanup failed:', error));
   sweepExpiredEscrow().catch((error) => console.error('Social escrow cleanup failed:', error));
   const socialSweep = setInterval(() => sweepExpiredEscrow().catch((error) => console.error('Social escrow cleanup failed:', error)), 60_000);
   socialSweep.unref();
@@ -128,6 +131,63 @@ async function handleRequest(
 
   if (pathname === '/login' || pathname === '/signup') {
     serveHtml(config, res, 'auth.html');
+    return;
+  }
+
+  if (pathname === '/discord/complete' && req.method === 'GET') {
+    if (!(await peekDiscordLoginTicket(req))) {
+      res.writeHead(303, { Location: '/login?discordError=' + encodeURIComponent('Discord sign-in expired. Please try again.') });
+      res.end();
+      return;
+    }
+    serveHtml(config, res, 'discord-complete.html');
+    return;
+  }
+
+  if (pathname === '/auth/discord' && req.method === 'GET') {
+    try {
+      const intent = url.searchParams.get('intent') === 'link' ? 'link' : 'login';
+      const account = intent === 'link' ? await requireAccount(req, res, true) : null;
+      if (intent === 'link' && !account?.id) return;
+      const authorization = discordAuthorization(req, intent, account?.id);
+      res.setHeader('Set-Cookie', authorization.cookie);
+      res.writeHead(303, { Location: authorization.url });
+      res.end();
+    } catch (error) {
+      res.writeHead(303, { Location: '/login?discordError=' + encodeURIComponent(error instanceof Error ? error.message : String(error)) });
+      res.end();
+    }
+    return;
+  }
+
+  if (pathname === '/auth/discord/callback' && req.method === 'GET') {
+    const secure = requestIsSecure(req);
+    try {
+      if (url.searchParams.get('error')) throw new Error('Discord authorization was cancelled.');
+      const state = readDiscordOAuthState(req, url.searchParams.get('state') || '');
+      const discord = await exchangeDiscordCode(req, url.searchParams.get('code') || '');
+      const linked = await prisma.discordIdentity.findUnique({ where: { discordUserId: discord.id } });
+      if (state.intent === 'link') {
+        const account = await accountFromRequest(req);
+        if (!account?.id || account.id !== state.accountId) throw new Error('Your login changed during Discord linking. Please try again.');
+        await linkDiscordIdentity(account.id, discord);
+        res.setHeader('Set-Cookie', clearDiscordCookie(DISCORD_STATE_COOKIE, secure));
+        res.writeHead(303, { Location: appendResult(state.next, 'discord', 'linked') }); res.end(); return;
+      }
+      if (linked) {
+        await markDiscordLogin(discord.id);
+        const result = await createSessionForAccountId(linked.accountId, clientIp(req), String(req.headers['user-agent'] || ''));
+        res.setHeader('Set-Cookie', [clearDiscordCookie(DISCORD_STATE_COOKIE, secure), sessionCookie(result.rawToken, secure)]);
+        res.writeHead(303, { Location: state.next }); res.end(); return;
+      }
+      const ticketCookie = await createDiscordLoginTicket(discord, secure);
+      res.setHeader('Set-Cookie', [clearDiscordCookie(DISCORD_STATE_COOKIE, secure), ticketCookie]);
+      res.writeHead(303, { Location: `/discord/complete?next=${encodeURIComponent(state.next)}` }); res.end();
+    } catch (error) {
+      res.setHeader('Set-Cookie', clearDiscordCookie(DISCORD_STATE_COOKIE, secure));
+      res.writeHead(303, { Location: '/login?discordError=' + encodeURIComponent(error instanceof Error ? error.message : String(error)) });
+      res.end();
+    }
     return;
   }
 
@@ -274,6 +334,10 @@ async function handleRequest(
     const impersonation = gameSession ? await impersonationFromRequest(req) : { present: false, account: null };
     const account = impersonation.present ? impersonation.account : await accountFromRequest(req);
     if (gameSession && impersonation.present && !impersonation.account) res.setHeader('Set-Cookie', clearImpersonationCookie(requestIsSecure(req)));
+    const discord = account?.id ? await discordStateForAccount(account.id) : { linked: false };
+    const promptRow = account?.id && !discord.linked
+      ? await prisma.account.findUnique({ where: { id: account.id }, select: { discordLinkPromptedAt: true } })
+      : null;
     sendJson(res, {
       ok: true,
       loggedIn: Boolean(account),
@@ -281,7 +345,68 @@ async function handleRequest(
       csrfToken: account?.csrfToken || null,
       impersonating: Boolean(impersonation.account),
       impersonator: impersonation.actorUsername || null,
+      discord: {
+        ...discord,
+        configured: discordOAuthConfigured(),
+        showLinkPrompt: Boolean(account && !discord.linked && !promptRow?.discordLinkPromptedAt),
+      },
     });
+    return;
+  }
+
+  if (pathname === '/__api/discord/pending' && req.method === 'GET') {
+    const pending = await peekDiscordLoginTicket(req);
+    if (!pending) { sendJson(res, { ok: false, error: 'Discord sign-in expired.' }, 401); return; }
+    sendJson(res, { ok: true, discord: pending });
+    return;
+  }
+
+  if (pathname === '/__api/discord/complete' && req.method === 'POST') {
+    try {
+      const input = parseJsonBody<{ mode?: string; username?: string; pin?: string; firstName?: string; lastName?: string; next?: string }>(body);
+      const discord = await readDiscordLoginTicket(req);
+      let result;
+      if (input.mode === 'existing') {
+        checkAuthRateLimit(req, String(input.username || ''));
+        result = await loginAndLinkDiscord(input, discord, clientIp(req), String(req.headers['user-agent'] || ''));
+        if (!result) { recordAuthFailure(req, String(input.username || '')); sendJson(res, { ok: false, error: 'Invalid username or PIN.' }, 401); return; }
+        clearAuthFailures(req, String(input.username || ''));
+      } else if (input.mode === 'new') {
+        enforceSignupRateLimit(req);
+        result = await registerDiscordAccount(input, discord, clientIp(req), String(req.headers['user-agent'] || ''));
+      } else {
+        sendJson(res, { ok: false, error: 'Choose whether you already have a profile.' }, 400); return;
+      }
+      await ensureLoginAccount(result.account);
+      await consumeDiscordLoginTicket(req);
+      const secure = requestIsSecure(req);
+      res.setHeader('Set-Cookie', [clearDiscordCookie(DISCORD_TICKET_COOKIE, secure), sessionCookie(result.rawToken, secure)]);
+      sendJson(res, { ok: true, next: safeReturnPath(input.next) }, input.mode === 'new' ? 201 : 200);
+    } catch (error) {
+      sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, error instanceof RateLimitError ? 429 : 400);
+    }
+    return;
+  }
+
+  if (pathname === '/__api/account/discord/prompt' && req.method === 'POST') {
+    const account = await requireMutation(req, res); if (!account?.id) return;
+    await dismissDiscordLinkPrompt(account.id); sendJson(res, { ok: true }); return;
+  }
+
+  if (pathname === '/__api/account/discord' && req.method === 'PATCH') {
+    const account = await requireMutation(req, res); if (!account?.id) return;
+    try {
+      const input = parseJsonBody<{ dmNotificationsEnabled?: boolean }>(body);
+      await setDiscordNotifications(account.id, input.dmNotificationsEnabled !== false);
+      sendJson(res, { ok: true });
+    } catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400); }
+    return;
+  }
+
+  if (pathname === '/__api/account/discord' && req.method === 'DELETE') {
+    const account = await requireMutation(req, res); if (!account?.id) return;
+    try { await unlinkDiscordIdentity(account.id); sendJson(res, { ok: true }); }
+    catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400); }
     return;
   }
 
@@ -1149,6 +1274,12 @@ async function requireAccount(req: IncomingMessage, res: ServerResponse, redirec
     sendJson(res, { ok: false, error: 'Authentication required.' }, 401);
   }
   return null;
+}
+
+function appendResult(pathname: string, key: string, value: string): string {
+  const url = new URL(safeReturnPath(pathname), 'https://local.invalid');
+  url.searchParams.set(key, value);
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 async function accountFromGameRequest(req: IncomingMessage): Promise<ActiveAccount | null> {

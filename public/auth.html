@@ -16,6 +16,9 @@
   .rc-form h2 { margin: 0 0 4px; font-size: 24px; }
   .switch { text-align: center; margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; font-weight: 600; }
   .rc-btn.block { width: 100%; margin-top: 4px; }
+  .discord-login { background:#5865f2; color:#fff; border-color:#4752c4; margin-bottom:14px; }
+  .auth-divider { display:flex;align-items:center;gap:10px;color:var(--ink-soft);font-size:12px;font-weight:800;text-transform:uppercase;margin:4px 0 14px; }
+  .auth-divider::before,.auth-divider::after { content:"";height:1px;background:rgba(29,84,120,.2);flex:1; }
 </style>
 </head>
 <body>
@@ -29,6 +32,9 @@
   </div>
 
   <div class="rc-panel">
+    <a id="discordLogin" class="rc-btn block discord-login" href="/auth/discord">Continue with Discord</a>
+    <div id="discordError" class="rc-msg error" aria-live="polite"></div>
+    <div id="authDivider" class="auth-divider">or use your game account</div>
     <form id="loginForm" class="rc-form">
       <h2>Welcome back, chef!</h2>
       <p class="switch" style="margin-bottom:6px">Log in to get back to your kitchen.</p>
@@ -79,8 +85,10 @@
 <script>
 function safeReturnPath(value){if(!value||!value.startsWith('/')||value.startsWith('//')||value.includes('\\')||/[\u0000-\u001f]/.test(value))return '/game';try{const u=new URL(value,location.origin);return u.origin===location.origin?u.pathname+u.search+u.hash:'/game'}catch{return '/game'}}
 const requestedNext=new URLSearchParams(location.search).get('next');const safeNext=safeReturnPath(requestedNext);
+discordLogin.href='/auth/discord?next='+encodeURIComponent(safeNext);
+const discordFailure=new URLSearchParams(location.search).get('discordError');if(discordFailure)discordError.textContent=discordFailure;
 // An already signed-in visitor must retain a social-link destination.
-fetch('/__api/session').then(r=>r.json()).then(s=>{ if(s.loggedIn) location.replace(safeNext); }).catch(()=>{});
+fetch('/__api/session').then(r=>r.json()).then(s=>{if(s.loggedIn)return location.replace(safeNext);if(!s.discord?.configured){discordLogin.classList.add('hidden');authDivider.classList.add('hidden')}}).catch(()=>{});
 // PIN fields accept digits only (keyboard + paste sanitised).
 for (const field of document.querySelectorAll('.rc-pin-input')) {
   field.addEventListener('keydown', (event) => {
