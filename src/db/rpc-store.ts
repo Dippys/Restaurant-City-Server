@@ -326,10 +326,18 @@ export async function sendMail(account: ActiveAccount, mail: {
   // A gift's item is not added by the recipient's client on open (it only shows
   // "item added"), so the server persists it to the recipient — matching PlayFish.
   if (mail.type === MAIL_TYPE_GIFT) {
-    await grantMailItem(recipientUid, mail.globalItemIds[0] ?? 0);
-    queueDiscordNotification(recipientUid, `🎁 ${sender.firstName || account.username} sent you a gift in Restaurant City Reborn!`);
+    const giftItemId = mail.globalItemIds[0] ?? 0;
+    await grantMailItem(recipientUid, giftItemId);
+    queueDiscordNotification(recipientUid, {
+      kind: 'gift', senderName: sender.firstName || account.username,
+      itemId: giftItemId, note: mail.message,
+    });
   } else if (mail.type === MAIL_TYPE_SECURECHANGE) {
-    queueDiscordNotification(recipientUid, `🔄 ${sender.firstName || account.username} sent you an ingredient trade request in Restaurant City Reborn.`);
+    queueDiscordNotification(recipientUid, {
+      kind: 'tradeRequest', senderName: sender.firstName || account.username,
+      offeredIngredientId: mail.globalItemIds[0] ?? 0,
+      requestedIngredientId: mail.globalItemIds[1] ?? 0,
+    });
   }
   return STATUS_OK;
 }
