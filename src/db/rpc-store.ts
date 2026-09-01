@@ -10,7 +10,6 @@ import { coinBundleForToken, ingredientCashCost, ingredientIdForCashToken, owned
 import type { ActiveAccount } from '../session';
 import { enqueueLiveMail, pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
 import { selectGourmetStreetProfiles, selectHireCandidateProfiles, selectRandomStreetProfiles } from '../rpc/street-roster';
-import { queueDiscordNotification } from '../discord-notifications';
 
 const STATUS_OK = 0;
 const STATUS_NOT_ENOUGH_CASH = 1;
@@ -328,16 +327,6 @@ export async function sendMail(account: ActiveAccount, mail: {
   if (mail.type === MAIL_TYPE_GIFT) {
     const giftItemId = mail.globalItemIds[0] ?? 0;
     await grantMailItem(recipientUid, giftItemId);
-    queueDiscordNotification(recipientUid, {
-      kind: 'gift', senderName: sender.firstName || account.username,
-      itemId: giftItemId, note: mail.message,
-    });
-  } else if (mail.type === MAIL_TYPE_SECURECHANGE) {
-    queueDiscordNotification(recipientUid, {
-      kind: 'tradeRequest', senderName: sender.firstName || account.username,
-      offeredIngredientId: mail.globalItemIds[0] ?? 0,
-      requestedIngredientId: mail.globalItemIds[1] ?? 0,
-    });
   }
   return STATUS_OK;
 }

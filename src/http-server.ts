@@ -43,6 +43,7 @@ import { ensureLoginAccount } from './db/profile-store';
 import { activeGameInstance, claimGameInstance } from './game-instances';
 import { createSessionForAccountId, discordStateForAccount, dismissDiscordLinkPrompt, linkDiscordIdentity, loginAccount, loginAndLinkDiscord, markDiscordLogin, purgeExpiredSessions, registerAccount, registerDiscordAccount, revokeSession, setDiscordNotifications, unlinkDiscordIdentity, updateAccountSettings } from './db/auth-store';
 import { clearDiscordCookie, consumeDiscordLoginTicket, createDiscordLoginTicket, discordAuthorization, discordOAuthConfigured, DISCORD_STATE_COOKIE, DISCORD_TICKET_COOKIE, exchangeDiscordCode, peekDiscordLoginTicket, purgeExpiredDiscordTickets, readDiscordLoginTicket, readDiscordOAuthState, safeReturnPath } from './discord-oauth';
+import { initializeDiscordNotificationState } from './discord-notifications';
 import { prisma } from './db/client';
 import { latestStoredImage } from './db/rpc-store';
 import { RequestLog } from './request-log';
@@ -378,6 +379,7 @@ async function handleRequest(
         sendJson(res, { ok: false, error: 'Choose whether you already have a profile.' }, 400); return;
       }
       await ensureLoginAccount(result.account);
+      if (result.account.id) await initializeDiscordNotificationState(result.account.id);
       await consumeDiscordLoginTicket(req);
       const secure = requestIsSecure(req);
       res.setHeader('Set-Cookie', [clearDiscordCookie(DISCORD_TICKET_COOKIE, secure), sessionCookie(result.rawToken, secure)]);

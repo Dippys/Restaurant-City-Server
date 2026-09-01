@@ -4,6 +4,7 @@ import { prisma } from './client';
 import type { ActiveAccount } from '../session';
 import { accountFromUsername, cleanPersonName, cleanPin, cleanUsername, hashSessionToken, IMPERSONATION_MAX_AGE_SECONDS, newCsrfToken, newSessionToken } from '../session';
 import { recordLoginActivity } from '../moderation/service';
+import { initializeDiscordNotificationState } from '../discord-notifications';
 
 const scrypt = promisify(nodeScrypt);
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -133,6 +134,7 @@ export async function linkDiscordIdentity(
     }),
     prisma.account.update({ where: { id: accountId }, data: { discordLinkPromptedAt: new Date() } }),
   ]);
+  await initializeDiscordNotificationState(accountId);
 }
 
 export async function markDiscordLogin(discordUserId: string): Promise<void> {

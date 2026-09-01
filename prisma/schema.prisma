@@ -25,6 +25,7 @@ model Account {
   discordLinkPromptedAt DateTime?
   sessions     Session[]
   discordIdentity DiscordIdentity?
+  discordNotificationState DiscordNotificationState?
   socialLinksCreated SocialLink[] @relation("SocialLinkCreator")
   socialLinksAdministered SocialLink[] @relation("SocialLinkAdmin")
   socialActions SocialLinkAction[]
@@ -66,6 +67,19 @@ model DiscordLoginTicket {
 
   @@index([expiresAt])
   @@index([discordUserId])
+}
+
+// Durable cursor + edge state for bot DMs. The first sweep baselines current
+// state, so enabling the feature never floods a player with historical mail.
+model DiscordNotificationState {
+  accountId                 String   @id
+  lastMailId                Int      @default(0)
+  allEmployeesExhausted     Boolean  @default(false)
+  gardenReadyPlotIdsJson    String   @default("[]")
+  gardenDryPlotIdsJson      String   @default("[]")
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  account                   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 }
 
 model Session {

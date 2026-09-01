@@ -3,6 +3,7 @@ import { createServer } from './http-server';
 import { startDailyIngredientScheduler } from './daily-ingredients/scheduler';
 import { startModerationScheduler } from './moderation/scheduler';
 import { repairLegacyCashIngredientPurchases } from './db/legacy-cash-ingredient-repair';
+import { startDiscordNotificationScheduler } from './discord-notifications';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
     console.log('====================================================================');
     startDailyIngredientScheduler(config.serverRoot, config.discordDailyIngredientsWebhook);
     startModerationScheduler(config.discordAnomalyWebhook, config.moderationScanIntervalMinutes, config.moderationSnapshotRetentionDays, config.moderationMaxSnapshotsPerPlayer);
+    startDiscordNotificationScheduler();
   });
 }
 
