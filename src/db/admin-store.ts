@@ -863,6 +863,17 @@ function validateComposedMailInput(input: MailInput) {
 }
 
 async function grantAdminMailRewards(recipientNetworkUid: string, type: number, message: string, itemIds: readonly number[]): Promise<void> {
+  if (type === 7 && !message.startsWith('PFC:')) {
+    // RpcGetReceivedMails subtracts pending coin-mail amounts from the balance
+    // delivered in the profile, then the open-mail popup adds them back. The
+    // stored balance must therefore include the grant before the mail is sent.
+    const amount = Number(message);
+    await prisma.userProfile.update({
+      where: { id: profileKey(recipientNetworkUid) },
+      data: { credits: { increment: amount } },
+    });
+    return;
+  }
   if (type === 7 && message.startsWith('PFC:')) {
     const amount = Number(message.slice(4));
     await prisma.userProfile.update({

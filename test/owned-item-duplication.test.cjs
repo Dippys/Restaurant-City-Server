@@ -25,6 +25,7 @@ process.env.RC_DB_PATH = testDbPath;
 
 const { prisma } = require('../dist/db/client.js');
 const { getPlayerProfile, readOwnerProfile, savePlayerProfile } = require('../dist/db/profile-store.js');
+const { repairMisclassifiedRestaurantEntitlements } = require('../dist/db/special-entitlement-repair.js');
 const { recordAcceptedSaveTx, repairFallbackPlayer } = require('../dist/moderation/service.js');
 const { captureProfileSnapshot } = require('../dist/moderation/snapshots.js');
 const { evaluateProfile } = require('../dist/moderation/rules.js');
@@ -168,6 +169,7 @@ test('bulk layout clears replay in wire order so later placements remain placed'
   const account = await seedProfile('orderedlayout', [
     { serverId: 1, globalItemId: 3040001, positionX: 1, positionY: 1, roomIndex: 0 },
     { serverId: 2, globalItemId: 3040001, positionX: 2, positionY: 2, roomIndex: 1 },
+    { serverId: 3, globalItemId: 3900000, positionX: 0, positionY: 0, roomIndex: 0 },
   ]);
   const profileId = `facebook:${account.networkUid}`;
   await prisma.inventoryItem.create({ data: {
@@ -192,8 +194,40 @@ test('bulk layout clears replay in wire order so later placements remain placed'
   }));
   assert.equal(result.status, 'saved');
   const placed = await ownedRows(account.networkUid);
-  assert.deepEqual(placed.map((row) => [row.roomIndex, row.positionX, row.positionY]).sort((a, b) => a[0] - b[0]), [[0, 5, 5], [1, 6, 6]]);
+  const chairs = placed.filter((row) => row.globalItemId === 3040001);
+  assert.deepEqual(chairs.map((row) => [row.roomIndex, row.positionX, row.positionY]).sort((a, b) => a[0] - b[0]), [[0, 5, 5], [1, 6, 6]]);
+  assert.equal(placed.filter((row) => row.globalItemId === 3900000).length, 1, 'outside-area entitlement survives clear-room action');
+  assert.equal(await prisma.inventoryItem.findUnique({ where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: 3900000 } } }), null);
   assert.equal((await prisma.inventoryItem.findUnique({ where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: 3040001 } } })).number, 2);
+});
+
+test('misclassified outside-area entitlements are restored once and duplicate purchases are refunded', async () => {
+  const account = await seedProfile('entitlementrepair');
+  const profileId = `facebook:${account.networkUid}`;
+  await prisma.inventoryItem.create({ data: {
+    id: `${profileId}:inventory:3900000`, userProfileId: profileId,
+    globalItemId: 3900000, number: 3,
+  } });
+  const creditsBefore = (await prisma.userProfile.findUniqueOrThrow({ where: { id: profileId } })).credits;
+
+  assert.deepEqual(await repairMisclassifiedRestaurantEntitlements(), {
+    profiles: 1,
+    restoredItems: 1,
+    removedInventoryUnits: 3,
+    refundedCoins: 5000,
+    refundedCash: 0,
+  });
+  assert.equal((await ownedRows(account.networkUid)).filter((row) => row.globalItemId === 3900000).length, 1);
+  assert.equal(await prisma.inventoryItem.findUnique({ where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: 3900000 } } }), null);
+  assert.equal((await prisma.userProfile.findUniqueOrThrow({ where: { id: profileId } })).credits, creditsBefore + 5000);
+  assert.equal(await prisma.profileSnapshot.count({ where: { networkUid: account.networkUid, reason: 'AUTO_BEFORE_SPECIAL_ENTITLEMENT_REPAIR' } }), 1);
+  assert.deepEqual(await repairMisclassifiedRestaurantEntitlements(), {
+    profiles: 0,
+    restoredItems: 0,
+    removedInventoryUnits: 0,
+    refundedCoins: 0,
+    refundedCash: 0,
+  });
 });
 
 test('a fresh negative uid with no twin still creates normally', async () => {

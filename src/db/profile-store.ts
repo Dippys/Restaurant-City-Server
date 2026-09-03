@@ -21,7 +21,7 @@ import { hiredFriendRosterNetworkUids, ownerFirst } from '../rpc/friend-roster';
 import { gardenIngredientForSeed } from '../rpc/garden-plot';
 import { capturePreSaveSnapshotTx, recordAcceptedSaveTx, recordSaveEventFindingTx, scanPlayer } from '../moderation/service';
 import { captureProfileSnapshotTx, type SnapshotPayloadV1 } from '../moderation/snapshots';
-import { isStackableItemId, isWallDecorationItemId } from './item-catalog';
+import { isNonEditableRestaurantEntitlementItem, isStackableItemId, isWallDecorationItemId } from './item-catalog';
 import { levelForGourmet } from '../moderation/rules';
 
 export type StoredProfile = UserProfile & {
@@ -641,9 +641,12 @@ export async function savePlayerProfile(
     // cannot bypass prices that are known.
     const pricing = await pricePurchases(audit.purchases ?? [], tx);
     const salePricing = await priceSales(audit.sales ?? [], profileId, tx);
-    const chargeableCost = pricing.invalid || pricing.cost < 0 ? 0 : pricing.cost;
+    // Charge every purchase that could be priced even when another row in the
+    // same batch needs review. One unknown token must not make all valid buys
+    // in that save free.
+    const chargeableCost = pricing.cost < 0 ? 0 : pricing.cost;
     const payableRevenue = salePricing.invalid || salePricing.revenue < 0 ? 0 : salePricing.revenue;
-    const rawNextCredits = (chargeableCost > 0 || (audit.sales?.length ?? 0) > 0
+    const rawNextCredits = ((audit.purchases?.length ?? 0) > 0 || (audit.sales?.length ?? 0) > 0
       ? current.credits + audit.creditDelta
       : (audit.newCredits ?? current.credits + audit.creditDelta)) - chargeableCost + payableRevenue;
     const creditsOutOfRange = !Number.isSafeInteger(rawNextCredits) || rawNextCredits < 0 || rawNextCredits > 2_147_483_647;
@@ -658,9 +661,11 @@ export async function savePlayerProfile(
         evidence: {
           saveVersion: audit.saveVersion, purchaseCount: audit.purchases?.length ?? 0,
           saleCount: audit.sales?.length ?? 0, purchasePricingInvalid: pricing.invalid,
+          purchasePricingIssues: pricing.issues,
           salePricingInvalid: salePricing.invalid, authoritativeCost: pricing.cost,
           authoritativeRevenue: salePricing.revenue, previousCredits: current.credits,
           clientCreditDelta: audit.creditDelta, rawNextCredits, appliedCredits: nextCredits,
+          actionTypeCounts: audit.actionTypeCounts ?? {},
         },
       }, acceptedAt);
     }
@@ -1442,7 +1447,10 @@ async function moveInGameItemsToInventory(
     },
   });
 
-  for (const item of ownedItems.filter((owned: OwnedItem) => itemType(owned.globalItemId) === move.itemTypeId)) {
+  for (const item of ownedItems.filter((owned: OwnedItem) => (
+    itemType(owned.globalItemId) === move.itemTypeId
+    && !isNonEditableRestaurantEntitlementItem(owned.globalItemId)
+  ))) {
     await changeInventoryItem(tx, profileId, networkUid, { globalItemId: item.globalItemId, delta: 1 });
     await tx.ownedItem.deleteMany({ where: { userProfileId: profileId, serverId: item.serverId } });
   }

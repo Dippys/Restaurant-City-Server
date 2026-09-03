@@ -247,8 +247,13 @@ function readAuditChanges(
             let qty = 0;
             [qty, pos] = readVarint(body, pos);
             const itemId = itemIdForToken(token);
-            inventoryChanges.push({ globalItemId: itemId ?? 0, delta: Math.max(1, qty) });
-            orderedMutations.push({ kind: 'inventory', change: { globalItemId: itemId ?? 0, delta: Math.max(1, qty) } });
+            // purchasePerks (32) is the direct employee-feeding path. The
+            // client applies the perk immediately and separately saves the
+            // employee state; it does not add the purchased snack to inventory.
+            if (action === ACTION_PURCHASE_INVENTORY_ITEM) {
+              inventoryChanges.push({ globalItemId: itemId ?? 0, delta: Math.max(1, qty) });
+              orderedMutations.push({ kind: 'inventory', change: { globalItemId: itemId ?? 0, delta: Math.max(1, qty) } });
+            }
             purchases.push({
               kind: action === ACTION_PURCHASE_PERKS ? 'perk' : 'inventory',
               itemId,

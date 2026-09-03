@@ -23,6 +23,7 @@ process.env.RC_DB_PATH = testDbPath;
 
 const { prisma } = require('../dist/db/client.js');
 const { getPlayerProfile, savePlayerProfile } = require('../dist/db/profile-store.js');
+const { itemAttributes, itemIdForToken } = require('../dist/db/item-catalog.js');
 const { parseSaveProfile } = require('../dist/rpc/save-profile-parser.js');
 const { writeBool, writeIntvar32, writeNetworkUid, writeString, writeU8, writeVarint } = require('../dist/rpc/codec.js');
 
@@ -30,7 +31,8 @@ const { writeBool, writeIntvar32, writeNetworkUid, writeString, writeU8, writeVa
 const WHITE_ROOM_DIVIDER = 3020017; // cost 200, hash voNvhmQe5ogIYR21dTGXJa
 const RED_BRICK_PILLAR = 3020030; // cost 1100, hash 3Sa4YP7xjnf.CerAt_gFna
 const KOI_POND = 3020123; // cash 15, no coin cost (PF-cash only)
-const SKILL_BOOK_PERK = 6000005; // perk.xml cost 100
+const RUBY_JUICE_PERK = 6000000; // active employee snack, perk.xml cost 80
+const RUBY_JUICE_TOKEN = 'dxhKh3eJBR.cMK6k3P47Ga';
 const CLASSIC_HAIR = 1040005; // avatar.xml cost 0 (starter outfit)
 const SEED_COST = 2000; // GardenPlot.as:15
 const OUTSIDE_AREA_7X6 = 3900000; // restaurant.xml cost 2500, level 10 garden expansion
@@ -237,15 +239,23 @@ test('inventory purchase resolves the hash token and charges cost × qty', async
   assert.equal(await inventoryNumber(account, RED_BRICK_PILLAR), 2);
 });
 
-test('perk purchase charges the perk cost', async () => {
+test('employee-food perk purchase charges the active price without creating inventory', async () => {
   const account = await seedProfile('perkbuy');
   const fence = await setupFence(account);
   const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
-    inventoryChanges: [{ globalItemId: SKILL_BOOK_PERK, delta: 1 }],
-    purchases: [{ kind: 'perk', itemId: SKILL_BOOK_PERK, qty: 1 }],
+    purchases: [{ kind: 'perk', itemId: RUBY_JUICE_PERK, qty: 1, token: RUBY_JUICE_TOKEN }],
   }), { ...fence, payloadDigest: 'perk-v1' });
   assert.equal(result.status, 'saved');
-  assert.equal(await credits(account), 50000 - 100);
+  assert.equal(await credits(account), 50000 - 80);
+  assert.equal(await inventoryNumber(account, RUBY_JUICE_PERK), 0);
+});
+
+test('catalogue ignores commented-out legacy employee-food definitions', () => {
+  assert.equal(itemAttributes(RUBY_JUICE_PERK)?.name, 'Ruby Juice');
+  assert.equal(itemAttributes(RUBY_JUICE_PERK)?.cost, '80');
+  assert.equal(itemAttributes(RUBY_JUICE_PERK)?.hash, RUBY_JUICE_TOKEN);
+  assert.equal(itemIdForToken(RUBY_JUICE_TOKEN), RUBY_JUICE_PERK);
+  assert.equal(itemAttributes(6000005), undefined);
 });
 
 test('seed planting charges GardenPlot.SEED_COST per seed', async () => {
@@ -332,15 +342,30 @@ test('cash-only save-audit items persist and alert moderation instead of droppin
   assert.equal((await prisma.anomalyFinding.findUnique({ where: { fingerprint: `${account.networkUid}:SAVE_PRICING_WARNING` } }))?.status, 'OPEN');
 });
 
-test('an unresolvable purchase token preserves the save and alerts moderation', async () => {
+test('an unresolvable token preserves the save, charges valid rows, and records item-level evidence', async () => {
   const account = await seedProfile('unknowntoken');
   const fence = await setupFence(account);
   const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
-    purchases: [{ kind: 'inventory', qty: 1, token: 'no-such-hash', unresolved: true }],
+    purchases: [
+      { kind: 'owned', itemId: WHITE_ROOM_DIVIDER, qty: 1 },
+      { kind: 'inventory', qty: 1, token: 'no-such-hash', unresolved: true },
+    ],
+    actionTypeCounts: { 22: 1, 3: 1 },
   }), { ...fence, payloadDigest: 'unknown-v1' });
   assert.equal(result.status, 'saved');
-  assert.equal(await credits(account), 50000);
-  assert.equal((await prisma.anomalyFinding.findUnique({ where: { fingerprint: `${account.networkUid}:SAVE_PRICING_WARNING` } }))?.status, 'OPEN');
+  assert.equal(await credits(account), 50000 - 200);
+  const finding = await prisma.anomalyFinding.findUnique({ where: { fingerprint: `${account.networkUid}:SAVE_PRICING_WARNING` } });
+  assert.equal(finding?.status, 'OPEN');
+  const evidence = JSON.parse(finding.evidenceJson);
+  assert.equal(evidence.authoritativeCost, 200);
+  assert.deepEqual(evidence.actionTypeCounts, { 3: 1, 22: 1 });
+  assert.deepEqual(evidence.purchasePricingIssues, [{
+    index: 1,
+    kind: 'inventory',
+    qty: 1,
+    token: 'no-such-hash',
+    reason: 'unresolved-token',
+  }]);
 });
 
 test('newCredits cannot bypass purchase pricing', async () => {
@@ -370,7 +395,7 @@ test('the save parser records purchase actions and resolves inventory tokens by 
     writeU8(0), // activeFloorIndex
     writeVarint(1), // saveVersion
     writeVarint(500), // timeOnClient
-    writeVarint(7), // 7 audit changes
+    writeVarint(8), // 8 audit changes
     // 22 purchaseOwnedItem: token + OwnedItem
     writeU8(22), writeVarint(0), writeIntvar32(0),
     writeString('voNvhmQe5ogIYR21dTGXJa'),
@@ -379,6 +404,9 @@ test('the save parser records purchase actions and resolves inventory tokens by 
     // 3 purchaseInventoryItem: token + qty
     writeU8(3), writeVarint(0), writeIntvar32(0),
     writeString('3Sa4YP7xjnf.CerAt_gFna'), writeVarint(2),
+    // 32 purchasePerks: direct employee feeding, not an inventory grant
+    writeU8(32), writeVarint(0), writeIntvar32(0),
+    writeString(RUBY_JUICE_TOKEN), writeVarint(0),
     // 34 purchaseIngredient: itemId + qty
     writeU8(34), writeVarint(0), writeIntvar32(0),
     writeVarint(4000000), writeVarint(1),
@@ -401,6 +429,7 @@ test('the save parser records purchase actions and resolves inventory tokens by 
   assert.deepEqual(parsed.audit.purchases, [
     { kind: 'owned', itemId: WHITE_ROOM_DIVIDER, qty: 1, token: 'voNvhmQe5ogIYR21dTGXJa' },
     { kind: 'inventory', itemId: RED_BRICK_PILLAR, qty: 2, token: '3Sa4YP7xjnf.CerAt_gFna', unresolved: false },
+    { kind: 'perk', itemId: RUBY_JUICE_PERK, qty: 1, token: RUBY_JUICE_TOKEN, unresolved: false },
     { kind: 'ingredient', itemId: 4000000, qty: 1 },
     { kind: 'seed', qty: 1 },
   ]);

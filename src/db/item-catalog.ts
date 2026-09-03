@@ -20,6 +20,16 @@ const CATALOG_FILES = [
 
 const ITEM_TAG = /<item\b([^>]*)\/?>/g;
 
+/**
+ * The shipped XML contains retired item rows inside comments. Regex-based
+ * catalogue scans must remove those comments first or a retired row with the
+ * same id can overwrite the live definition (perk.xml does this for employee
+ * snacks 6000000-6000003).
+ */
+function withoutXmlComments(xml: string): string {
+  return xml.replace(/<!--[\s\S]*?-->/g, '');
+}
+
 function attribute(tag: string, key: string): string {
   const match = tag.match(new RegExp(`\\b${key}="([^"]*)"`));
   return match ? match[1] : '';
@@ -59,7 +69,7 @@ export function fullCatalog(): readonly ItemCatalogEntry[] {
       continue;
     }
     const category = file.replace(/\.xml$/, '');
-    for (const match of xml.matchAll(ITEM_TAG)) {
+    for (const match of withoutXmlComments(xml).matchAll(ITEM_TAG)) {
       const id = Number(attribute(match[1], 'id'));
       const name = decodeEntities(attribute(match[1], 'name')).trim();
       if (Number.isInteger(id) && name) {
@@ -92,7 +102,7 @@ export function itemIdForToken(token: string): number | undefined {
     for (const file of CATALOG_FILES) {
       let xml = '';
       try { xml = fs.readFileSync(path.join(dataDir, file), 'utf8'); } catch { continue; }
-      for (const match of xml.matchAll(ITEM_TAG)) {
+      for (const match of withoutXmlComments(xml).matchAll(ITEM_TAG)) {
         const hash = attribute(match[1], 'hash');
         const id = Number(attribute(match[1], 'id'));
         if (hash && Number.isInteger(id)) byHash.set(hash, id);
@@ -151,7 +161,7 @@ export function itemAttributes(id: number): Readonly<Record<string, string>> | u
     for (const file of CATALOG_FILES) {
       let xml = '';
       try { xml = fs.readFileSync(path.join(dataDir, file), 'utf8'); } catch { continue; }
-      for (const match of xml.matchAll(ITEM_TAG)) {
+      for (const match of withoutXmlComments(xml).matchAll(ITEM_TAG)) {
         const values: Record<string, string> = {};
         for (const attr of match[1].matchAll(/([A-Za-z_:][\w:.-]*)="([^"]*)"/g)) {
           values[attr[1]] = decodeEntities(attr[2]);
@@ -181,7 +191,7 @@ export function outdoorItemIds(): ReadonlySet<number> {
 
   const ids = new Set<number>();
   const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
-  const xml = fs.readFileSync(path.join(dataDir, 'restaurant.xml'), 'utf8');
+  const xml = withoutXmlComments(fs.readFileSync(path.join(dataDir, 'restaurant.xml'), 'utf8'));
   for (const match of xml.matchAll(GROUP_BLOCK)) {
     if (!/\btype="[^"]*\boutdoor\b[^"]*"/.test(match[1] ?? '')) {
       continue;
@@ -215,7 +225,7 @@ export function stackableItemIds(): ReadonlySet<number> {
   for (const file of CATALOG_FILES) {
     let xml = '';
     try { xml = fs.readFileSync(path.join(dataDir, file), 'utf8'); } catch { continue; }
-    for (const match of xml.matchAll(ITEM_TAG)) {
+    for (const match of withoutXmlComments(xml).matchAll(ITEM_TAG)) {
       if (/type="[^"]*stackable/.test(match[1] ?? '')) {
         const id = Number(attribute(match[1], 'id'));
         if (Number.isInteger(id)) ids.add(id);
@@ -243,7 +253,7 @@ export function wallDecorationItemIds(): ReadonlySet<number> {
   const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
   let xml: string;
   try {
-    xml = fs.readFileSync(path.join(dataDir, 'restaurant.xml'), 'utf8');
+    xml = withoutXmlComments(fs.readFileSync(path.join(dataDir, 'restaurant.xml'), 'utf8'));
   } catch {
     cachedWallDecorationIds = ids;
     return ids;
@@ -266,6 +276,15 @@ export function wallDecorationItemIds(): ReadonlySet<number> {
 
 export function isWallDecorationItemId(globalItemId: number): boolean {
   return wallDecorationItemIds().has(globalItemId);
+}
+
+// GameUser.addOwnedItem keeps these restaurant groups out of
+// usedRestaurantItems. Action 51 clears only usedRestaurantItems, so the
+// server must preserve these separately managed ownership entitlements.
+const NON_EDITABLE_RESTAURANT_GROUPS = new Set([360, 390, 391]);
+
+export function isNonEditableRestaurantEntitlementItem(globalItemId: number): boolean {
+  return NON_EDITABLE_RESTAURANT_GROUPS.has(Math.floor(globalItemId / 10_000));
 }
 
 export function isFoodKingEligibleItem(id: number): boolean {
@@ -292,7 +311,7 @@ export function isEmployeeSnackItem(id: number): boolean {
   const entry = catalogEntry(id);
   if (entry?.category !== 'perk') return false;
   try {
-    const xml = fs.readFileSync(path.resolve(__dirname, '..', '..', 'public', 'data', 'perk.xml'), 'utf8');
+    const xml = withoutXmlComments(fs.readFileSync(path.resolve(__dirname, '..', '..', 'public', 'data', 'perk.xml'), 'utf8'));
     const group = xml.match(/<group\s+name="Employee">([\s\S]*?)<\/group>/)?.[1] ?? '';
     return new RegExp(`<item\\b[^>]*\\bid="${id}"`).test(group);
   } catch {

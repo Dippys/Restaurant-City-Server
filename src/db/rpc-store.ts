@@ -19,7 +19,6 @@ const STATUS_INVALID_TOKEN = 4;
 const MAIL_TYPE_GIFT = 4;
 const MAIL_TYPE_SECURECHANGE = 6;
 const MAIL_TYPE_SECUREECHANGE_OK = 8;
-const STARTING_CASH_BALANCE = 250;
 const GARDEN_WETNESS_PER_WATER_SECONDS = 3 * 60 * 60;
 const GARDEN_MAX_WETNESS_SECONDS = 9 * 60 * 60;
 const MAX_VISIT_ACTIVITY_GP = 15;
@@ -940,23 +939,10 @@ export function mailItemIds(mail: StoredMail): number[] {
 }
 
 async function ensureAccountProfile(account: ActiveAccount): Promise<StoredProfile> {
-  const profile = await readOwnerProfile(account);
-  if (profile.cashBalance <= 0) {
-    return prisma.userProfile.update({
-      where: { id: profileKey(account.networkUid) },
-      data: { cashBalance: STARTING_CASH_BALANCE },
-      include: {
-        ownedItems: { orderBy: { serverId: 'asc' } },
-        inventoryItems: { orderBy: { globalItemId: 'asc' } },
-        ingredients: { orderBy: { globalItemId: 'asc' } },
-        gardenPlots: { orderBy: { plotId: 'asc' } },
-        floors: { orderBy: { floorIndex: 'asc' } },
-        employees: { orderBy: { networkUid: 'asc' } },
-        visits: { orderBy: { lastVisitedAt: 'desc' } },
-      },
-    });
-  }
-  return profile;
+  // readOwnerProfile creates genuinely new profiles with the starter balance.
+  // A persisted zero is a valid spent balance and must never be replenished by
+  // an unrelated RPC request.
+  return readOwnerProfile(account);
 }
 
 async function ensureProfileByUid(networkUid: string): Promise<StoredProfile> {

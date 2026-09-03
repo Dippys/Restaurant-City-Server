@@ -15,6 +15,17 @@ export interface PurchasePricing {
   readonly cost: number;
   /** True when any purchase cannot be priced from authoritative game data. */
   readonly invalid: boolean;
+  /** Item-level reasons retained for operator investigation. */
+  readonly issues: readonly PurchasePricingIssue[];
+}
+
+export interface PurchasePricingIssue {
+  readonly index: number;
+  readonly kind: PurchaseAuditData['kind'];
+  readonly itemId?: number;
+  readonly qty: number;
+  readonly token?: string;
+  readonly reason: 'unresolved-token' | 'ingredient-not-for-sale' | 'item-not-coin-purchasable' | 'unsafe-cost';
 }
 
 /**
@@ -34,12 +45,32 @@ export async function pricePurchases(
   tx: Prisma.TransactionClient,
 ): Promise<PurchasePricing> {
   let cost = 0;
-  for (const purchase of purchases) {
+  const issues: PurchasePricingIssue[] = [];
+  const addIssue = (index: number, purchase: PurchaseAuditData, reason: PurchasePricingIssue['reason']): void => {
+    issues.push({
+      index,
+      kind: purchase.kind,
+      itemId: purchase.itemId,
+      qty: purchase.qty,
+      token: purchase.token,
+      reason,
+    });
+  };
+  const addCost = (index: number, purchase: PurchaseAuditData, amount: number): void => {
+    if (!Number.isSafeInteger(amount) || amount < 0 || !Number.isSafeInteger(cost + amount)) {
+      addIssue(index, purchase, 'unsafe-cost');
+      return;
+    }
+    cost += amount;
+  };
+
+  for (const [index, purchase] of purchases.entries()) {
     if (purchase.unresolved) {
-      return { cost: 0, invalid: true };
+      addIssue(index, purchase, 'unresolved-token');
+      continue;
     }
     if (purchase.kind === 'seed') {
-      cost += SEED_COST;
+      addCost(index, purchase, SEED_COST * Math.max(1, purchase.qty));
       continue;
     }
     if (purchase.kind === 'ingredient') {
@@ -47,9 +78,10 @@ export async function pricePurchases(
         where: { ingredientId: purchase.itemId ?? -1 },
       });
       if (!market || !market.enabled || market.price <= 0) {
-        return { cost: 0, invalid: true };
+        addIssue(index, purchase, 'ingredient-not-for-sale');
+        continue;
       }
-      cost += market.price * Math.max(1, purchase.qty);
+      addCost(index, purchase, market.price * Math.max(1, purchase.qty));
       continue;
     }
     let price = coinPriceForItemId(purchase.itemId ?? -1);
@@ -59,11 +91,12 @@ export async function pricePurchases(
       price = Number.isInteger(perkCost) && perkCost >= 0 ? perkCost : null;
     }
     if (price === null) {
-      return { cost: 0, invalid: true };
+      addIssue(index, purchase, 'item-not-coin-purchasable');
+      continue;
     }
-    cost += price * Math.max(1, purchase.qty);
+    addCost(index, purchase, price * Math.max(1, purchase.qty));
   }
-  return { cost, invalid: false };
+  return { cost, invalid: issues.length > 0, issues };
 }
 
 export interface SalePricing {
