@@ -16,6 +16,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://rc-reborn.uk/preserve</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://rc-reborn.uk/signup</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>

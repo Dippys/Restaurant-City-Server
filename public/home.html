@@ -73,6 +73,7 @@
   .discord-widget { justify-self: center; width: 100%; max-width: 350px; }
   .discord-widget iframe { width: 100%; height: 420px; border: none; border-radius: 12px; background: #2c2f33; box-shadow: 0 8px 22px rgba(29,84,120,.25); }
   @media (max-width: 720px) { .home-hero { grid-template-columns: 1fr; } .hero-art { order: -1; } .community { grid-template-columns: 1fr; } }
+  @media (max-width: 680px) { .home-welcome, .desktop-nav-link { display: none; } .rc-wordmark { font-size: 17px; } }
 </style>
 </head>
 <body>
@@ -83,15 +84,17 @@
   </a>
   <div style="flex:1"></div>
   <nav id="guest" style="display:flex;gap:10px;align-items:center">
-    <a class="rc-btn ghost small" href="/leaderboards">Leaderboards</a>
-    <a class="rc-btn ghost small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
+    <a class="rc-btn ghost small" href="/preserve">Help preserve</a>
+    <a class="rc-btn ghost small desktop-nav-link" href="/leaderboards">Leaderboards</a>
+    <a class="rc-btn ghost small desktop-nav-link" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
     <a class="rc-btn ghost small" href="/login">Log in</a>
     <a class="rc-btn gold small" href="/signup">Create account</a>
   </nav>
   <nav id="member" class="hidden" style="display:flex;gap:12px;align-items:center">
     <span class="home-welcome" id="welcome"></span>
-    <a class="rc-btn ghost small" href="/leaderboards">Leaderboards</a>
-    <a class="rc-btn ghost small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
+    <a class="rc-btn ghost small" href="/preserve">Help preserve</a>
+    <a class="rc-btn ghost small desktop-nav-link" href="/leaderboards">Leaderboards</a>
+    <a class="rc-btn ghost small desktop-nav-link" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
     <a class="rc-btn ghost small" href="/account">Account</a>
     <a class="rc-btn green small" href="/game">Play</a>
     <button id="logoutButton" class="rc-btn small" type="button">Log out</button>

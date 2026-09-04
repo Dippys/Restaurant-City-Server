@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Help Preserve Restaurant City | Restaurant City Reborn</title>
+<link rel="icon" href="/assets/chef.png">
+<meta name="description" content="Help preserve the original Playfish Restaurant City. Check an old computer or browser cache for missing game files from 2009–2012, and share leads with the preservation community.">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#35c0e9">
+<link rel="canonical" href="https://rc-reborn.uk/preserve">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Restaurant City Reborn">
+<meta property="og:url" content="https://rc-reborn.uk/preserve">
+<meta property="og:title" content="Help preserve the original Restaurant City">
+<meta property="og:description" content="Your old computer may still contain missing Restaurant City files. Help the community preserve this piece of game history.">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  .preserve-page { max-width: 1040px; }
+  .preserve-nav { display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+  .preserve-hero { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr); gap:34px; align-items:center; padding:42px 0 30px; }
+  .preserve-hero-copy { display:grid; gap:18px; justify-items:start; }
+  .preserve-hero h1 { margin:0; max-width:13ch; font-size:clamp(42px,7vw,72px); line-height:.98; letter-spacing:-2px; color:var(--steel-dk); }
+  .preserve-hero h1 span { color:var(--cyan-2); text-shadow:0 4px 0 #fff, 0 7px 0 rgba(37,96,153,.18); }
+  .preserve-hero .lead { margin:0; max-width:55ch; font-size:19px; line-height:1.55; color:var(--ink); }
+  .hero-actions { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .archive-card { background:var(--paper-2); border:3px solid var(--steel); border-radius:26px; padding:26px; box-shadow:var(--shadow); transform:rotate(1.25deg); }
+  .archive-card img { display:block; width:104px; height:104px; object-fit:contain; margin:-68px auto 8px; filter:drop-shadow(0 7px 8px rgba(29,84,120,.25)); }
+  .archive-card h2 { margin:0 0 12px; font-size:23px; }
+  .archive-card p { margin:0 0 14px; color:var(--ink-soft); }
+  .archive-card strong { color:var(--tomato-dk); }
+  .time-range { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:18px; padding:12px; border-radius:14px; background:#eaf8fd; color:var(--steel-dk); font-weight:800; font-size:18px; border:2px dashed var(--line-dk); }
+  .section { margin-top:26px; }
+  .section-heading { margin:0 0 8px; font-size:clamp(27px,4vw,38px); }
+  .section-intro { margin:0 0 20px; max-width:68ch; color:var(--ink-soft); font-size:17px; }
+  .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; counter-reset:help-step; }
+  .step { counter-increment:help-step; background:var(--paper-2); border:3px solid var(--line-dk); border-radius:var(--radius); padding:22px; box-shadow:var(--shadow-sm); }
+  .step::before { content:counter(help-step); display:grid; place-items:center; width:42px; height:42px; margin-bottom:14px; border-radius:50%; color:#fff; background:linear-gradient(#6fbdf0,var(--blue-dk)); border:3px solid #fff; box-shadow:0 3px 0 var(--blue-dkr); font-size:20px; font-weight:800; }
+  .step h3 { margin:0 0 7px; font-size:19px; }
+  .step p { margin:0; color:var(--ink-soft); }
+  .caution { margin-top:18px; display:flex; gap:14px; align-items:flex-start; padding:17px 19px; border:3px solid var(--gold); border-radius:var(--radius-sm); background:#fff9df; box-shadow:var(--shadow-sm); }
+  .caution-icon { font-size:27px; line-height:1; }
+  .caution p { margin:0; color:#684c00; }
+  .evidence-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .info-card { background:var(--paper-2); border:3px solid var(--steel); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow-sm); }
+  .info-card h3 { margin:0; padding:14px 20px; color:#fff; background:linear-gradient(180deg,var(--sky),var(--cyan)); border-bottom:3px solid var(--steel); text-shadow:0 2px 0 var(--blue-dkr); }
+  .info-body { padding:19px 20px 21px; }
+  .info-body p { margin:0 0 13px; color:var(--ink-soft); }
+  .info-body ul { margin:0; padding-left:21px; }
+  .info-body li + li { margin-top:7px; }
+  code { overflow-wrap:anywhere; padding:.12em .35em; border-radius:6px; background:#e7f5fa; color:var(--steel-dk); font:700 .88em/1.5 Consolas,monospace; }
+  .file-list { display:flex; flex-wrap:wrap; gap:7px; margin-top:13px; }
+  .file-list code { border:1px solid var(--line-dk); }
+  .status-strip { display:grid; grid-template-columns:auto 1fr; gap:14px 18px; align-items:center; margin-top:26px; padding:20px 22px; border:3px solid var(--basil-dk); border-radius:var(--radius); background:#f5ffed; box-shadow:var(--shadow-sm); }
+  .status-badge { padding:7px 11px; border-radius:999px; background:var(--basil); color:#fff; font-weight:800; white-space:nowrap; }
+  .status-strip p { margin:0; color:#38611e; }
+  .discord-callout { position:relative; overflow:hidden; display:grid; grid-template-columns:1fr auto; gap:24px; align-items:center; margin-top:28px; padding:28px; border:3px solid #4654a3; border-radius:var(--radius); color:#fff; background:linear-gradient(135deg,#5865f2,#4049ae); box-shadow:var(--shadow); }
+  .discord-callout::after { content:""; position:absolute; width:210px; height:210px; right:-75px; top:-110px; border-radius:50%; border:28px solid rgba(255,255,255,.09); }
+  .discord-callout h2 { margin:0 0 7px; color:#fff; font-size:28px; }
+  .discord-callout p { margin:0; max-width:58ch; color:#eef0ff; }
+  .discord-callout .rc-btn { position:relative; z-index:1; color:#4049ae; background:#fff; box-shadow:0 5px 0 #cbd0ff,var(--shadow-sm); }
+  .source-note { margin:22px 0 0; text-align:center; color:var(--steel-dk); font-size:14px; }
+  @media (max-width:800px) { .preserve-hero,.evidence-grid { grid-template-columns:1fr; } .archive-card { margin-top:38px; transform:none; } .steps { grid-template-columns:1fr; } }
+  @media (max-width:620px) { .rc-wordmark { font-size:17px; } .preserve-nav .rc-btn:first-child { display:none; } .preserve-hero { padding-top:28px; } .preserve-hero h1 { letter-spacing:-1px; } .discord-callout { grid-template-columns:1fr; } .status-strip { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header class="rc-topbar">
+  <a class="rc-brand" href="/">
+    <span class="rc-plate"></span>
+    <span class="rc-wordmark">Restaurant City Reborn</span>
+  </a>
+  <div style="flex:1"></div>
+  <nav class="preserve-nav" aria-label="Main navigation">
+    <a class="rc-btn ghost small" href="/">Home</a>
+    <a class="rc-btn green small" href="/game">Play</a>
+    <a class="rc-btn small" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
+  </nav>
+</header>
+
+<main class="rc-wrap preserve-page">
+  <section class="preserve-hero">
+    <div class="preserve-hero-copy">
+      <span class="rc-eyebrow">A community preservation search</span>
+      <h1>Help us preserve <span>Restaurant City</span></h1>
+      <p class="lead">An old laptop, desktop, or hard drive may still hold pieces of the original Playfish game. We’re asking former players to help find those files before they disappear for good.</p>
+      <div class="hero-actions">
+        <a class="rc-btn green" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">I may have an old computer</a>
+        <a class="rc-btn ghost" href="#how-to-help">How to help</a>
+      </div>
+    </div>
+    <aside class="archive-card" aria-label="What we are looking for">
+      <img src="/assets/chef.png" alt="Restaurant City chef">
+      <h2>Your old browser cache could be a time capsule</h2>
+      <p>If you played Restaurant City on a computer that has been left mostly untouched, its browser cache may still contain original game assets.</p>
+      <p><strong>The later 2011–2012 files are especially important.</strong></p>
+      <div class="time-range"><span>2009</span><span aria-hidden="true">→</span><span>2012</span></div>
+    </aside>
+  </section>
+
+  <section class="section" id="how-to-help">
+    <h2 class="section-heading">How you can help</h2>
+    <p class="section-intro">You don’t need to be technical. If you find a promising device—or know somebody who might have one—talk to us before changing anything on it.</p>
+    <div class="steps">
+      <article class="step">
+        <h3>Find an old device</h3>
+        <p>Look for a computer or hard drive used to play Restaurant City between 2009 and June 2012. Ask family and friends, too.</p>
+      </article>
+      <article class="step">
+        <h3>Leave it untouched</h3>
+        <p>Don’t clear browser history, run cleanup software, reinstall the browser, or reset the computer. Those actions can overwrite cached files.</p>
+      </article>
+      <article class="step">
+        <h3>Tell us on Discord</h3>
+        <p>Share what device, operating system, and browser you remember using. We’ll help you check it carefully and answer questions.</p>
+      </article>
+    </div>
+    <div class="caution" role="note">
+      <span class="caution-icon" aria-hidden="true">⚠️</span>
+      <p><strong>Protect your privacy:</strong> never upload an entire browser profile or hard drive. Old caches can contain unrelated personal information. Contact the team first so we can help isolate only the relevant game files.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-heading">What are we searching for?</h2>
+    <p class="section-intro">Restaurant City downloaded Flash files and other assets while you played. Some of them may have survived locally even though the original servers are gone.</p>
+    <div class="evidence-grid">
+      <article class="info-card">
+        <h3>Files and addresses</h3>
+        <div class="info-body">
+          <p>A known game path used this versioned address:</p>
+          <p><code>static.playfish.com/game/cooking/swf/0.9.143a/</code></p>
+          <p>Useful SWF names may include:</p>
+          <div class="file-list" aria-label="Possible Restaurant City SWF filenames">
+            <code>game</code><code>game_asset</code><code>avatar_asset</code><code>indoor_asset</code><code>outdoor_asset</code><code>ingredient_asset</code><code>perk_asset</code><code>sound_asset</code><code>preloader</code><code>preloader_asset</code>
+          </div>
+        </div>
+      </article>
+      <article class="info-card">
+        <h3>Clues that you played a later version</h3>
+        <div class="info-body">
+          <p>The most useful caches may come from a version that included:</p>
+          <ul>
+            <li>Day and night backgrounds based on local time</li>
+            <li>The option to open your restaurant for a set number of hours</li>
+            <li>Later decorations such as the bowling alley or airport lane</li>
+          </ul>
+          <p style="margin-top:14px">Earlier versions asked players to feed employees regularly. Those files are still welcome, but later versions are the biggest gap.</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <div class="status-strip">
+    <span class="status-badge">What we have</span>
+    <p>An early beta-era version has already been recovered from an old laptop. The search now focuses on finding a more complete, later build and preserving the original artwork and assets.</p>
+  </div>
+
+  <section class="discord-callout">
+    <div>
+      <h2>Have a device, a file, or just a lead?</h2>
+      <p>Join the Restaurant City Reborn Discord. Even a vague memory, an old backup, a former developer contact, or a computer you’re unsure about may help move the search forward.</p>
+    </div>
+    <a class="rc-btn" href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Join the Discord</a>
+  </section>
+
+  <p class="source-note">This search continues the community effort described in the <a href="https://www.reddit.com/r/RestaurantCity/comments/1n73lwg/need_help_archiving_restaurant_city_made_by/" target="_blank" rel="noopener">original Reddit preservation post</a>. A tool such as <a href="https://flashpointarchive.org/datahub/Recovering_Files_from_Browser_Cache" target="_blank" rel="noopener">Flashpoint’s cache recovery guide</a> may help, but please contact us first if you are unsure.</p>
+
+  <footer class="rc-footer">
+    <span>© Restaurant City Reborn</span>
+    <a href="/">Home</a>
+    <a href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a>
+    <a href="/terms">Terms</a>
+    <a href="/privacy">Privacy</a>
+    <span class="rc-footer-note">Non-commercial educational project—for preservation and study. Restaurant City and all related assets are the property of their original owners (Playfish / Electronic Arts).</span>
+  </footer>
+</main>
+</body>
+</html>

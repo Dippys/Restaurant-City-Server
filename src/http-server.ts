@@ -143,6 +143,11 @@ async function handleRequest(
     return;
   }
 
+  if (pathname === '/preserve' || pathname === '/preservation') {
+    serveHtml(config, res, 'preserve.html');
+    return;
+  }
+
   if (pathname === '/login' || pathname === '/signup') {
     serveHtml(config, res, 'auth.html');
     return;
