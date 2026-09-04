@@ -17,6 +17,7 @@ import { ensureStarterFriends } from './profile-store';
 import { fullCatalog, isCatalogItemId, isEmployeeSnackItem } from './item-catalog';
 import { grantMailItem } from './system-mail';
 import { enqueueLiveMail } from '../live-events';
+import { queryBatches, SQLITE_QUERY_BATCH_SIZE } from './query-batches';
 
 const adminUserInclude = {
   ownedItems: { orderBy: { serverId: 'asc' as const } },
@@ -178,11 +179,20 @@ export interface IngredientMarketInput {
 
 export async function listAdminUsers(): Promise<AdminUser[]> {
   await ensureStarterFriends();
-
-  return prisma.userProfile.findMany({
-    include: adminUserInclude,
-    orderBy: { networkUid: 'asc' },
-  });
+  const users: AdminUser[] = [];
+  let cursor: string | undefined;
+  do {
+    const batch = await prisma.userProfile.findMany({
+      include: adminUserInclude,
+      orderBy: { networkUid: 'asc' },
+      take: SQLITE_QUERY_BATCH_SIZE,
+      ...(cursor ? { cursor: { networkUid: cursor }, skip: 1 } : {}),
+    });
+    users.push(...batch);
+    cursor = batch.at(-1)?.networkUid;
+    if (batch.length < SQLITE_QUERY_BATCH_SIZE) break;
+  } while (cursor);
+  return users;
 }
 
 export function itemCatalog() {
@@ -549,10 +559,12 @@ export async function createAdminMails(input: BulkMailInput): Promise<BulkMailRe
 
   const senderNetworkUid = validateNetworkUid(input.senderNetworkUid || SYSTEM_NETWORK_UID);
   const clean = validateComposedMailInput(input);
-  const [sender, recipients] = await Promise.all([
-    getAdminUser(senderNetworkUid),
-    prisma.userProfile.findMany({ where: { networkUid: { in: recipientNetworkUids } } }),
-  ]);
+  const senderPromise = getAdminUser(senderNetworkUid);
+  const recipients = [];
+  for (const networkUidBatch of queryBatches(recipientNetworkUids)) {
+    recipients.push(...await prisma.userProfile.findMany({ where: { networkUid: { in: networkUidBatch } } }));
+  }
+  const sender = await senderPromise;
   const byUid = new Map(recipients.map((recipient) => [recipient.networkUid, recipient]));
   const missing = recipientNetworkUids.filter((uid) => !byUid.has(uid));
   if (missing.length > 0) throw new Error(`Unknown recipient${missing.length === 1 ? '' : 's'}: ${missing.join(', ')}`);

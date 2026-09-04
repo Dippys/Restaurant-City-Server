@@ -23,6 +23,7 @@ import { capturePreSaveSnapshotTx, recordAcceptedSaveTx, recordSaveEventFindingT
 import { captureProfileSnapshotTx, type SnapshotPayloadV1 } from '../moderation/snapshots';
 import { isNonEditableRestaurantEntitlementItem, isStackableItemId, isWallDecorationItemId } from './item-catalog';
 import { levelForGourmet } from '../moderation/rules';
+import { queryBatches } from './query-batches';
 
 export type StoredProfile = UserProfile & {
   ownedItems: OwnedItem[];
@@ -444,15 +445,19 @@ export async function prepareOwnedItemsForProfileDelivery(networkUid: string): P
 
 export async function getProfiles(networkUids: readonly string[], activeNetworkUid = PLAYER_NETWORK_UID): Promise<StoredProfile[]> {
   await ensureStarterFriends();
-
-  return prisma.userProfile.findMany({
-    where: {
-      networkUid: { in: networkUids.map((id) => id || PLAYER_NETWORK_UID) },
-      NOT: { networkUid: activeNetworkUid },
-    },
-    include: profileInclude,
-    orderBy: { networkUid: 'asc' },
-  });
+  const normalizedUids = [...new Set(networkUids.map((id) => id || PLAYER_NETWORK_UID))];
+  const profiles: StoredProfile[] = [];
+  for (const networkUidBatch of queryBatches(normalizedUids)) {
+    profiles.push(...await prisma.userProfile.findMany({
+      where: {
+        networkUid: { in: networkUidBatch },
+        NOT: { networkUid: activeNetworkUid },
+      },
+      include: profileInclude,
+      orderBy: { networkUid: 'asc' },
+    }));
+  }
+  return profiles.sort((left, right) => left.networkUid.localeCompare(right.networkUid));
 }
 
 // Your Street roster: owner first, then distinct enabled account-backed players
@@ -467,24 +472,23 @@ export async function getAllFriends(activeNetworkUid = PLAYER_NETWORK_UID): Prom
     include: { accountA: { select: { id: true, networkUid: true } }, accountB: { select: { id: true, networkUid: true } } },
   }) : [];
   const friendUids = friendshipRows.map((friendship) => friendship.accountAId === activeAccount?.id ? friendship.accountB.networkUid : friendship.accountA.networkUid);
-  const enabledAccounts = await prisma.account.findMany({
-    where: {
-      disabled: false,
-      networkUid: { in: [activeNetworkUid, ...hiredUids, ...friendUids] },
-    },
-    select: { networkUid: true },
-  });
+  const enabledAccounts: Array<{ networkUid: string }> = [];
+  const rosterCandidates = [...new Set([activeNetworkUid, ...hiredUids, ...friendUids])];
+  for (const networkUidBatch of queryBatches(rosterCandidates)) {
+    enabledAccounts.push(...await prisma.account.findMany({
+      where: {
+        disabled: false,
+        networkUid: { in: networkUidBatch },
+      },
+      select: { networkUid: true },
+    }));
+  }
   const rosterUids = hiredFriendRosterNetworkUids(
     enabledAccounts.map((account) => account.networkUid),
     [...hiredUids, ...friendUids],
     activeNetworkUid,
   );
-  const profiles = await prisma.userProfile.findMany({
-    where: {
-      networkUid: { in: rosterUids },
-    },
-    include: profileInclude,
-  });
+  const profiles = await getProfiles(rosterUids, '');
   return ownerFirst(profiles, activeNetworkUid);
 }
 
