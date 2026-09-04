@@ -239,9 +239,34 @@ export interface AdminUser {
   notificationsReceived: ReadonlyArray<Record<string, unknown>>;
   cashTransactions: ReadonlyArray<{ id: number; amount: number; createdAtUnix: number }>;
 }
+export interface AdminUserSummary {
+  id: string;
+  network: number;
+  networkUid: string;
+  playfishUid: number;
+  firstName: string;
+  fullName: string;
+  restaurantName: string;
+  gender: number;
+  credits: number;
+  cashBalance: number;
+  playCount: number;
+  userLevel: number;
+  gourmetPoint: number;
+  lastSave: number;
+  updatedAt: string;
+}
 export interface UsersResponse {
   ok: true;
-  users: AdminUser[];
+  users: AdminUserSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+export interface UserOptionsResponse {
+  ok: true;
+  users: Array<{ networkUid: string; firstName: string; fullName: string }>;
 }
 export interface UserMutationResponse {
   ok: true;

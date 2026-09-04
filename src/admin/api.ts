@@ -28,6 +28,7 @@ import type {
   ImpersonationResponse,
   UserMutationResponse,
   UsersResponse,
+  UserOptionsResponse,
   DailyIngredientSyncResponse,
   ModerationOverviewResponse,
   ModerationPlayerDetail,
@@ -102,7 +103,9 @@ export const api = {
 
   // catalog + users
   catalog: () => request<CatalogResponse>('GET', '/__api/db/catalog'),
-  users: () => request<UsersResponse>('GET', '/__api/db/users'),
+  users: (page = 1, pageSize = 50, query = '') => request<UsersResponse>('GET', `/__api/db/users?page=${enc(page)}&pageSize=${enc(pageSize)}&q=${enc(query)}`),
+  user: (uid: string) => request<UserMutationResponse>('GET', `/__api/db/users/${enc(uid)}`),
+  userOptions: () => request<UserOptionsResponse>('GET', '/__api/db/user-options'),
   createUser: (input: ProfileInput) => request<UserMutationResponse>('POST', '/__api/db/users', input),
   updateUser: (uid: string, input: ProfileInput) => request<UserMutationResponse>('PATCH', `/__api/db/users/${enc(uid)}`, input),
   deleteUser: (uid: string) => request<UserMutationResponse>('DELETE', `/__api/db/users/${enc(uid)}`),

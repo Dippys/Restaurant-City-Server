@@ -3,6 +3,8 @@ import { api } from '../api.js';
 import { also, badge, confirmDialog, esc, ensureCatalogDatalist, ensurePlayerDatalist, fmt, h, isoTime, itemIdToText, itemListTextToIds, openModal, relTime, renderForm, table, toast } from '../ui.js';
 let catalog = [];
 let players = [];
+let listPage = 1;
+let listQuery = '';
 /** Display name for a player uid: "Mia Cafe (1001)" when known, else the uid. */
 function playerLabel(uid) {
     if (!uid)
@@ -39,27 +41,37 @@ export async function render(container, params) {
 async function renderList(container) {
     container.textContent = 'Loading…';
     let users;
+    let total = 0;
+    let totalPages = 1;
     try {
-        const response = await api.users();
+        const response = await api.users(listPage, 50, listQuery);
         users = response.users;
+        listPage = response.page;
+        total = response.total;
+        totalPages = response.totalPages;
     }
     catch (error) {
         container.textContent = '';
         container.append(h('p', { class: 'rc-err' }, error instanceof Error ? error.message : String(error)));
         return;
     }
-    let filter = '';
+    let searchTimer;
     const toolbar = h('div', { class: 'rc-toolbar' }, h('input', { class: 'rc-input', type: 'search', placeholder: 'search uid / name / restaurant…' }).also((input) => {
+        input.value = listQuery;
         input.addEventListener('input', () => {
-            filter = input.value.trim().toLowerCase();
-            redraw();
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(() => {
+                listQuery = input.value.trim();
+                listPage = 1;
+                void renderList(container);
+            }, 250);
         });
     }), h('button', { class: 'rc-btn primary', type: 'button' }, '+ Create user').also((btn) => {
         btn.addEventListener('click', () => openCreateUser(() => render(container, [])));
-    }), h('span', { class: 'rc-stat' }, `${fmt(users.length)} players`));
+    }), h('span', { class: 'rc-stat' }, `${fmt(total)} players`));
     const listBox = h('div', { class: 'rc-panel' });
     const redraw = () => {
-        const visible = filter ? users.filter((user) => `${user.networkUid} ${user.firstName} ${user.fullName} ${user.restaurantName}`.toLowerCase().includes(filter)) : users;
+        const visible = users;
         listBox.textContent = '';
         listBox.append(table(['UID', 'Player', 'Restaurant', 'Lv', 'Gourmet', 'Coins', 'Cash', 'Updated', ''], visible.map((user) => [
             user.networkUid,
@@ -86,7 +98,12 @@ async function renderList(container) {
         ])));
     };
     container.textContent = '';
-    container.append(h('h1', { class: 'rc-title' }, 'Players'), toolbar, listBox);
+    const pager = h('div', { class: 'rc-toolbar' }, also(h('button', { class: 'rc-btn small', type: 'button', disabled: listPage <= 1 }, 'Previous'), (button) => {
+        button.addEventListener('click', () => { listPage -= 1; void renderList(container); });
+    }), h('span', { class: 'rc-stat' }, `Page ${fmt(listPage)} of ${fmt(totalPages)}`), also(h('button', { class: 'rc-btn small', type: 'button', disabled: listPage >= totalPages }, 'Next'), (button) => {
+        button.addEventListener('click', () => { listPage += 1; void renderList(container); });
+    }));
+    container.append(h('h1', { class: 'rc-title' }, 'Players'), toolbar, listBox, pager);
     redraw();
 }
 function openCreateUser(onDone) {
@@ -107,10 +124,10 @@ async function renderDetail(container, networkUid) {
     container.textContent = 'Loading…';
     let user = null;
     try {
-        const response = await api.users();
-        players = response.users;
+        const [response, options] = await Promise.all([api.user(networkUid), api.userOptions()]);
+        players = options.users;
         ensurePlayerDatalist(players.map((player) => ({ id: player.networkUid, label: player.fullName || player.firstName || player.networkUid })));
-        user = response.users.find((candidate) => candidate.networkUid === networkUid) ?? null;
+        user = response.user;
     }
     catch (error) {
         container.textContent = '';

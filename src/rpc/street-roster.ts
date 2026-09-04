@@ -1,8 +1,33 @@
 import { randomInt } from 'node:crypto';
 import { isOutdoorItemId } from '../db/item-catalog';
 
-export const MAX_STREET_USERS = 10;
-export const MAX_HIRE_CANDIDATES = 50;
+export const MAX_STREET_USERS = 20;
+export const MAX_HIRE_CANDIDATES = 20;
+export const IN_GAME_ACTIVITY_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+export interface InGameRosterCandidate {
+  readonly networkUid: string;
+  readonly employsActivePlayer: boolean;
+  readonly lastSeenAt: Date | null;
+}
+
+/** Employers first, then players active in the last 48 hours, then everyone else. */
+export function prioritizeInGameRoster(
+  candidates: readonly InGameRosterCandidate[],
+  requestedCount: number,
+  now = new Date(),
+): InGameRosterCandidate[] {
+  const cutoff = now.getTime() - IN_GAME_ACTIVITY_WINDOW_MS;
+  return [...candidates]
+    .sort((left, right) => {
+      const leftTier = left.employsActivePlayer ? 0 : (left.lastSeenAt && left.lastSeenAt.getTime() >= cutoff ? 1 : 2);
+      const rightTier = right.employsActivePlayer ? 0 : (right.lastSeenAt && right.lastSeenAt.getTime() >= cutoff ? 1 : 2);
+      return leftTier - rightTier
+        || (right.lastSeenAt?.getTime() ?? 0) - (left.lastSeenAt?.getTime() ?? 0)
+        || left.networkUid.localeCompare(right.networkUid);
+    })
+    .slice(0, rosterLimit(requestedCount, 20));
+}
 
 // ---------------------------------------------------------------------------
 // Gourmet Street scoring (ADR-0037)
@@ -27,7 +52,7 @@ export const MAX_HIRE_CANDIDATES = 50;
 //   5-star vote cannot match many solid votes (1×5★ ≈ 0.18 vs 10×3.5★ ≈ 0.54).
 //
 // Selection: every enabled non-owner profile with score > 0 is ranked by score
-// descending, ties broken by gourmet points then network uid, capped at 10.
+// descending, ties broken by gourmet points then network uid, capped at 20.
 // The old hard gates (level >= 10, gourmet points >= 100,000) are gone; the
 // score itself is the gate, so a young community's Gourmet Street still fills
 // with its most impressive restaurants instead of staying empty.

@@ -1,10 +1,12 @@
 // Users: player list, create, detail with full resource CRUD.
 import { api } from '../api.js';
 import { also, badge, confirmDialog, el, esc, ensureCatalogDatalist, ensurePlayerDatalist, fmt, h, isoTime, itemIdToText, itemListTextToIds, openModal, relTime, renderForm, table, toast, type FieldSpec } from '../ui.js';
-import type { AdminUser, ItemCatalogEntry } from '../types.js';
+import type { AdminUser, AdminUserSummary, ItemCatalogEntry } from '../types.js';
 
 let catalog: ItemCatalogEntry[] = [];
-let players: AdminUser[] = [];
+let players: Array<{ networkUid: string; firstName: string; fullName: string }> = [];
+let listPage = 1;
+let listQuery = '';
 
 /** Display name for a player uid: "Mia Cafe (1001)" when known, else the uid. */
 function playerLabel(uid: string): string {
@@ -44,33 +46,43 @@ export async function render(container: HTMLElement, params: string[]): Promise<
 
 async function renderList(container: HTMLElement): Promise<void> {
   container.textContent = 'Loading…';
-  let users: AdminUser[];
+  let users: AdminUserSummary[];
+  let total = 0;
+  let totalPages = 1;
   try {
-    const response = await api.users();
+    const response = await api.users(listPage, 50, listQuery);
     users = response.users;
+    listPage = response.page;
+    total = response.total;
+    totalPages = response.totalPages;
   } catch (error) {
     container.textContent = '';
     container.append(h('p', { class: 'rc-err' }, error instanceof Error ? error.message : String(error)));
     return;
   }
 
-  let filter = '';
+  let searchTimer: number | undefined;
   const toolbar = h('div', { class: 'rc-toolbar' },
     h('input', { class: 'rc-input', type: 'search', placeholder: 'search uid / name / restaurant…' }).also((input) => {
+      input.value = listQuery;
       input.addEventListener('input', () => {
-        filter = input.value.trim().toLowerCase();
-        redraw();
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(() => {
+          listQuery = input.value.trim();
+          listPage = 1;
+          void renderList(container);
+        }, 250);
       });
     }),
     h('button', { class: 'rc-btn primary', type: 'button' }, '+ Create user').also((btn) => {
       btn.addEventListener('click', () => openCreateUser(() => render(container, [])));
     }),
-    h('span', { class: 'rc-stat' }, `${fmt(users.length)} players`),
+    h('span', { class: 'rc-stat' }, `${fmt(total)} players`),
   );
 
   const listBox = h('div', { class: 'rc-panel' });
   const redraw = () => {
-    const visible = filter ? users.filter((user) => `${user.networkUid} ${user.firstName} ${user.fullName} ${user.restaurantName}`.toLowerCase().includes(filter)) : users;
+    const visible = users;
     listBox.textContent = '';
     listBox.append(
       table(
@@ -106,7 +118,16 @@ async function renderList(container: HTMLElement): Promise<void> {
   };
 
   container.textContent = '';
-  container.append(h('h1', { class: 'rc-title' }, 'Players'), toolbar, listBox);
+  const pager = h('div', { class: 'rc-toolbar' },
+    also(h('button', { class: 'rc-btn small', type: 'button', disabled: listPage <= 1 }, 'Previous'), (button) => {
+      button.addEventListener('click', () => { listPage -= 1; void renderList(container); });
+    }),
+    h('span', { class: 'rc-stat' }, `Page ${fmt(listPage)} of ${fmt(totalPages)}`),
+    also(h('button', { class: 'rc-btn small', type: 'button', disabled: listPage >= totalPages }, 'Next'), (button) => {
+      button.addEventListener('click', () => { listPage += 1; void renderList(container); });
+    }),
+  );
+  container.append(h('h1', { class: 'rc-title' }, 'Players'), toolbar, listBox, pager);
   redraw();
 }
 
@@ -128,10 +149,10 @@ async function renderDetail(container: HTMLElement, networkUid: string): Promise
   container.textContent = 'Loading…';
   let user: AdminUser | null = null;
   try {
-    const response = await api.users();
-    players = response.users;
+    const [response, options] = await Promise.all([api.user(networkUid), api.userOptions()]);
+    players = options.users;
     ensurePlayerDatalist(players.map((player) => ({ id: player.networkUid, label: player.fullName || player.firstName || player.networkUid })));
-    user = response.users.find((candidate) => candidate.networkUid === networkUid) ?? null;
+    user = response.user;
   } catch (error) {
     container.textContent = '';
     container.append(h('p', { class: 'rc-err' }, error instanceof Error ? error.message : String(error)));
@@ -329,7 +350,7 @@ async function renderDetail(container: HTMLElement, networkUid: string): Promise
   );
 }
 
-function impersonateButton(user: AdminUser, small = false): HTMLButtonElement {
+function impersonateButton(user: Pick<AdminUser, 'networkUid' | 'firstName' | 'fullName'>, small = false): HTMLButtonElement {
   return also(h('button', { class: `rc-btn${small ? ' small' : ''}`, type: 'button' }, 'Impersonate'), (button) => {
     button.title = `Open the game as ${user.fullName || user.firstName || user.networkUid}`;
     button.addEventListener('click', async () => {

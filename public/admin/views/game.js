@@ -144,7 +144,7 @@ const MAIL_TYPES = [
 ];
 async function openMailComposer() {
     try {
-        const [usersResponse, catalogResponse] = await Promise.all([api.users(), api.catalog()]);
+        const [usersResponse, catalogResponse] = await Promise.all([api.userOptions(), api.catalog()]);
         const users = usersResponse.users;
         const firstPlayerSender = users.find((user) => user.networkUid !== '1')?.networkUid || '1';
         ensureCatalogDatalist(catalogResponse.items);

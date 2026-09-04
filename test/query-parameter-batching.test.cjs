@@ -20,6 +20,7 @@ process.env.RC_DB_PATH = testDbPath;
 const { prisma } = require('../dist/db/client.js');
 const { listAdminUsers } = require('../dist/db/admin-store.js');
 const { getProfiles } = require('../dist/db/profile-store.js');
+const { hireCandidates } = require('../dist/db/rpc-store.js');
 
 test.after(async () => {
   await prisma.$disconnect();
@@ -44,7 +45,53 @@ test('large profile rosters are hydrated in bounded query batches', async () => 
   assert.equal(profiles.length, profileCount);
   assert.deepEqual(profiles.map((profile) => profile.networkUid), [...networkUids].sort());
 
-  const adminUsers = await listAdminUsers();
-  assert.equal(adminUsers.length, profileCount);
-  assert.deepEqual(adminUsers.map((profile) => profile.networkUid), [...networkUids].sort());
+  const firstPage = await listAdminUsers(1, 50);
+  assert.equal(firstPage.users.length, 50);
+  assert.equal(firstPage.total, profileCount);
+  assert.equal(firstPage.totalPages, 25);
+  assert.deepEqual(firstPage.users.map((profile) => profile.networkUid), [...networkUids].sort().slice(0, 50));
+
+  const lastPage = await listAdminUsers(25, 50);
+  assert.equal(lastPage.users.length, 5);
+  assert.equal(lastPage.page, 25);
+
+  const searchedPage = await listAdminUsers(1, 50, networkUids[600]);
+  assert.equal(searchedPage.total, 1);
+  assert.equal(searchedPage.users[0].networkUid, networkUids[600]);
+
+  const rosterUids = networkUids.slice(0, 26);
+  await prisma.account.createMany({ data: rosterUids.map((networkUid) => ({
+    id: `account-${networkUid}`,
+    username: `user${networkUid}`,
+    usernameKey: `user${networkUid}`,
+    firstName: `Chef${networkUid}`,
+    lastName: 'Player',
+    pinHash: 'x',
+    pinSalt: 'x',
+    networkUid,
+    playfishUid: Number(networkUid),
+  })) });
+  const ownerUid = rosterUids[0];
+  const employerUid = rosterUids[25];
+  const recentUid = rosterUids[24];
+  await prisma.employee.create({ data: {
+    id: `facebook:${employerUid}:employee:${ownerUid}`,
+    userProfileId: `facebook:${employerUid}`,
+    networkUid: ownerUid,
+  } });
+  await prisma.playerActivity.create({ data: {
+    accountId: `account-${recentUid}`,
+    networkUid: recentUid,
+    lastSeenAt: new Date(),
+  } });
+
+  const candidates = await hireCandidates({
+    id: `account-${ownerUid}`,
+    username: `user${ownerUid}`,
+    networkUid: ownerUid,
+    playfishUid: Number(ownerUid),
+  }, 100);
+  assert.equal(candidates.length, 20);
+  assert.equal(candidates[0].networkUid, employerUid);
+  assert.equal(candidates[1].networkUid, recentUid);
 });

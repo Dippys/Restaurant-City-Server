@@ -17,7 +17,7 @@ import { ensureStarterFriends } from './profile-store';
 import { fullCatalog, isCatalogItemId, isEmployeeSnackItem } from './item-catalog';
 import { grantMailItem } from './system-mail';
 import { enqueueLiveMail } from '../live-events';
-import { queryBatches, SQLITE_QUERY_BATCH_SIZE } from './query-batches';
+import { queryBatches } from './query-batches';
 
 const adminUserInclude = {
   ownedItems: { orderBy: { serverId: 'asc' as const } },
@@ -50,6 +50,29 @@ const adminUserInclude = {
 } satisfies Prisma.UserProfileInclude;
 
 export type AdminUser = Prisma.UserProfileGetPayload<{ include: typeof adminUserInclude }>;
+
+const adminUserSummarySelect = {
+  id: true, network: true, networkUid: true, playfishUid: true,
+  firstName: true, fullName: true, restaurantName: true,
+  gender: true, credits: true, cashBalance: true, playCount: true,
+  userLevel: true, gourmetPoint: true, lastSave: true, updatedAt: true,
+} satisfies Prisma.UserProfileSelect;
+
+export type AdminUserSummary = Prisma.UserProfileGetPayload<{ select: typeof adminUserSummarySelect }>;
+
+export interface AdminUserPage {
+  readonly users: AdminUserSummary[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
+  readonly totalPages: number;
+}
+
+export interface AdminUserOption {
+  readonly networkUid: string;
+  readonly firstName: string;
+  readonly fullName: string;
+}
 
 export interface ProfileInput {
   readonly networkUid: string;
@@ -177,22 +200,35 @@ export interface IngredientMarketInput {
   readonly enabled?: boolean;
 }
 
-export async function listAdminUsers(): Promise<AdminUser[]> {
+export async function listAdminUsers(page = 1, pageSize = 50, search = ''): Promise<AdminUserPage> {
   await ensureStarterFriends();
-  const users: AdminUser[] = [];
-  let cursor: string | undefined;
-  do {
-    const batch = await prisma.userProfile.findMany({
-      include: adminUserInclude,
-      orderBy: { networkUid: 'asc' },
-      take: SQLITE_QUERY_BATCH_SIZE,
-      ...(cursor ? { cursor: { networkUid: cursor }, skip: 1 } : {}),
-    });
-    users.push(...batch);
-    cursor = batch.at(-1)?.networkUid;
-    if (batch.length < SQLITE_QUERY_BATCH_SIZE) break;
-  } while (cursor);
-  return users;
+  const safePageSize = Math.min(100, Math.max(10, Math.trunc(pageSize) || 50));
+  const requestedPage = Math.max(1, Math.trunc(page) || 1);
+  const query = search.trim().slice(0, 100);
+  const where: Prisma.UserProfileWhereInput = query ? { OR: [
+    { networkUid: { contains: query } },
+    { firstName: { contains: query } },
+    { fullName: { contains: query } },
+    { restaurantName: { contains: query } },
+  ] } : {};
+  const total = await prisma.userProfile.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / safePageSize));
+  const safePage = Math.min(requestedPage, totalPages);
+  const users = await prisma.userProfile.findMany({
+    where,
+    select: adminUserSummarySelect,
+    orderBy: { networkUid: 'asc' },
+    skip: (safePage - 1) * safePageSize,
+    take: safePageSize,
+  });
+  return { users, page: safePage, pageSize: safePageSize, total, totalPages };
+}
+
+export async function listAdminUserOptions(): Promise<AdminUserOption[]> {
+  return prisma.userProfile.findMany({
+    select: { networkUid: true, firstName: true, fullName: true },
+    orderBy: { networkUid: 'asc' },
+  });
 }
 
 export function itemCatalog() {
@@ -699,7 +735,7 @@ export async function deleteAdminIngredientMarketItem(id: number): Promise<void>
   await prisma.ingredientMarketItem.deleteMany({ where: { id: boundedInt(id, 'id', 1, 2147483647) } });
 }
 
-async function getAdminUser(networkUid: string): Promise<AdminUser> {
+export async function getAdminUser(networkUid: string): Promise<AdminUser> {
   return prisma.userProfile.findUniqueOrThrow({
     where: { id: profileKey(networkUid) },
     include: adminUserInclude,

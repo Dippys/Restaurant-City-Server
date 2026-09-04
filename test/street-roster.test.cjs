@@ -5,6 +5,7 @@ const {
   selectHireCandidateProfiles,
   selectGourmetStreetProfiles,
   selectRandomStreetProfiles,
+  prioritizeInGameRoster,
 } = require('../dist/rpc/street-roster.js');
 
 const profiles = Array.from({ length: 15 }, (_, index) => ({
@@ -14,13 +15,13 @@ const profiles = Array.from({ length: 15 }, (_, index) => ({
   gourmetPoint: (index + 1) * 20_000,
 }));
 
-test('Random Street excludes owner and hired friends, caps at 10, and reshuffles', () => {
+test('Random Street excludes owner and hired friends, caps at 20, and reshuffles', () => {
   const hired = new Set(['2', '4']);
   const first = selectRandomStreetProfiles(profiles, '1', hired, 50, () => 0);
   const second = selectRandomStreetProfiles(profiles, '1', hired, 50, (upper) => upper - 1);
 
-  assert.equal(first.length, 10);
-  assert.equal(second.length, 10);
+  assert.equal(first.length, 12);
+  assert.equal(second.length, 12);
   assert.ok(first.every((profile) => !hired.has(profile.networkUid) && profile.networkUid !== '1'));
   assert.ok(second.every((profile) => !hired.has(profile.networkUid) && profile.networkUid !== '1'));
   assert.notDeepEqual(first.map((profile) => profile.networkUid), second.map((profile) => profile.networkUid));
@@ -36,8 +37,26 @@ test('Hire candidates use a separate random non-hired pool', () => {
   }));
   const candidates = selectHireCandidateProfiles(largePool, '1', hired, 100, () => 0);
 
-  assert.equal(candidates.length, 50);
+  assert.equal(candidates.length, 20);
   assert.ok(candidates.every((profile) => !hired.has(profile.networkUid) && profile.networkUid !== '1'));
+});
+
+test('in-game roster prioritizes employers, then 48-hour activity, then everyone else', () => {
+  const now = new Date('2026-09-05T12:00:00Z');
+  const candidates = [
+    { networkUid: 'inactive', employsActivePlayer: false, lastSeenAt: new Date('2026-09-01T00:00:00Z') },
+    { networkUid: 'recent-old', employsActivePlayer: false, lastSeenAt: new Date('2026-09-04T00:01:00Z') },
+    { networkUid: 'employer', employsActivePlayer: true, lastSeenAt: null },
+    { networkUid: 'recent-new', employsActivePlayer: false, lastSeenAt: new Date('2026-09-05T11:00:00Z') },
+  ];
+
+  assert.deepEqual(
+    prioritizeInGameRoster(candidates, 20, now).map((candidate) => candidate.networkUid),
+    ['employer', 'recent-new', 'recent-old', 'inactive'],
+  );
+  assert.equal(prioritizeInGameRoster(Array.from({ length: 30 }, (_, index) => ({
+    networkUid: String(index), employsActivePlayer: false, lastSeenAt: null,
+  })), 100, now).length, 20);
 });
 
 // --- Gourmet Street (ADR-0037: scored ranking, no hard level/point gates) ---
@@ -100,7 +119,7 @@ test('Gourmet Street ranks by score: a strong restaurant outranks a starter one'
   assert.deepEqual(selected.map((profile) => profile.networkUid), ['3', '2', '4']);
 });
 
-test('Gourmet Street caps at 10, excludes the owner, and drops score-0 profiles', () => {
+test('Gourmet Street caps at 20, excludes the owner, and drops score-0 profiles', () => {
   const empty = {
     networkUid: '99',
     playCount: 1,
@@ -113,11 +132,11 @@ test('Gourmet Street caps at 10, excludes the owner, and drops score-0 profiles'
   };
   const pool = [
     empty,
-    ...Array.from({ length: 13 }, (_, index) => strongProfile(String(100 + index))),
+    ...Array.from({ length: 25 }, (_, index) => strongProfile(String(100 + index))),
   ];
   const selected = selectGourmetStreetProfiles(pool, '100', 50);
 
-  assert.equal(selected.length, 10);
+  assert.equal(selected.length, 20);
   assert.ok(selected.every((profile) => profile.networkUid !== '100'));
   assert.ok(selected.every((profile) => profile.networkUid !== '99'));
 });

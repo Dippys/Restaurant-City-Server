@@ -17,7 +17,7 @@ import {
   defaultProfileName,
 } from './defaults';
 import type { ActiveAccount } from '../session';
-import { hiredFriendRosterNetworkUids, ownerFirst } from '../rpc/friend-roster';
+import { IN_GAME_ACTIVITY_WINDOW_MS, prioritizeInGameRoster } from '../rpc/street-roster';
 import { gardenIngredientForSeed } from '../rpc/garden-plot';
 import { capturePreSaveSnapshotTx, recordAcceptedSaveTx, recordSaveEventFindingTx, scanPlayer } from '../moderation/service';
 import { captureProfileSnapshotTx, type SnapshotPayloadV1 } from '../moderation/snapshots';
@@ -467,13 +467,24 @@ export async function getAllFriends(activeNetworkUid = PLAYER_NETWORK_UID): Prom
   const owner = await ensureProfile(activeNetworkUid);
   const hiredUids = owner.employees.map((employee) => employee.networkUid);
   const activeAccount = await prisma.account.findUnique({ where: { networkUid: activeNetworkUid }, select: { id: true } });
-  const friendshipRows = activeAccount ? await prisma.friendship.findMany({
-    where: { OR: [{ accountAId: activeAccount.id }, { accountBId: activeAccount.id }] },
-    include: { accountA: { select: { id: true, networkUid: true } }, accountB: { select: { id: true, networkUid: true } } },
-  }) : [];
+  const [friendshipRows, employerRows, activityRows] = await Promise.all([
+    activeAccount ? prisma.friendship.findMany({
+      where: { OR: [{ accountAId: activeAccount.id }, { accountBId: activeAccount.id }] },
+      include: { accountA: { select: { id: true, networkUid: true } }, accountB: { select: { id: true, networkUid: true } } },
+    }) : [],
+    prisma.employee.findMany({
+      where: { networkUid: activeNetworkUid },
+      select: { userProfile: { select: { networkUid: true } } },
+    }),
+    prisma.playerActivity.findMany({
+      where: { lastSeenAt: { gte: new Date(Date.now() - IN_GAME_ACTIVITY_WINDOW_MS) } },
+      select: { networkUid: true, lastSeenAt: true },
+    }),
+  ]);
   const friendUids = friendshipRows.map((friendship) => friendship.accountAId === activeAccount?.id ? friendship.accountB.networkUid : friendship.accountA.networkUid);
+  const employerUids = employerRows.map((row) => row.userProfile.networkUid);
   const enabledAccounts: Array<{ networkUid: string }> = [];
-  const rosterCandidates = [...new Set([activeNetworkUid, ...hiredUids, ...friendUids])];
+  const rosterCandidates = [...new Set([activeNetworkUid, ...hiredUids, ...friendUids, ...employerUids])];
   for (const networkUidBatch of queryBatches(rosterCandidates)) {
     enabledAccounts.push(...await prisma.account.findMany({
       where: {
@@ -483,13 +494,27 @@ export async function getAllFriends(activeNetworkUid = PLAYER_NETWORK_UID): Prom
       select: { networkUid: true },
     }));
   }
-  const rosterUids = hiredFriendRosterNetworkUids(
-    enabledAccounts.map((account) => account.networkUid),
-    [...hiredUids, ...friendUids],
-    activeNetworkUid,
+  const enabledUids = new Set(enabledAccounts.map((account) => account.networkUid));
+  const activityByUid = new Map(activityRows.map((row) => [row.networkUid, row.lastSeenAt]));
+  const employerSet = new Set(employerUids);
+  const ownerSlots = activeNetworkUid === SYSTEM_NETWORK_UID ? 0 : 1;
+  const prioritized = prioritizeInGameRoster(
+    rosterCandidates
+      .filter((networkUid) => networkUid !== activeNetworkUid && enabledUids.has(networkUid))
+      .map((networkUid) => ({
+        networkUid,
+        employsActivePlayer: employerSet.has(networkUid),
+        lastSeenAt: activityByUid.get(networkUid) ?? null,
+      })),
+    20 - ownerSlots,
   );
+  const prioritizedUids = prioritized.map((candidate) => candidate.networkUid);
+  const rosterUids = activeNetworkUid === SYSTEM_NETWORK_UID
+    ? prioritizedUids
+    : [activeNetworkUid, ...prioritizedUids];
   const profiles = await getProfiles(rosterUids, '');
-  return ownerFirst(profiles, activeNetworkUid);
+  const byUid = new Map(profiles.map((profile) => [profile.networkUid, profile]));
+  return rosterUids.map((networkUid) => byUid.get(networkUid)).filter((profile): profile is StoredProfile => profile !== undefined);
 }
 
 export async function ensureLoginAccount(account: ActiveAccount): Promise<StoredProfile> {

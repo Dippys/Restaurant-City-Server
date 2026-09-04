@@ -23,7 +23,9 @@ import {
   deleteAdminPurchasableItem,
   deleteAdminUser,
   itemCatalog,
+  getAdminUser,
   listEconomy,
+  listAdminUserOptions,
   listAdminUsers,
   listEnabledAccountNetworkUids,
   resetAdminDatabase,
@@ -647,7 +649,7 @@ async function handleRequest(
 
   if (pathname.startsWith('/__api/db')) {
     if (!(await requireAdminMutationForMethod(context, req, res))) return;
-    await handleDatabaseApi(req.method || 'GET', pathname, body, res);
+    await handleDatabaseApi(req.method || 'GET', pathname, url.searchParams, body, res);
     return;
   }
 
@@ -1064,7 +1066,7 @@ function isRpcPath(pathname: string): boolean {
   return /\/g\/rpc\//i.test(pathname) || /\/g\/billing\//i.test(pathname) || /\/g\/fbfeed\//i.test(pathname);
 }
 
-async function handleDatabaseApi(method: string, pathname: string, body: Buffer, res: ServerResponse): Promise<void> {
+async function handleDatabaseApi(method: string, pathname: string, searchParams: URLSearchParams, body: Buffer, res: ServerResponse): Promise<void> {
   try {
     const parts = pathname.split('/').filter(Boolean);
 
@@ -1074,7 +1076,17 @@ async function handleDatabaseApi(method: string, pathname: string, body: Buffer,
     }
 
     if (method === 'GET' && pathname === '/__api/db/users') {
-      sendJson(res, { ok: true, users: await listAdminUsers() });
+      const result = await listAdminUsers(
+        Number(searchParams.get('page') || 1),
+        Number(searchParams.get('pageSize') || 50),
+        searchParams.get('q') || '',
+      );
+      sendJson(res, { ok: true, ...result });
+      return;
+    }
+
+    if (method === 'GET' && pathname === '/__api/db/user-options') {
+      sendJson(res, { ok: true, users: await listAdminUserOptions() });
       return;
     }
 
@@ -1150,6 +1162,11 @@ async function handleDatabaseApi(method: string, pathname: string, body: Buffer,
 
     if (parts.length >= 4 && parts[0] === '__api' && parts[1] === 'db' && parts[2] === 'users') {
       const networkUid = decodeURIComponent(parts[3] || '');
+
+      if (parts.length === 4 && method === 'GET') {
+        sendJson(res, { ok: true, user: await getAdminUser(networkUid) });
+        return;
+      }
 
       if (parts.length === 4 && method === 'PATCH') {
         sendJson(res, { ok: true, user: await updateAdminUser(networkUid, parseJsonBody(body)) });

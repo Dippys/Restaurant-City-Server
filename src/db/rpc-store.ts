@@ -9,7 +9,7 @@ import { isGiftableItemId } from './item-catalog';
 import { coinBundleForToken, ingredientCashCost, ingredientIdForCashToken, ownedItemCashCost } from './cash-catalog';
 import type { ActiveAccount } from '../session';
 import { enqueueLiveMail, pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
-import { selectGourmetStreetProfiles, selectHireCandidateProfiles, selectRandomStreetProfiles } from '../rpc/street-roster';
+import { IN_GAME_ACTIVITY_WINDOW_MS, prioritizeInGameRoster } from '../rpc/street-roster';
 
 const STATUS_OK = 0;
 const STATUS_NOT_ENOUGH_CASH = 1;
@@ -552,34 +552,51 @@ export async function firstVisitFriend(account: ActiveAccount, friend: NetworkUi
 
 export async function streetUsers(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
   const owner = await readOwnerProfile(account);
-  const friendNetworkUids = new Set(owner.employees.map((employee) => employee.networkUid));
-  const profiles = await enabledPlayerProfiles([account.networkUid, ...friendNetworkUids]);
-  return selectRandomStreetProfiles(profiles, account.networkUid, friendNetworkUids, count);
+  return prioritizedEnabledProfiles(account.networkUid, [account.networkUid, ...owner.employees.map((employee) => employee.networkUid)], count);
 }
 
 export async function gourmetStreetUsers(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
   await readOwnerProfile(account);
-  const profiles = await enabledPlayerProfiles([account.networkUid]);
-  return selectGourmetStreetProfiles(profiles, account.networkUid, count);
+  return prioritizedEnabledProfiles(account.networkUid, [account.networkUid], count);
 }
 
 export async function hireCandidates(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
   const owner = await readOwnerProfile(account);
-  const friendNetworkUids = new Set(owner.employees.map((employee) => employee.networkUid));
-  const profiles = await enabledPlayerProfiles([account.networkUid, ...friendNetworkUids]);
-  return selectHireCandidateProfiles(profiles, account.networkUid, friendNetworkUids, count);
+  return prioritizedEnabledProfiles(account.networkUid, [account.networkUid, ...owner.employees.map((employee) => employee.networkUid)], count);
 }
 
-async function enabledPlayerProfiles(excludedNetworkUids: readonly string[]): Promise<StoredProfile[]> {
+async function prioritizedEnabledProfiles(
+  activeNetworkUid: string,
+  excludedNetworkUids: readonly string[],
+  requestedCount: number,
+): Promise<StoredProfile[]> {
   const excluded = [...new Set([PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, ...excludedNetworkUids])];
-  const accounts = await prisma.account.findMany({
-    where: {
-      disabled: false,
-      networkUid: { notIn: excluded },
-    },
-    select: { networkUid: true },
-  });
-  return getProfiles(accounts.map((account) => account.networkUid), '');
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - IN_GAME_ACTIVITY_WINDOW_MS);
+  const [accounts, employerRows, activityRows] = await Promise.all([
+    prisma.account.findMany({
+      where: { disabled: false, networkUid: { notIn: excluded } },
+      select: { networkUid: true },
+    }),
+    prisma.employee.findMany({
+      where: { networkUid: activeNetworkUid },
+      select: { userProfile: { select: { networkUid: true } } },
+    }),
+    prisma.playerActivity.findMany({
+      where: { lastSeenAt: { gte: cutoff } },
+      select: { networkUid: true, lastSeenAt: true },
+    }),
+  ]);
+  const employers = new Set(employerRows.map((row) => row.userProfile.networkUid));
+  const activityByUid = new Map(activityRows.map((row) => [row.networkUid, row.lastSeenAt]));
+  const ranked = prioritizeInGameRoster(accounts.map((candidate) => ({
+    networkUid: candidate.networkUid,
+    employsActivePlayer: employers.has(candidate.networkUid),
+    lastSeenAt: activityByUid.get(candidate.networkUid) ?? null,
+  })), requestedCount, now);
+  const profiles = await getProfiles(ranked.map((candidate) => candidate.networkUid), '');
+  const byUid = new Map(profiles.map((profile) => [profile.networkUid, profile]));
+  return ranked.map((candidate) => byUid.get(candidate.networkUid)).filter((profile): profile is StoredProfile => profile !== undefined);
 }
 
 // The Flash success handlers update both ingredient lists in memory but emit no

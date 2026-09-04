@@ -56,7 +56,9 @@ export const api = {
     requestReset: () => request('POST', '/__api/db/reset'),
     // catalog + users
     catalog: () => request('GET', '/__api/db/catalog'),
-    users: () => request('GET', '/__api/db/users'),
+    users: (page = 1, pageSize = 50, query = '') => request('GET', `/__api/db/users?page=${enc(page)}&pageSize=${enc(pageSize)}&q=${enc(query)}`),
+    user: (uid) => request('GET', `/__api/db/users/${enc(uid)}`),
+    userOptions: () => request('GET', '/__api/db/user-options'),
     createUser: (input) => request('POST', '/__api/db/users', input),
     updateUser: (uid, input) => request('PATCH', `/__api/db/users/${enc(uid)}`, input),
     deleteUser: (uid) => request('DELETE', `/__api/db/users/${enc(uid)}`),
