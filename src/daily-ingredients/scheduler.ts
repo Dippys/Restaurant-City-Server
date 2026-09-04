@@ -3,6 +3,7 @@ import { prisma } from '../db/client';
 import { dailyIngredientCatalog, selectDailyIngredients, type DailyIngredient } from './catalog';
 import { sendDailyIngredientsDiscord } from './discord';
 import { renderDailyIngredientsImage } from './image';
+import { backgroundJobs, type SchedulerHandle } from '../job-runner';
 
 const NOON_UTC_HOUR = 12;
 
@@ -37,6 +38,16 @@ export async function runDailyIngredientRotation(
   webhookUrl: string | undefined,
   now = new Date(),
   force = false,
+): Promise<boolean> {
+  const outcome = await backgroundJobs.run('daily-ingredients', () => runDailyIngredientRotationCore(serverRoot, webhookUrl, now, force));
+  return outcome.status === 'completed' ? outcome.value : false;
+}
+
+async function runDailyIngredientRotationCore(
+  serverRoot: string,
+  webhookUrl: string | undefined,
+  now: Date,
+  force: boolean,
 ): Promise<boolean> {
   const utcDate = rotationUtcDate(now, force);
   if (!utcDate) return false;
@@ -136,7 +147,9 @@ export async function forceDailyIngredientSync(
   };
 }
 
-export function startDailyIngredientScheduler(serverRoot: string, webhookUrl: string | undefined): void {
+export function startDailyIngredientScheduler(serverRoot: string, webhookUrl: string | undefined): SchedulerHandle {
+  let stopped = false;
+  let timer: NodeJS.Timeout | undefined;
   const run = async (): Promise<boolean> => {
     try {
       await runDailyIngredientRotation(serverRoot, webhookUrl);
@@ -147,13 +160,18 @@ export function startDailyIngredientScheduler(serverRoot: string, webhookUrl: st
     }
   };
   const schedule = (delay: number) => {
-    const timer = setTimeout(async () => {
+    if (stopped) return;
+    timer = setTimeout(async () => {
+      if (stopped) return;
       const succeeded = await run();
       // A pending Discord delivery retries every five minutes; completed or
       // not-yet-due work sleeps until the next exact noon UTC boundary.
-      schedule(succeeded ? millisecondsUntilNextNoonUtc(new Date()) : 5 * 60_000);
+      if (!stopped) schedule(succeeded ? millisecondsUntilNextNoonUtc(new Date()) : 5 * 60_000);
     }, delay);
     timer.unref();
   };
-  void run().then((succeeded) => schedule(succeeded ? millisecondsUntilNextNoonUtc(new Date()) : 5 * 60_000));
+  void run().then((succeeded) => {
+    if (!stopped) schedule(succeeded ? millisecondsUntilNextNoonUtc(new Date()) : 5 * 60_000);
+  });
+  return { stop: () => { stopped = true; if (timer) clearTimeout(timer); } };
 }

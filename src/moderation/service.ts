@@ -8,6 +8,7 @@ import { terminateGameInstance } from '../game-instances';
 import { rebuildPlayerProfile, recoverFallbackProfileScalars } from '../db/profile-store';
 import { evaluateProfile, type RuleFinding } from './rules';
 import { captureProfileSnapshot, captureProfileSnapshotTx, listProfileSnapshots, resetProfileToStarter, rollbackProfile } from './snapshots';
+export { recordRpcActivity } from '../activity-buffer';
 
 const moderationProfileInclude = {
   ownedItems: { select: { globalItemId: true } },
@@ -29,6 +30,7 @@ export interface AcceptedSaveEvidence {
   readonly previousLevel: number;
   readonly userLevel: number;
   readonly audit: SaveAuditData;
+  /** ADR-0051 automatic checkpoint anchor; not necessarily exact pre-save state. */
   readonly snapshotId: string;
   readonly acceptedAt: Date;
   /** ADR-0042: the ADR-0031 fence token (one per SWF load) for exact same-session clock comparisons. */
@@ -42,6 +44,12 @@ export interface ScanSummary {
   findingsResolved: number;
 }
 
+let automaticSnapshotIntervalMinutes = 60;
+
+export function configureAutomaticSnapshotInterval(intervalMinutes: number): void {
+  automaticSnapshotIntervalMinutes = Math.max(0, Math.floor(intervalMinutes));
+}
+
 export async function recordLoginActivity(account: { id: string; networkUid: string }): Promise<void> {
   const now = new Date();
   await prisma.playerActivity.upsert({
@@ -51,25 +59,23 @@ export async function recordLoginActivity(account: { id: string; networkUid: str
   });
 }
 
-export async function recordRpcActivity(account: ActiveAccount): Promise<void> {
-  if (!account.id) return;
-  const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    const existing = await tx.playerActivity.findUnique({ where: { accountId: account.id! } });
-    if (!existing) {
-      await tx.playerActivity.create({ data: { accountId: account.id!, networkUid: account.networkUid, firstSeenAt: now, lastSeenAt: now, lastLoginAt: now, requestCount: 1, rpcCount: 1 } });
-      return;
-    }
-    const gapSeconds = Math.max(0, Math.floor((now.getTime() - existing.lastSeenAt.getTime()) / 1000));
-    await tx.playerActivity.update({ where: { accountId: account.id! }, data: {
-      networkUid: account.networkUid, lastSeenAt: now,
-      totalActiveSeconds: { increment: Math.min(gapSeconds, 120) },
-      requestCount: { increment: 1 }, rpcCount: { increment: 1 },
-    } });
+export async function capturePreSaveSnapshotTx(
+  tx: Prisma.TransactionClient,
+  networkUid: string,
+  saveVersion: number,
+  acceptedAt = new Date(),
+): Promise<string> {
+  if (automaticSnapshotIntervalMinutes === 0) {
+    return captureProfileSnapshotTx(tx, networkUid, 'ACCEPTED_SAVE_BEFORE', `Before accepted save ${saveVersion}`);
+  }
+  const latest = await tx.profileSnapshot.findFirst({
+    where: { networkUid, reason: 'ACCEPTED_SAVE_BEFORE' },
+    select: { id: true, createdAt: true },
+    orderBy: { createdAt: 'desc' },
   });
-}
-
-export async function capturePreSaveSnapshotTx(tx: Prisma.TransactionClient, networkUid: string, saveVersion: number): Promise<string> {
+  if (latest && acceptedAt.getTime() - latest.createdAt.getTime() < automaticSnapshotIntervalMinutes * 60_000) {
+    return latest.id;
+  }
   return captureProfileSnapshotTx(tx, networkUid, 'ACCEPTED_SAVE_BEFORE', `Before accepted save ${saveVersion}`);
 }
 

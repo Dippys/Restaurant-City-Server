@@ -2,6 +2,7 @@ import type { Employee, GardenPlot, Mail, UserProfile } from '@prisma/client';
 import { prisma } from './db/client';
 import { ingredientRarity } from './db/ingredient-catalog';
 import { catalogEntry } from './db/item-catalog';
+import { backgroundJobs, type SchedulerHandle } from './job-runner';
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const NOTIFICATION_INTERVAL_MS = 60_000;
@@ -34,18 +35,24 @@ interface DiscordMessage {
 
 type MailWithSender = Mail & { sender: Pick<UserProfile, 'firstName' | 'fullName' | 'restaurantName'> };
 
-export function startDiscordNotificationScheduler(intervalMs = NOTIFICATION_INTERVAL_MS): void {
-  if (!process.env.RC_DISCORD_BOT_TOKEN) return;
+export function startDiscordNotificationScheduler(intervalMs = NOTIFICATION_INTERVAL_MS): SchedulerHandle {
+  if (!process.env.RC_DISCORD_BOT_TOKEN) return { stop() {} };
   void runDiscordNotificationCycle().catch((error) => console.error('Discord notification cycle failed:', error));
   const timer = setInterval(() => {
     void runDiscordNotificationCycle().catch((error) => console.error('Discord notification cycle failed:', error));
   }, Math.max(10_000, intervalMs));
   timer.unref();
+  return { stop: () => clearInterval(timer) };
 }
 
 /** Process new mail and false→true game-state transitions for every linked account. */
 export async function runDiscordNotificationCycle(now = new Date()): Promise<void> {
   if (!process.env.RC_DISCORD_BOT_TOKEN) return;
+  const outcome = await backgroundJobs.run('discord-notifications', () => runDiscordNotificationCycleCore(now));
+  if (outcome.status === 'skipped-overlap') return;
+}
+
+async function runDiscordNotificationCycleCore(now: Date): Promise<void> {
   const identities = await prisma.discordIdentity.findMany({
     where: { account: { disabled: false } },
     include: { account: { select: { id: true, networkUid: true } } },

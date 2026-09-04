@@ -47,6 +47,18 @@ export interface OverviewResponse {
   uptimeSeconds: number;
   dbSizeBytes: number;
   serverTime: string;
+  performance: {
+    uptimeSeconds: number;
+    memory: { rssBytes: number; heapUsedBytes: number; heapTotalBytes: number };
+    eventLoopDelayMs: { p50: number; p95: number; p99: number; max: number };
+    requestCount: number;
+    requestLatency: { count: number; averageMs: number; p50Ms: number; p95Ms: number; p99Ms: number; maxMs: number };
+    rpcCount: number;
+    activeRequests: number;
+    activityQueueSize: number;
+    rpcLatency: Readonly<Record<string, { count: number; averageMs: number; p50Ms: number; p95Ms: number; p99Ms: number; maxMs: number }>>;
+    jobs: Readonly<Record<string, { running: boolean; runs: number; skippedOverlaps: number; lastStartedAt: string | null; lastCompletedAt: string | null; lastDurationMs: number | null; lastError: string }>>;
+  };
 }
 export interface AssetEntry {
   readonly name: string;
@@ -66,7 +78,6 @@ export interface RpcSubSummary {
 }
 export interface RpcSummary {
   readonly call: string;
-  readonly session?: string;
   readonly subs?: RpcSubSummary[];
   answered?: string;
   error?: string;
@@ -77,14 +88,15 @@ export interface CapturedRequest {
   method?: string;
   path: string;
   rawUrl?: string;
-  query: Record<string, string>;
+  query?: Record<string, string>;
   bodyLen: number;
-  bodyText: string;
+  bodyText?: string;
   kind: 'http' | 'rpc';
   matched: string | null;
   status: number;
   respLen?: number;
   respHex?: string;
+  durationMs: number;
   rpc?: RpcSummary;
   account?: { username: string; networkUid: string } | null;
 }

@@ -632,7 +632,7 @@ export async function savePlayerProfile(
     // gates layouts by level; clamp modified-client values to the unlocked
     // layouts so a profile cannot hold an unearned or unrenderable layout.
     const saneActiveFloorIndex = sanitizeActiveFloorIndex(profile.activeFloorIndex, current.activeFloorIndex, saneUserLevel);
-    const snapshotId = await capturePreSaveSnapshotTx(tx, profile.id.networkUid, audit.saveVersion);
+    const snapshotId = await capturePreSaveSnapshotTx(tx, profile.id.networkUid, audit.saveVersion, acceptedAt);
 
     // Price valid client purchases authoritatively, but never discard the rest
     // of a player's save because one price/ownership check is suspicious. A

@@ -6,7 +6,7 @@ export class RequestLog {
   private readonly clients = new Set<ServerResponse>();
   private seq = 0;
 
-  constructor(private readonly maxEntries: number) {}
+  constructor(private readonly maxEntries: number, private readonly stdout = true) {}
 
   nextId(): number {
     this.seq += 1;
@@ -33,20 +33,24 @@ export class RequestLog {
   }
 
   record(entry: CapturedRequest): void {
+    entry.durationMs = Math.max(0, Date.now() - new Date(entry.time).getTime());
     this.entries.push(entry);
     if (this.entries.length > this.maxEntries) {
       this.entries.shift();
     }
 
-    const payload = `data: ${JSON.stringify(entry)}\n\n`;
-    for (const res of this.clients) {
-      try {
-        res.write(payload);
-      } catch {
-        this.clients.delete(res);
+    if (this.clients.size > 0) {
+      const payload = `data: ${JSON.stringify(entry)}\n\n`;
+      for (const res of this.clients) {
+        try {
+          res.write(payload);
+        } catch {
+          this.clients.delete(res);
+        }
       }
     }
 
+    if (!this.stdout) return;
     const bodyNote = entry.bodyLen ? ` body=${entry.bodyLen}B` : '';
     const matchNote = entry.matched ? ` -> ${entry.matched}` : '';
     const userNote = entry.account ? ` (${entry.account.username})` : '';

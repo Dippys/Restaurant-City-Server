@@ -45,14 +45,18 @@ import { createSessionForAccountId, discordStateForAccount, dismissDiscordLinkPr
 import { clearDiscordCookie, consumeDiscordLoginTicket, createDiscordLoginTicket, discordAuthorization, discordOAuthConfigured, DISCORD_STATE_COOKIE, DISCORD_TICKET_COOKIE, exchangeDiscordCode, peekDiscordLoginTicket, purgeExpiredDiscordTickets, readDiscordLoginTicket, readDiscordOAuthState, safeReturnPath } from './discord-oauth';
 import { initializeDiscordNotificationState } from './discord-notifications';
 import { prisma } from './db/client';
+import { leaderboardPage } from './db/leaderboard';
 import { latestStoredImage } from './db/rpc-store';
 import { RequestLog } from './request-log';
 import { StaticFileIndex } from './static-files';
 import type { CapturedRequest } from './types';
 import { buildResponse } from './rpc';
 import { writeString } from './rpc/codec';
-import { accountFromRequest, accountFromUsername, clientIp, logoutCookie, requestIsSecure, sessionCookie } from './session';
+import { accountFromUsername, clientIp, logoutCookie, requestIsSecure, sessionCookie } from './session';
 import type { ActiveAccount } from './session';
+import { RequestContext, resolveRequestContext } from './request-context';
+import { backgroundJobs, type SchedulerHandle } from './job-runner';
+import { performanceMetrics } from './performance';
 import { enqueueGlobalLiveEvent, enqueueLiveEvent, listOnlineUsers, LIVE_EVENT_ALERT } from './live-events';
 import { actOnLink, adminLifecycle, adminLinkDetail, cancelPlayerLink, createAdminLink, createPlayerLink, listAdminLinks, publicLink, socialImageTarget, sweepExpiredEscrow } from './social-links/service';
 import { renderSocialLanding } from './social-links/landing';
@@ -60,7 +64,7 @@ import { forceDailyIngredientSync } from './daily-ingredients/scheduler';
 import { recordRpcActivity } from './moderation/service';
 import { createManualSnapshot, moderationOverview, moderationPlayerDetail, rebuildPlayerSave, repairFallbackPlayer, resetAllFindings, resetProfileToStarter, reviewFinding, rollbackProfile, scanAllProfiles, setPlayerBan, terminatePlayerSessions } from './moderation/service';
 import { runModerationCycle } from './moderation/scheduler';
-import { impersonationFromRequest, startImpersonation, stopImpersonation } from './impersonation';
+import { startImpersonation, stopImpersonation } from './impersonation';
 import { clearImpersonationCookie, impersonationCookie } from './session';
 
 const CROSSDOMAIN = [
@@ -76,35 +80,49 @@ export interface RestaurantCityServer {
   readonly httpServer: http.Server;
   readonly staticFiles: StaticFileIndex;
   readonly requestLog: RequestLog;
+  readonly backgroundScheduler: SchedulerHandle;
 }
 
 export function createServer(config: ServerConfig): RestaurantCityServer {
-  const requestLog = new RequestLog(config.maxLogEntries);
+  const requestLog = new RequestLog(config.maxLogEntries, config.requestLogStdout);
   const staticFiles = new StaticFileIndex(config);
 
   const httpServer = http.createServer((req, res) => {
+    const requestStartedAt = performanceMetrics.requestStarted();
+    let requestFinished = false;
+    const finishRequest = () => {
+      if (requestFinished) return;
+      requestFinished = true;
+      performanceMetrics.requestFinished(performance.now() - requestStartedAt);
+    };
+    res.once('finish', finishRequest);
+    res.once('close', finishRequest);
     applySecurityHeaders(res);
-    handleRequest(config, staticFiles, requestLog, req, res).catch((error) => {
-      console.error(error);
-      if (!res.headersSent) {
-        res.writeHead(error instanceof RequestTooLargeError ? 413 : 500, { 'Content-Type': 'text/plain; charset=utf-8' });
-      }
-      res.end(error instanceof RequestTooLargeError ? 'request too large' : 'internal server error');
-    });
+    resolveRequestContext(requestLog.nextId(), req)
+      .then((context) => handleRequest(config, staticFiles, requestLog, context, req, res))
+      .catch((error) => {
+        console.error(error);
+        if (!res.headersSent) {
+          res.writeHead(error instanceof RequestTooLargeError ? 413 : 500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        }
+        res.end(error instanceof RequestTooLargeError ? 'request too large' : 'internal server error');
+      });
   });
 
   purgeExpiredSessions().catch((error) => console.error('Session cleanup failed:', error));
   purgeExpiredDiscordTickets().catch((error) => console.error('Discord ticket cleanup failed:', error));
-  sweepExpiredEscrow().catch((error) => console.error('Social escrow cleanup failed:', error));
-  const socialSweep = setInterval(() => sweepExpiredEscrow().catch((error) => console.error('Social escrow cleanup failed:', error)), 60_000);
+  const sweepSocialEscrow = () => backgroundJobs.run('social-escrow-cleanup', () => sweepExpiredEscrow()).catch((error) => console.error('Social escrow cleanup failed:', error));
+  void sweepSocialEscrow();
+  const socialSweep = setInterval(() => void sweepSocialEscrow(), 60_000);
   socialSweep.unref();
-  return { httpServer, staticFiles, requestLog };
+  return { httpServer, staticFiles, requestLog, backgroundScheduler: { stop: () => clearInterval(socialSweep) } };
 }
 
 async function handleRequest(
   config: ServerConfig,
   staticFiles: StaticFileIndex,
   requestLog: RequestLog,
+  context: RequestContext,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -112,17 +130,12 @@ async function handleRequest(
   const url = new URL(req.url || '/', `http://localhost:${config.port}`);
   const pathname = decodeURIComponent(url.pathname);
 
-  const entry = createEntry(requestLog.nextId(), req, url, pathname, body);
+  const entry = createEntry(context.requestId, req, url, pathname, body, config.rpcCaptureMode);
 
   // Stamp the authenticated player (best-effort) so the dashboard can show who
   // caused each request. Anonymous requests stay unstamped.
-  try {
-    const account = await accountFromRequest(req);
-    if (account) {
-      entry.account = { username: account.username, networkUid: account.networkUid };
-    }
-  } catch {
-    // ignore — the entry just stays anonymous
+  if (context.account) {
+    entry.account = { username: context.account.username, networkUid: context.account.networkUid };
   }
 
   if (pathname === '/') {
@@ -148,7 +161,7 @@ async function handleRequest(
   if (pathname === '/auth/discord' && req.method === 'GET') {
     try {
       const intent = url.searchParams.get('intent') === 'link' ? 'link' : 'login';
-      const account = intent === 'link' ? await requireAccount(req, res, true) : null;
+      const account = intent === 'link' ? await requireAccount(context, req, res, true) : null;
       if (intent === 'link' && !account?.id) return;
       const authorization = discordAuthorization(req, intent, account?.id);
       res.setHeader('Set-Cookie', authorization.cookie);
@@ -169,7 +182,7 @@ async function handleRequest(
       const discord = await exchangeDiscordCode(req, url.searchParams.get('code') || '');
       const linked = await prisma.discordIdentity.findUnique({ where: { discordUserId: discord.id } });
       if (state.intent === 'link') {
-        const account = await accountFromRequest(req);
+        const account = context.account;
         if (!account?.id || account.id !== state.accountId) throw new Error('Your login changed during Discord linking. Please try again.');
         await linkDiscordIdentity(account.id, discord);
         res.setHeader('Set-Cookie', clearDiscordCookie(DISCORD_STATE_COOKIE, secure));
@@ -194,7 +207,7 @@ async function handleRequest(
 
   const socialPage = pathname.match(/^\/s\/([A-Za-z0-9_-]{32})$/);
   if (socialPage && (req.method === 'GET' || req.method === 'HEAD')) {
-    const account = await accountFromRequest(req);
+    const account = context.account;
     const state = await publicLink(socialPage[1], account);
     if (!state) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(req.method === 'HEAD' ? undefined : 'Social link not found.'); return; }
     const origin = publicOrigin(req);
@@ -221,14 +234,14 @@ async function handleRequest(
 
   if (pathname === '/__dash' || pathname === '/dashboard' || pathname === '/database') {
     // All admin surfaces were consolidated into the single /admin dashboard.
-    if (!(await requireAdmin(req, res))) return;
+    if (!(await requireAdmin(context, req, res))) return;
     res.writeHead(302, { Location: '/admin' });
     res.end();
     return;
   }
 
   if (pathname === '/game' || pathname === '/play') {
-    if (!(await requireGameAccount(req, res, true))) return;
+    if (!(await requireGameAccount(context, req, res, true))) return;
     const html = fs.readFileSync(path.join(config.serverRoot, 'public', 'game.html'));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
@@ -236,13 +249,18 @@ async function handleRequest(
   }
 
   if (pathname === '/account') {
-    if (!(await requireAccount(req, res, true))) return;
+    if (!(await requireAccount(context, req, res, true))) return;
     serveHtml(config, res, 'account.html');
     return;
   }
 
+  if (pathname === '/leaderboards' || pathname === '/leaderboard') {
+    serveHtml(config, res, 'leaderboards.html');
+    return;
+  }
+
   if (pathname === '/admin') {
-    if (!(await requireAdmin(req, res))) return;
+    if (!(await requireAdmin(context, req, res))) return;
     const html = fs.readFileSync(path.join(config.serverRoot, 'public', 'admin.html'));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
@@ -264,7 +282,7 @@ async function handleRequest(
   }
 
   if (pathname === '/__events') {
-    if (!(await requireAdmin(req, res))) return;
+    if (!(await requireAdmin(context, req, res))) return;
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -277,27 +295,27 @@ async function handleRequest(
   }
 
   if (pathname === '/__api/requests') {
-    if (!(await requireAdmin(req, res))) return;
+    if (!(await requireAdmin(context, req, res))) return;
     sendJson(res, requestLog.snapshot());
     return;
   }
 
   if (pathname === '/__api/clear') {
-    if (!(await requireAdminMutation(req, res))) return;
+    if (!(await requireAdminMutation(context, req, res))) return;
     requestLog.clear();
     sendJson(res, { ok: true });
     return;
   }
 
   if (pathname === '/__api/reindex') {
-    if (!(await requireAdminMutation(req, res))) return;
+    if (!(await requireAdminMutation(context, req, res))) return;
     staticFiles.reindex();
     sendJson(res, { ok: true, files: staticFiles.size });
     return;
   }
 
   if (pathname === '/__api/admin/overview' && req.method === 'GET') {
-    if (!(await requireAdmin(req, res))) return;
+    if (!(await requireAdmin(context, req, res))) return;
     const requests = requestLog.snapshot();
     sendJson(res, {
       ok: true,
@@ -311,12 +329,13 @@ async function handleRequest(
       uptimeSeconds: Math.floor(process.uptime()),
       dbSizeBytes: dbFileSize(config),
       serverTime: new Date().toISOString(),
+      performance: performanceMetrics.snapshot(),
     });
     return;
   }
 
   if (pathname === '/__api/admin/assets' && req.method === 'GET') {
-    if (!(await requireAdmin(req, res))) return;
+    if (!(await requireAdmin(context, req, res))) return;
     const files = staticFiles.entries().map(({ name, path: relativePath }) => {
       let size = 0;
       try {
@@ -332,8 +351,8 @@ async function handleRequest(
 
   if (pathname === '/__api/session' && req.method === 'GET') {
     const gameSession = req.headers['x-rc-game-session'] === '1' || url.searchParams.get('game') === '1';
-    const impersonation = gameSession ? await impersonationFromRequest(req) : { present: false, account: null };
-    const account = impersonation.present ? impersonation.account : await accountFromRequest(req);
+    const impersonation = gameSession ? await context.impersonation() : { present: false, account: null };
+    const account = impersonation.present ? impersonation.account : context.account;
     if (gameSession && impersonation.present && !impersonation.account) res.setHeader('Set-Cookie', clearImpersonationCookie(requestIsSecure(req)));
     const discord = account?.id ? await discordStateForAccount(account.id) : { linked: false };
     const promptRow = account?.id && !discord.linked
@@ -352,6 +371,17 @@ async function handleRequest(
         showLinkPrompt: Boolean(account && !discord.linked && !promptRow?.discordLinkPromptedAt),
       },
     });
+    return;
+  }
+
+  if (pathname === '/__api/leaderboards' && req.method === 'GET') {
+    const account = context.account;
+    const result = await leaderboardPage(url.searchParams, account?.networkUid, config.leaderboardCacheMs);
+    res.setHeader('Cache-Control', 'private, max-age=15');
+    res.setHeader('Vary', 'Cookie');
+    res.setHeader('X-Leaderboard-Cache', result.cache);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, ...result }));
     return;
   }
 
@@ -391,12 +421,12 @@ async function handleRequest(
   }
 
   if (pathname === '/__api/account/discord/prompt' && req.method === 'POST') {
-    const account = await requireMutation(req, res); if (!account?.id) return;
+    const account = await requireMutation(context, req, res); if (!account?.id) return;
     await dismissDiscordLinkPrompt(account.id); sendJson(res, { ok: true }); return;
   }
 
   if (pathname === '/__api/account/discord' && req.method === 'PATCH') {
-    const account = await requireMutation(req, res); if (!account?.id) return;
+    const account = await requireMutation(context, req, res); if (!account?.id) return;
     try {
       const input = parseJsonBody<{ dmNotificationsEnabled?: boolean }>(body);
       await setDiscordNotifications(account.id, input.dmNotificationsEnabled !== false);
@@ -406,14 +436,14 @@ async function handleRequest(
   }
 
   if (pathname === '/__api/account/discord' && req.method === 'DELETE') {
-    const account = await requireMutation(req, res); if (!account?.id) return;
+    const account = await requireMutation(context, req, res); if (!account?.id) return;
     try { await unlinkDiscordIdentity(account.id); sendJson(res, { ok: true }); }
     catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400); }
     return;
   }
 
   if (pathname === '/__api/admin/impersonation' && req.method === 'POST') {
-    const actor = await requireAdminMutation(req, res);
+    const actor = await requireAdminMutation(context, req, res);
     if (!actor) return;
     try {
       const input = parseJsonBody<{ networkUid?: string }>(body);
@@ -427,9 +457,9 @@ async function handleRequest(
   }
 
   if (pathname === '/__api/game/impersonation' && req.method === 'DELETE') {
-    const gameAccount = await requireGameMutation(req, res);
+    const gameAccount = await requireGameMutation(context, req, res);
     if (!gameAccount) return;
-    const actor = await accountFromRequest(req);
+    const actor = context.account;
     if (!actor) { sendJson(res, { ok: false, error: 'Administrator session expired.' }, 401); return; }
     try {
       const targetNetworkUid = await stopImpersonation(req, actor);
@@ -443,14 +473,14 @@ async function handleRequest(
 
   const socialState = pathname.match(/^\/__api\/social-links\/([A-Za-z0-9_-]{32})$/);
   if (socialState && req.method === 'GET') {
-    const state = await publicLink(socialState[1], await accountForInteractiveRequest(req));
+    const state = await publicLink(socialState[1], await accountForInteractiveRequest(context, req));
     if (!state) { sendJson(res, { ok: false, error: 'Social link not found.' }, 404); return; }
     sendJson(res, { ok: true, link: state });
     return;
   }
 
   if (pathname === '/__api/social-links' && req.method === 'POST') {
-    const account = await requireInteractiveMutation(req, res); if (!account) return;
+    const account = await requireInteractiveMutation(context, req, res); if (!account) return;
     try {
       enforceSocialRateLimit('create', clientIp(req), 20, 60_000);
       sendJson(res, { ok: true, ...(await createPlayerLink(account, parseJsonBody(body))) }, 201);
@@ -460,7 +490,7 @@ async function handleRequest(
 
   const socialAction = pathname.match(/^\/__api\/social-links\/([A-Za-z0-9_-]{32})\/actions$/);
   if (socialAction && req.method === 'POST') {
-    const account = await requireInteractiveMutation(req, res); if (!account) return;
+    const account = await requireInteractiveMutation(context, req, res); if (!account) return;
     try {
       enforceSocialRateLimit('action', `${clientIp(req)}:${account.id}`, 60, 60_000);
       const input = parseJsonBody<{ action?: string; idempotencyKey?: string }>(body);
@@ -473,25 +503,25 @@ async function handleRequest(
 
   const socialCancel = pathname.match(/^\/__api\/social-links\/([A-Za-z0-9_-]{32})\/cancel$/);
   if (socialCancel && req.method === 'POST') {
-    const account = await requireInteractiveMutation(req, res); if (!account) return;
+    const account = await requireInteractiveMutation(context, req, res); if (!account) return;
     try { enforceSocialRateLimit('action', `${clientIp(req)}:${account.id}`, 60, 60_000); await cancelPlayerLink(socialCancel[1], account); sendJson(res, { ok: true }); }
     catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, error instanceof RateLimitError ? 429 : 400); }
     return;
   }
 
   if (pathname === '/__api/admin/social-links' && req.method === 'GET') {
-    if (!(await requireAdmin(req, res))) return;
+    if (!(await requireAdmin(context, req, res))) return;
     sendJson(res, { ok: true, links: await listAdminLinks() }); return;
   }
   if (pathname === '/__api/admin/social-links' && req.method === 'POST') {
-    const account = await requireAdminMutation(req, res); if (!account) return;
+    const account = await requireAdminMutation(context, req, res); if (!account) return;
     try { enforceSocialRateLimit('admin', account.id || clientIp(req), 100, 60_000); sendJson(res, { ok: true, ...(await createAdminLink(account, parseJsonBody(body))) }, 201); }
     catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, error instanceof RateLimitError ? 429 : 400); } return;
   }
   const adminSocial = pathname.match(/^\/__api\/admin\/social-links\/([A-Za-z0-9-]+)(?:\/(activate|pause|resume|revoke|expire|duplicate|actions))?$/);
   if (adminSocial) {
     if (req.method === 'GET') {
-      if (!(await requireAdmin(req, res))) return;
+      if (!(await requireAdmin(context, req, res))) return;
       const detail = await adminLinkDetail(adminSocial[1]);
       if (!detail) { sendJson(res, { ok: false, error: 'Social link not found.' }, 404); return; }
       if (adminSocial[2] === 'actions' && url.searchParams.get('format') === 'csv') {
@@ -502,7 +532,7 @@ async function handleRequest(
       sendJson(res, { ok: true, link: detail }); return;
     }
     if (req.method === 'PATCH' || req.method === 'POST') {
-      const account = await requireAdminMutation(req, res); if (!account) return;
+      const account = await requireAdminMutation(context, req, res); if (!account) return;
       try { enforceSocialRateLimit('admin', account.id || clientIp(req), 100, 60_000); sendJson(res, { ok: true, link: await adminLifecycle(account, adminSocial[1], adminSocial[2] || 'patch', parseJsonBody(body)) }); }
       catch (error) { sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, error instanceof RateLimitError ? 429 : 400); } return;
     }
@@ -511,7 +541,7 @@ async function handleRequest(
   // Game instance claim: the newest instance of a player's game wins; older
   // instances detect the swap via polling and stop themselves (hard kick).
   if (pathname === '/__api/game/claim' && req.method === 'POST') {
-    const account = await requireGameMutation(req, res);
+    const account = await requireGameMutation(context, req, res);
     if (!account) return;
     const input = parseJsonBody<{ instanceId?: string }>(body);
     const instanceId = String(input.instanceId || '').trim();
@@ -525,7 +555,7 @@ async function handleRequest(
   }
 
   if (pathname === '/__api/game/claim' && req.method === 'GET') {
-    const account = await accountFromGameRequest(req);
+    const account = await context.gameAccount();
     if (!account) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: 'Not logged in.' }));
@@ -554,7 +584,7 @@ async function handleRequest(
 
   if (pathname === '/__api/signup' && req.method === 'POST') {
     try {
-      if (await accountFromRequest(req)) {
+      if (context.account) {
         sendJson(res, { ok: false, error: 'You are already logged in. Log out first to create another account.' }, 400);
         return;
       }
@@ -572,7 +602,7 @@ async function handleRequest(
   }
 
   if (pathname === '/__api/logout' && req.method === 'POST') {
-    const account = await requireMutation(req, res);
+    const account = await requireMutation(context, req, res);
     if (!account) return;
     await revokeSession(account.sessionId);
     res.setHeader('Set-Cookie', logoutCookie(requestIsSecure(req)));
@@ -581,7 +611,7 @@ async function handleRequest(
   }
 
   if (pathname === '/__api/account' && req.method === 'PATCH') {
-    const account = await requireMutation(req, res);
+    const account = await requireMutation(context, req, res);
     if (!account?.id || !account.sessionId) return;
     try {
       await updateAccountSettings(account.id, account.sessionId, parseJsonBody(body));
@@ -598,20 +628,20 @@ async function handleRequest(
   }
 
   if (pathname.startsWith('/__api/live')) {
-    if (!(await requireAdminMutationForMethod(req, res))) return;
+    if (!(await requireAdminMutationForMethod(context, req, res))) return;
     await handleLiveApi(config, req.method || 'GET', pathname, body, res);
     return;
   }
 
   if (pathname.startsWith('/__api/moderation')) {
-    const actor = await requireAdminMutationForMethod(req, res);
+    const actor = await requireAdminMutationForMethod(context, req, res);
     if (!actor) return;
-    await handleModerationApi(config, req, req.method || 'GET', pathname, body, actor, res);
+    await handleModerationApi(config, context, req, req.method || 'GET', pathname, body, actor, res);
     return;
   }
 
   if (pathname.startsWith('/__api/db')) {
-    if (!(await requireAdminMutationForMethod(req, res))) return;
+    if (!(await requireAdminMutationForMethod(context, req, res))) return;
     await handleDatabaseApi(req.method || 'GET', pathname, body, res);
     return;
   }
@@ -698,7 +728,7 @@ async function handleRequest(
   }
 
   if (isRpcPath(pathname)) {
-    await handleRpc(req, res, body, entry);
+    await handleRpc(context, req, res, body, entry);
     requestLog.record(entry);
     return;
   }
@@ -716,7 +746,7 @@ async function handleRequest(
   requestLog.record(entry);
 }
 
-async function handleModerationApi(config: ServerConfig, req: IncomingMessage, method: string, pathname: string, body: Buffer, actor: ActiveAccount, res: ServerResponse): Promise<void> {
+async function handleModerationApi(config: ServerConfig, context: RequestContext, req: IncomingMessage, method: string, pathname: string, body: Buffer, actor: ActiveAccount, res: ServerResponse): Promise<void> {
   try {
     if (method === 'GET' && pathname === '/__api/moderation') {
       sendJson(res, { ok: true, ...(await moderationOverview()) });
@@ -772,14 +802,14 @@ async function handleModerationApi(config: ServerConfig, req: IncomingMessage, m
         // Keep the active diagnostic session usable after the repair. The old
         // implementation revoked it but left the impersonation cookie/record
         // alive; the next boot then failed RPC init and Flash created Dummy0.
-        const impersonation = await impersonationFromRequest(req);
+        const impersonation = await context.impersonation();
         const activeTargetSessionId = impersonation.account?.networkUid === networkUid
           ? impersonation.account.sessionId
           : undefined;
         sendJson(res, { ok: true, result: await repairFallbackPlayer(networkUid, actor, activeTargetSessionId) }); return;
       }
       if (method === 'POST' && operation === 'rebuild-save') {
-        const impersonation = await impersonationFromRequest(req);
+        const impersonation = await context.impersonation();
         const activeTargetSessionId = impersonation.account?.networkUid === networkUid
           ? impersonation.account.sessionId
           : undefined;
@@ -792,9 +822,9 @@ async function handleModerationApi(config: ServerConfig, req: IncomingMessage, m
   }
 }
 
-async function handleRpc(req: IncomingMessage, res: ServerResponse, body: Buffer, entry: CapturedRequest): Promise<void> {
+async function handleRpc(context: RequestContext, req: IncomingMessage, res: ServerResponse, body: Buffer, entry: CapturedRequest): Promise<void> {
   entry.kind = 'rpc';
-  const account = await accountFromGameRequest(req);
+  const account = await context.gameAccount();
   if (!account) {
     entry.status = 401;
     res.writeHead(401, { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' });
@@ -802,7 +832,7 @@ async function handleRpc(req: IncomingMessage, res: ServerResponse, body: Buffer
     return;
   }
   entry.account = { username: account.username, networkUid: account.networkUid };
-  await recordRpcActivity(account).catch((error) => console.error('Moderation activity tracking failed:', error));
+  recordRpcActivity(account);
 
   let response: Buffer;
   try {
@@ -815,8 +845,9 @@ async function handleRpc(req: IncomingMessage, res: ServerResponse, body: Buffer
   }
 
   entry.respLen = response.length;
-  entry.respHex = response.toString('hex');
+  if (entry.bodyHex !== undefined) entry.respHex = response.toString('hex');
   entry.status = 200;
+  performanceMetrics.recordRpc(entry.rpc?.call || 'unknown', performance.now() - context.startedAt);
 
   res.writeHead(200, {
     'Content-Type': 'application/octet-stream',
@@ -951,23 +982,77 @@ async function handleProfileImage(pathname: string, res: ServerResponse): Promis
   res.end(png);
 }
 
-function createEntry(id: number, req: IncomingMessage, url: URL, pathname: string, body: Buffer): CapturedRequest {
-  return {
+export function createEntry(
+  id: number,
+  req: IncomingMessage,
+  url: URL,
+  pathname: string,
+  body: Buffer,
+  captureMode: ServerConfig['rpcCaptureMode'],
+): CapturedRequest {
+  const entry: CapturedRequest = {
     id,
     time: new Date().toISOString(),
     method: req.method,
     path: pathname,
-    rawUrl: req.url,
-    query: Object.fromEntries(url.searchParams.entries()),
-    headers: req.headers,
     bodyLen: body.length,
-    bodyHex: body.length ? body.toString('hex') : '',
-    bodyBase64: body.length ? body.toString('base64') : '',
-    bodyText: body.length ? utf8Preview(body) : '',
     kind: 'http',
     matched: null,
     status: 0,
+    durationMs: 0,
   };
+  if (captureMode !== 'full') return entry;
+
+  entry.rawUrl = redactedRawUrl(url);
+  entry.query = redactedQuery(url);
+  entry.headers = redactedHeaders(req.headers);
+  if (body.length > 0 && !sensitiveBodyPath(pathname)) {
+    const capturedBody = isRpcPath(pathname) ? redactRpcSession(body) : body;
+    entry.bodyHex = capturedBody.toString('hex');
+    entry.bodyBase64 = capturedBody.toString('base64');
+    entry.bodyText = utf8Preview(capturedBody);
+  }
+  return entry;
+}
+
+const SECRET_FIELD = /(?:authorization|cookie|csrf|pin|password|secret|session|token|code|state)/i;
+
+function redactedHeaders(headers: IncomingMessage['headers']): IncomingMessage['headers'] {
+  return Object.fromEntries(Object.entries(headers).map(([key, value]) => [key, SECRET_FIELD.test(key) ? '[redacted]' : value]));
+}
+
+function redactedQuery(url: URL): Record<string, string> {
+  return Object.fromEntries([...url.searchParams.entries()].map(([key, value]) => [key, SECRET_FIELD.test(key) ? '[redacted]' : value]));
+}
+
+function redactedRawUrl(url: URL): string {
+  const query = new URLSearchParams(redactedQuery(url)).toString();
+  return `${url.pathname}${query ? `?${query}` : ''}`;
+}
+
+function sensitiveBodyPath(pathname: string): boolean {
+  return /^\/__api\/(?:login|signup|discord\/complete|account(?:\/|$))/.test(pathname);
+}
+
+/** Preserve RPC framing for debugging while removing the top-level session value. */
+function redactRpcSession(body: Buffer): Buffer {
+  if (body.length < 3) return body;
+  let offset = 2;
+  let charLength = 0;
+  let groups = 0;
+  while (offset < body.length && groups < 5) {
+    const byte = body[offset++];
+    charLength = (charLength << 7) | (byte & 0x7f);
+    groups += 1;
+    if ((byte & 0x80) === 0) break;
+  }
+  if (groups === 0 || charLength < 1 || offset + charLength > body.length) return body;
+  // Runtime session identifiers are ASCII. Refuse to guess at a multibyte
+  // field because changing its encoded byte width would invalidate the frame.
+  for (let i = 0; i < charLength; i += 1) if (body[offset + i] >= 0x80) return body;
+  const redacted = Buffer.from(body);
+  redacted.fill(0x2a, offset, offset + charLength);
+  return redacted;
 }
 
 function isRpcPath(pathname: string): boolean {
@@ -1266,8 +1351,8 @@ function publicAccount(account: ActiveAccount | null): Omit<ActiveAccount, 'csrf
   return safe;
 }
 
-async function requireAccount(req: IncomingMessage, res: ServerResponse, redirect = false): Promise<ActiveAccount | null> {
-  const account = await accountFromRequest(req);
+async function requireAccount(context: RequestContext, req: IncomingMessage, res: ServerResponse, redirect = false): Promise<ActiveAccount | null> {
+  const account = context.account;
   if (account) return account;
   if (redirect) {
     res.writeHead(303, { Location: `/login?next=${encodeURIComponent(req.url || '/game')}` });
@@ -1284,18 +1369,13 @@ function appendResult(pathname: string, key: string, value: string): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-async function accountFromGameRequest(req: IncomingMessage): Promise<ActiveAccount | null> {
-  const impersonation = await impersonationFromRequest(req);
-  return impersonation.present ? impersonation.account : accountFromRequest(req);
+async function accountForInteractiveRequest(context: RequestContext, req: IncomingMessage): Promise<ActiveAccount | null> {
+  return req.headers['x-rc-game-session'] === '1' ? context.gameAccount() : context.account;
 }
 
-async function accountForInteractiveRequest(req: IncomingMessage): Promise<ActiveAccount | null> {
-  return req.headers['x-rc-game-session'] === '1' ? accountFromGameRequest(req) : accountFromRequest(req);
-}
-
-async function requireGameAccount(req: IncomingMessage, res: ServerResponse, redirect = false): Promise<ActiveAccount | null> {
-  const impersonation = await impersonationFromRequest(req);
-  const account = impersonation.present ? impersonation.account : await accountFromRequest(req);
+async function requireGameAccount(context: RequestContext, req: IncomingMessage, res: ServerResponse, redirect = false): Promise<ActiveAccount | null> {
+  const impersonation = await context.impersonation();
+  const account = impersonation.present ? impersonation.account : context.account;
   if (!account && impersonation.present) res.setHeader('Set-Cookie', clearImpersonationCookie(requestIsSecure(req)));
   if (account) return account;
   if (redirect) {
@@ -1307,8 +1387,8 @@ async function requireGameAccount(req: IncomingMessage, res: ServerResponse, red
   return null;
 }
 
-async function requireGameMutation(req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
-  const account = await requireGameAccount(req, res);
+async function requireGameMutation(context: RequestContext, req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
+  const account = await requireGameAccount(context, req, res);
   if (!account) return null;
   if (!sameOrigin(req) || !account.csrfToken || req.headers['x-csrf-token'] !== account.csrfToken) {
     sendJson(res, { ok: false, error: 'Invalid security token. Refresh the page and try again.' }, 403);
@@ -1317,12 +1397,12 @@ async function requireGameMutation(req: IncomingMessage, res: ServerResponse): P
   return account;
 }
 
-async function requireInteractiveMutation(req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
-  return req.headers['x-rc-game-session'] === '1' ? requireGameMutation(req, res) : requireMutation(req, res);
+async function requireInteractiveMutation(context: RequestContext, req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
+  return req.headers['x-rc-game-session'] === '1' ? requireGameMutation(context, req, res) : requireMutation(context, req, res);
 }
 
-async function requireAdmin(req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
-  const account = await requireAccount(req, res);
+async function requireAdmin(context: RequestContext, req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
+  const account = await requireAccount(context, req, res);
   if (!account) return null;
   if (account.role !== 'ADMIN') {
     sendJson(res, { ok: false, error: 'Administrator access required.' }, 403);
@@ -1331,8 +1411,8 @@ async function requireAdmin(req: IncomingMessage, res: ServerResponse): Promise<
   return account;
 }
 
-async function requireMutation(req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
-  const account = await requireAccount(req, res);
+async function requireMutation(context: RequestContext, req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
+  const account = await requireAccount(context, req, res);
   if (!account) return null;
   if (!sameOrigin(req) || !account.csrfToken || req.headers['x-csrf-token'] !== account.csrfToken) {
     sendJson(res, { ok: false, error: 'Invalid security token. Refresh the page and try again.' }, 403);
@@ -1341,8 +1421,8 @@ async function requireMutation(req: IncomingMessage, res: ServerResponse): Promi
   return account;
 }
 
-async function requireAdminMutation(req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
-  const account = await requireMutation(req, res);
+async function requireAdminMutation(context: RequestContext, req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
+  const account = await requireMutation(context, req, res);
   if (!account) return null;
   if (account.role !== 'ADMIN') {
     sendJson(res, { ok: false, error: 'Administrator access required.' }, 403);
@@ -1351,8 +1431,8 @@ async function requireAdminMutation(req: IncomingMessage, res: ServerResponse): 
   return account;
 }
 
-async function requireAdminMutationForMethod(req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
-  return req.method === 'GET' || req.method === 'HEAD' ? requireAdmin(req, res) : requireAdminMutation(req, res);
+async function requireAdminMutationForMethod(context: RequestContext, req: IncomingMessage, res: ServerResponse): Promise<ActiveAccount | null> {
+  return req.method === 'GET' || req.method === 'HEAD' ? requireAdmin(context, req, res) : requireAdminMutation(context, req, res);
 }
 
 function sameOrigin(req: IncomingMessage): boolean {

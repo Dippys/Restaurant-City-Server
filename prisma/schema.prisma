@@ -418,7 +418,7 @@ model ProfileSnapshot {
 model ProfileSaveFact {
   id                Int      @id @default(autoincrement())
   networkUid        String
-  snapshotId        String?
+  snapshotId        String?  // ADR-0051 interval checkpoint anchor; not necessarily the exact immediately-before state
   saveVersion       Int
   rpcSessionToken   String   @default("") // ADR-0042: fence token (per SWF load) for exact same-session clock comparisons
   clientTime        Int

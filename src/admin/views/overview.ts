@@ -22,6 +22,10 @@ export async function render(container: HTMLElement): Promise<void> {
     card('Request buffer', `${fmt(data.requestBuffer)} / ${fmt(data.maxLogEntries)}`, `${fmt(data.rpcCount)} RPC · ${fmt(data.notFoundCount)} 404`),
     card('Online players', fmt(data.onlineUsers.length), 'live sessions'),
     card('Uptime', fmtDuration(data.uptimeSeconds), `DB ${fmtBytes(data.dbSizeBytes)}`),
+    card('Process memory', fmtBytes(data.performance.memory.rssBytes), `${fmtBytes(data.performance.memory.heapUsedBytes)} heap used`),
+    card('Event-loop p99', `${data.performance.eventLoopDelayMs.p99.toFixed(1)} ms`, `max ${data.performance.eventLoopDelayMs.max.toFixed(1)} ms`),
+    card('Requests', fmt(data.performance.requestCount), `p95 ${data.performance.requestLatency.p95Ms.toFixed(1)} ms · ${fmt(data.performance.activeRequests)} active`),
+    card('Activity queue', fmt(data.performance.activityQueueSize), `${fmt(data.performance.rpcCount)} RPC measured`),
   );
 
   const actions = h('div', { class: 'rc-toolbar' },
@@ -61,6 +65,19 @@ export async function render(container: HTMLElement): Promise<void> {
     ),
   );
 
+  const jobs = Object.entries(data.performance.jobs);
+  const jobPanel = h('section', { class: 'rc-panel' },
+    h('h2', {}, 'Background jobs'),
+    el('table', { class: 'rc-table' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Job'), h('th', {}, 'State'), h('th', {}, 'Last duration'), h('th', {}, 'Skipped'), h('th', {}, 'Last error'))),
+      h('tbody', {}, ...(jobs.length ? jobs.map(([name, job]) => h('tr', {},
+        h('td', {}, name), h('td', {}, job.running ? 'running' : 'idle'),
+        h('td', {}, job.lastDurationMs == null ? '—' : `${fmt(job.lastDurationMs)} ms`),
+        h('td', {}, fmt(job.skippedOverlaps)), h('td', {}, job.lastError || '—'),
+      )) : [h('tr', {}, h('td', { colspan: '5', class: 'rc-empty' }, 'No background job has run yet.'))])),
+    ),
+  );
+
   container.textContent = '';
   container.append(
     h('h1', { class: 'rc-title' }, 'Server overview'),
@@ -68,5 +85,6 @@ export async function render(container: HTMLElement): Promise<void> {
     cards,
     actions,
     online,
+    jobPanel,
   );
 }

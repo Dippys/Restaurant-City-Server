@@ -16,6 +16,7 @@ const { prisma } = require('../dist/db/client.js');
 const { savePlayerProfile } = require('../dist/db/profile-store.js');
 const { evaluateProfile, levelForGourmet, unlocksForLevel } = require('../dist/moderation/rules.js');
 const { moderationPlayerDetail, recordLoginActivity, recordRpcActivity, resetAllFindings, scanPlayer, setPlayerBan, terminatePlayerSessions, rollbackProfile, resetProfileToStarter } = require('../dist/moderation/service.js');
+const { rpcActivityBuffer } = require('../dist/activity-buffer.js');
 const { sendPendingAnomalyDigest, validateModerationWebhookUrl } = require('../dist/moderation/discord.js');
 const { claimGameInstance, activeGameInstance } = require('../dist/game-instances.js');
 const { touchOnline, listOnlineUsers } = require('../dist/live-events.js');
@@ -151,7 +152,8 @@ test('measured activity accumulates bounded RPC gaps and counts logins/saves sep
   const account = await seed('81004', 'ActivityChef');
   await recordLoginActivity(account);
   await prisma.playerActivity.update({ where: { accountId: account.id }, data: { lastSeenAt: new Date(Date.now() - 10 * 60_000) } });
-  await recordRpcActivity(account);
+  recordRpcActivity(account);
+  await rpcActivityBuffer.flushDue(true);
   const activity = await prisma.playerActivity.findUniqueOrThrow({ where: { accountId: account.id } });
   assert.equal(activity.loginCount, 1);
   assert.equal(activity.rpcCount, 1);

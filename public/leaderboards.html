@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gourmet Hall of Fame — Restaurant City Reborn</title>
+<meta name="description" content="Meet Restaurant City Reborn's leading chefs: top Gourmet Points, restaurant ratings, rising players, levels, and community favorites.">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#35c0e9">
+<link rel="canonical" href="https://rc-reborn.uk/leaderboards">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Restaurant City Reborn">
+<meta property="og:title" content="Gourmet Hall of Fame — Restaurant City Reborn">
+<meta property="og:description" content="See the chefs and restaurants leading Restaurant City Reborn.">
+<meta property="og:image" content="https://rc-reborn.uk/assets/building.png">
+<link rel="icon" href="/assets/chef.png">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  .leader-wrap{max-width:1100px}.leader-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin:8px 0 18px}.leader-head-copy{max-width:680px}.leader-head h1{margin:10px 0 6px}.leader-head p{margin:0}.leader-chef{width:104px;filter:drop-shadow(0 8px 8px rgba(29,84,120,.28))}
+  .board-tabs{display:flex;gap:9px;overflow-x:auto;padding:4px 3px 10px;scrollbar-width:thin}.board-tab{white-space:nowrap;border:2px solid var(--line-dk);border-radius:999px;background:#ffffffd9;color:var(--steel-dk);font:800 14px var(--font);padding:9px 14px;cursor:pointer;box-shadow:0 3px 0 var(--line-dk)}.board-tab:hover{background:#fff}.board-tab[aria-selected="true"]{background:linear-gradient(#ffe981,var(--gold));border-color:var(--gold-dk);box-shadow:0 3px 0 #ad8100;color:var(--wood-dk)}
+  .board-tools{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:10px 0 22px}.periods{display:flex;gap:7px}.period{border:0;border-radius:9px;padding:7px 11px;background:#e6f4f9;color:var(--steel-dk);font:800 13px var(--font);cursor:pointer}.period.active{background:var(--steel);color:#fff}.search-wrap{position:relative;flex:1;max-width:350px;min-width:220px}.search-wrap .rc-input{padding-left:40px}.search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:17px;color:var(--bluegrey)}
+  .podium{display:grid;grid-template-columns:repeat(3,1fr);align-items:end;gap:14px;margin-bottom:24px}.podium-card{position:relative;text-align:center;background:var(--paper-2);border:3px solid var(--line-dk);border-radius:18px 18px 12px 12px;padding:20px 12px 15px;box-shadow:var(--shadow-sm);min-width:0;cursor:pointer}.podium-card.first{order:2;border-color:var(--gold-dk);padding-top:28px}.podium-card.second{order:1}.podium-card.third{order:3}.podium-medal{font-size:34px;line-height:1;display:block;margin-bottom:7px}.podium-avatar{width:64px;height:64px;margin:0 auto 8px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#fff,#dff4fb);border:3px solid var(--steel);color:var(--steel-dk);font-size:25px;font-weight:900}.first .podium-avatar{width:78px;height:78px;border-color:var(--gold-dk);font-size:29px}.podium-card h3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;font-size:17px}.podium-restaurant{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-soft);font-size:13px;margin:3px 0 7px}.podium-score{font-weight:900;color:var(--basil-dk)}
+  .viewer-card{display:flex;align-items:center;gap:14px;margin:0 0 18px;padding:13px 16px;background:linear-gradient(100deg,#fff7ce,#fffdf8);border:3px solid var(--gold);border-radius:14px;box-shadow:var(--shadow-sm)}.viewer-card.hidden{display:none}.viewer-rank{font-size:23px;font-weight:900;color:var(--wood-dk);min-width:62px}.viewer-copy{min-width:0;flex:1}.viewer-copy strong,.viewer-copy span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.viewer-copy span{font-size:13px;color:var(--ink-soft)}.viewer-score{font-weight:900;color:var(--basil-dk);white-space:nowrap}
+  .rank-panel{padding:0;overflow:hidden}.rank-summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:15px 19px;background:linear-gradient(180deg,#eaf8fd,#fff);border-bottom:2px solid var(--line-dk)}.rank-summary h2{font-size:18px;margin:0}.rank-summary small{color:var(--ink-soft);font-weight:700}.table-scroll{overflow-x:auto}.rank-table{width:100%;border-collapse:collapse;min-width:730px}.rank-table th{text-align:left;padding:11px 14px;background:#e7f6fb;color:var(--steel-dk);font-size:12px;text-transform:uppercase;letter-spacing:.6px}.rank-table td{padding:12px 14px;border-top:1px solid var(--line);vertical-align:middle}.rank-table tbody tr{cursor:pointer;transition:background .12s}.rank-table tbody tr:hover,.rank-table tbody tr:focus{background:#f0fbff;outline:none}.rank-number{font-size:17px;font-weight:900;color:var(--steel-dk);white-space:nowrap}.move{font-size:11px;margin-left:4px}.move.up{color:var(--basil-dk)}.move.down{color:var(--tomato-dk)}.player-cell{display:flex;align-items:center;gap:10px;min-width:190px}.mini-avatar{width:38px;height:38px;flex:none;border-radius:50%;display:grid;place-items:center;background:#e7f6fb;border:2px solid var(--line-dk);font-weight:900;color:var(--steel-dk)}.player-cell strong,.player-cell span{display:block}.player-cell span{font-size:12px;color:var(--ink-soft);max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.metric{font-weight:900;color:var(--basil-dk)}.muted-cell{color:var(--ink-soft);font-weight:700}.pager{display:flex;align-items:center;justify-content:center;gap:12px;padding:17px;border-top:2px solid var(--line-dk)}.pager .rc-btn{min-width:94px}.page-label{font-weight:800;color:var(--steel-dk)}
+  .status-box{text-align:center;padding:42px 20px;color:var(--ink-soft);font-weight:700}.status-box img{width:68px;display:block;margin:0 auto 12px}.loading-row{height:63px;background:linear-gradient(90deg,#fff 25%,#edf8fb 50%,#fff 75%);background-size:200% 100%;animation:shimmer 1.2s infinite}@keyframes shimmer{to{background-position:-200% 0}}@media(prefers-reduced-motion:reduce){.loading-row{animation:none}}
+  dialog{width:min(520px,calc(100% - 28px));border:3px solid var(--steel);border-radius:18px;background:var(--paper-2);color:var(--ink);padding:0;box-shadow:0 20px 70px rgba(20,55,80,.4)}dialog::backdrop{background:rgba(25,65,88,.5);backdrop-filter:blur(3px)}.profile-modal{padding:24px}.profile-top{display:flex;gap:16px;align-items:center}.profile-top .podium-avatar{margin:0}.profile-top h2{margin:0 0 3px}.profile-top p{margin:0;color:var(--ink-soft)}.profile-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:20px 0}.profile-stat{background:#edf8fb;border:2px solid var(--line);border-radius:11px;padding:10px}.profile-stat span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-soft);font-weight:800}.profile-stat strong{font-size:18px;color:var(--steel-dk)}.modal-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+  @media(max-width:650px){.leader-chef{display:none}.leader-head{align-items:flex-start}.podium{gap:7px}.podium-card{padding:14px 7px 11px}.podium-card.first{padding-top:20px}.podium-medal{font-size:28px}.podium-avatar{width:48px;height:48px;font-size:20px}.first .podium-avatar{width:58px;height:58px;font-size:23px}.podium-card h3{font-size:14px}.podium-score{font-size:12px}.viewer-card{align-items:flex-start;flex-wrap:wrap}.viewer-score{margin-left:76px}.rc-topbar{flex-wrap:wrap}.top-links{width:100%;justify-content:flex-end}.rank-summary{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<header class="rc-topbar">
+  <a class="rc-brand" href="/"><span class="rc-plate"></span><span class="rc-wordmark">Restaurant City Reborn</span></a>
+  <div style="flex:1"></div>
+  <nav class="top-links" style="display:flex;gap:10px;align-items:center">
+    <a class="rc-btn ghost small" href="/">Home</a>
+    <a id="accountLink" class="rc-btn ghost small" href="/login?next=/leaderboards">Log in</a>
+    <a class="rc-btn green small" href="/game">Play</a>
+  </nav>
+</header>
+
+<main class="rc-wrap leader-wrap">
+  <section class="leader-head">
+    <div class="leader-head-copy">
+      <span class="rc-eyebrow">The city's finest chefs</span>
+      <h1 class="rc-title">Gourmet Hall of Fame</h1>
+      <p id="boardDescription" class="rc-muted">The restaurants with the most Gourmet Points in Restaurant City Reborn.</p>
+    </div>
+    <img class="leader-chef" src="/assets/chef.png" alt="Restaurant City chef">
+  </section>
+
+  <div class="board-tabs" role="tablist" aria-label="Leaderboard category">
+    <button class="board-tab" role="tab" data-board="gourmet">🏆 Gourmet Points</button>
+    <button class="board-tab" role="tab" data-board="rated">⭐ Top Rated</button>
+    <button class="board-tab" role="tab" data-board="rising">🔥 Rising Chefs</button>
+    <button class="board-tab" role="tab" data-board="level">🎓 Highest Level</button>
+    <button class="board-tab" role="tab" data-board="favorites">💛 Community Favorites</button>
+  </div>
+
+  <div class="board-tools">
+    <div id="periods" class="periods hidden" aria-label="Ranking period">
+      <button class="period" data-period="week">Last 7 days</button>
+      <button class="period" data-period="month">Last 30 days</button>
+      <button class="period" data-period="all">All time</button>
+    </div>
+    <label class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><span class="hidden">Search chefs or restaurants</span><input id="search" class="rc-input" type="search" maxlength="60" placeholder="Search chefs or restaurants…" autocomplete="off"></label>
+  </div>
+
+  <section id="podium" class="podium" aria-label="Top three chefs"></section>
+
+  <section id="viewerCard" class="viewer-card hidden" aria-label="Your leaderboard position">
+    <div id="viewerRank" class="viewer-rank"></div>
+    <div class="viewer-copy"><strong id="viewerName"></strong><span id="viewerRestaurant"></span></div>
+    <div id="viewerScore" class="viewer-score"></div>
+  </section>
+
+  <section class="rc-panel rank-panel">
+    <div class="rank-summary"><h2 id="boardTitle">Gourmet Points</h2><small id="updated">Loading the latest standings…</small></div>
+    <div id="tableArea"><div class="loading-row"></div><div class="loading-row"></div><div class="loading-row"></div><div class="loading-row"></div></div>
+    <div id="pager" class="pager hidden">
+      <button id="previous" class="rc-btn ghost small" type="button">← Previous</button>
+      <span id="pageLabel" class="page-label"></span>
+      <button id="next" class="rc-btn ghost small" type="button">Next →</button>
+    </div>
+  </section>
+
+  <p class="rc-note" style="text-align:center;margin-top:16px">Rankings omit disabled accounts and profiles with unresolved critical integrity findings. Top Rated requires at least five votes and uses a weighted score.</p>
+
+  <footer class="rc-footer">
+    <span>© Restaurant City Reborn</span><a href="https://discord.gg/Ppuwb826eC" target="_blank" rel="noopener">Discord</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/community-guidelines">Community guidelines</a>
+  </footer>
+</main>
+
+<dialog id="profileDialog"><div class="profile-modal"><div id="profileContent"></div><div class="modal-actions"><button id="shareProfile" class="rc-btn ghost small" type="button">Share rank</button><a class="rc-btn green small" href="/game">Play Restaurant City</a><button id="closeProfile" class="rc-btn small" type="button">Close</button></div></div></dialog>
+
+<script>
+const boards={
+  gourmet:{title:'Gourmet Points',description:'The restaurants with the most Gourmet Points in Restaurant City Reborn.'},
+  rated:{title:'Top Rated Restaurants',description:'The city’s best-reviewed restaurants, weighted by rating and vote count.'},
+  rising:{title:'Rising Chefs',description:'The chefs earning the most Gourmet Points during the selected period.'},
+  level:{title:'Highest Level',description:'The city’s most experienced chefs, with Gourmet Points breaking ties.'},
+  favorites:{title:'Community Favorites',description:'The restaurants most often bookmarked by the community.'}
+};
+const state={board:'gourmet',period:'week',page:1,q:'',data:null,request:0,selected:null};
+const params=new URLSearchParams(location.search);if(boards[params.get('board')])state.board=params.get('board');if(['week','month','all'].includes(params.get('period')))state.period=params.get('period');state.q=(params.get('q')||'').slice(0,60);search.value=state.q;
+
+document.querySelectorAll('.board-tab').forEach(button=>button.addEventListener('click',()=>{state.board=button.dataset.board;state.page=1;renderControls();load()}));
+document.querySelectorAll('.period').forEach(button=>button.addEventListener('click',()=>{state.period=button.dataset.period;state.page=1;renderControls();load()}));
+let searchTimer;search.addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.q=search.value.trim();state.page=1;load()},250)});
+previous.addEventListener('click',()=>{if(state.page>1){state.page--;load()}});next.addEventListener('click',()=>{if(state.data&&state.page<state.data.totalPages){state.page++;load()}});
+closeProfile.addEventListener('click',()=>profileDialog.close());profileDialog.addEventListener('click',event=>{if(event.target===profileDialog)profileDialog.close()});
+shareProfile.addEventListener('click',async()=>{if(!state.selected)return;const text=`${state.selected.username} is #${state.selected.rank} on the ${boards[state.board].title} leaderboard in Restaurant City Reborn!`;const url=new URL(location.href);url.search='';url.searchParams.set('board',state.board);if(state.board==='rising')url.searchParams.set('period',state.period);try{if(navigator.share)await navigator.share({title:'Restaurant City Reborn leaderboard',text,url:String(url)});else{await navigator.clipboard.writeText(`${text} ${url}`);shareProfile.textContent='Copied!';setTimeout(()=>shareProfile.textContent='Share rank',1400)}}catch{}});
+
+function renderControls(){
+  document.querySelectorAll('.board-tab').forEach(button=>{const active=button.dataset.board===state.board;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1});
+  periods.classList.toggle('hidden',state.board!=='rising');document.querySelectorAll('.period').forEach(button=>button.classList.toggle('active',button.dataset.period===state.period));
+  boardTitle.textContent=boards[state.board].title;boardDescription.textContent=boards[state.board].description;
+}
+
+async function load(){
+  const request=++state.request;renderControls();setLoading();syncUrl();
+  const query=new URLSearchParams({board:state.board,page:String(state.page),pageSize:'25'});if(state.board==='rising')query.set('period',state.period);if(state.q)query.set('q',state.q);
+  try{const response=await fetch(`/__api/leaderboards?${query}`);const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not load standings.');if(request!==state.request)return;state.data=data;state.page=data.page;render(data)}catch(error){if(request!==state.request)return;tableArea.innerHTML=`<div class="status-box"><img src="/assets/food-butter.png" alt=""><strong>We couldn’t load the standings.</strong><br><small>${escapeHtml(error.message||String(error))}</small><br><button class="rc-btn ghost small" style="margin-top:14px" type="button" id="retry">Try again</button></div>`;document.getElementById('retry').addEventListener('click',load);podium.innerHTML='';viewerCard.classList.add('hidden');pager.classList.add('hidden')}
+}
+
+function setLoading(){updated.textContent='Loading the latest standings…';tableArea.innerHTML='<div class="loading-row"></div><div class="loading-row"></div><div class="loading-row"></div><div class="loading-row"></div>';pager.classList.add('hidden')}
+function syncUrl(){const query=new URLSearchParams();if(state.board!=='gourmet')query.set('board',state.board);if(state.board==='rising'&&state.period!=='week')query.set('period',state.period);if(state.q)query.set('q',state.q);history.replaceState(null,'',`${location.pathname}${query.size?'?'+query:''}`)}
+
+function render(data){
+  renderPodium(data.podium);renderViewer(data.viewer);updated.textContent=`${format(data.total)} ranked chef${data.total===1?'':'s'} · Updated ${relativeTime(data.generatedAt)}${data.cache==='STALE'?' · cached copy':''}`;
+  if(!data.entries.length){tableArea.innerHTML=`<div class="status-box"><img src="/assets/food-cucumber.png" alt=""><strong>${state.q?'No chefs match that search yet.':'No chefs qualify for this board yet.'}</strong></div>`;pager.classList.add('hidden');return}
+  tableArea.innerHTML=`<div class="table-scroll"><table class="rank-table"><thead><tr><th>Rank</th><th>Chef & restaurant</th><th>Level</th><th>${metricHeading()}</th><th>Rating</th><th>Favorites</th></tr></thead><tbody>${data.entries.map(rowHtml).join('')}</tbody></table></div>`;
+  tableArea.querySelectorAll('tr[data-uid]').forEach(row=>{row.addEventListener('click',()=>openProfile(data.entries.find(entry=>entry.networkUid===row.dataset.uid)));row.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();row.click()}})});
+  pager.classList.toggle('hidden',data.totalPages<=1);previous.disabled=data.page<=1;next.disabled=data.page>=data.totalPages;pageLabel.textContent=`Page ${data.page} of ${data.totalPages}`;
+}
+
+function renderPodium(entries){
+  const classes=['first','second','third'],medals=['🥇','🥈','🥉'];podium.innerHTML=entries.map((entry,index)=>`<article class="podium-card ${classes[index]}" data-uid="${escapeHtml(entry.networkUid)}" tabindex="0"><span class="podium-medal">${medals[index]}</span><div class="podium-avatar">${initials(entry.username)}</div><h3>${escapeHtml(entry.username)}</h3><div class="podium-restaurant">${escapeHtml(entry.restaurantName)}</div><div class="podium-score">${escapeHtml(metric(entry))}</div></article>`).join('');
+  podium.querySelectorAll('[data-uid]').forEach(card=>{card.addEventListener('click',()=>openProfile(entries.find(entry=>entry.networkUid===card.dataset.uid)));card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();card.click()}})});
+}
+function renderViewer(entry){if(!entry){viewerCard.classList.add('hidden');return}viewerCard.classList.remove('hidden');viewerRank.textContent=`#${format(entry.rank)}`;viewerName.textContent=`You · ${entry.username}`;viewerRestaurant.textContent=entry.restaurantName;viewerScore.textContent=metric(entry);viewerCard.onclick=()=>openProfile(entry)}
+function rowHtml(entry){return `<tr data-uid="${escapeHtml(entry.networkUid)}" tabindex="0"><td class="rank-number">#${format(entry.rank)} ${movement(entry.movement)}</td><td><div class="player-cell"><div class="mini-avatar">${initials(entry.username)}</div><div><strong>${escapeHtml(entry.username)}</strong><span>${escapeHtml(entry.restaurantName)}</span></div></div></td><td class="muted-cell">Lv ${format(entry.userLevel)}</td><td class="metric">${escapeHtml(metric(entry))}</td><td class="muted-cell">${entry.rating===null?'—':`${entry.rating.toFixed(2)} ★ (${format(entry.voteCount)})`}</td><td class="muted-cell">${format(entry.bookmarkCount)}</td></tr>`}
+function movement(value){if(value===null||value===0)return '';return value>0?`<span class="move up" title="Moved up ${value}">▲${value}</span>`:`<span class="move down" title="Moved down ${Math.abs(value)}">▼${Math.abs(value)}</span>`}
+function metricHeading(){return state.board==='rated'?'Weighted score':state.board==='rising'?'GP gained':state.board==='level'?'Level rank':state.board==='favorites'?'Bookmarks':'Gourmet Points'}
+function metric(entry){if(state.board==='rated')return `${Number(entry.score).toFixed(3)} weighted`;if(state.board==='rising')return `+${format(entry.gourmetGain)} GP`;if(state.board==='level')return `Level ${format(entry.userLevel)}`;if(state.board==='favorites')return `${format(entry.bookmarkCount)} favorite${entry.bookmarkCount===1?'':'s'}`;return `${format(Math.floor(entry.gourmetPoint/10))} GP`}
+function openProfile(entry){if(!entry)return;state.selected=entry;profileContent.innerHTML=`<div class="profile-top"><div class="podium-avatar">${initials(entry.username)}</div><div><h2>${escapeHtml(entry.username)}</h2><p>${escapeHtml(entry.restaurantName)}</p></div></div><div class="profile-stats"><div class="profile-stat"><span>Current rank</span><strong>#${format(entry.rank)}</strong></div><div class="profile-stat"><span>Player level</span><strong>${format(entry.userLevel)}</strong></div><div class="profile-stat"><span>Gourmet Points</span><strong>${format(Math.floor(entry.gourmetPoint/10))}</strong></div><div class="profile-stat"><span>Restaurant rating</span><strong>${entry.rating===null?'Not rated':entry.rating.toFixed(2)+' ★'}</strong></div><div class="profile-stat"><span>Votes</span><strong>${format(entry.voteCount)}</strong></div><div class="profile-stat"><span>Favorites</span><strong>${format(entry.bookmarkCount)}</strong></div></div>`;profileDialog.showModal()}
+function initials(value){return escapeHtml(value.split(/[\s_.-]+/).filter(Boolean).slice(0,2).map(part=>part[0]).join('').toUpperCase()||'?')}
+function format(value){return Number(value||0).toLocaleString('en-US')}
+function relativeTime(value){const seconds=Math.max(0,Math.round((Date.now()-new Date(value).getTime())/1000));if(seconds<10)return'just now';if(seconds<60)return`${seconds}s ago`;return`${Math.floor(seconds/60)}m ago`}
+function escapeHtml(value){return String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]))}
+
+fetch('/__api/session').then(response=>response.json()).then(session=>{if(session.loggedIn){accountLink.textContent='Account';accountLink.href='/account'}}).catch(()=>{});renderControls();load();
+</script>
+</body>
+</html>

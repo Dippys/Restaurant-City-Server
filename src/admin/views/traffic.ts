@@ -230,7 +230,7 @@ function detailText(entry: CapturedRequest): string {
     `matched: ${entry.matched ?? '—'}`,
   ];
   if (entry.account) lines.push(`account: ${entry.account.username} (uid ${entry.account.networkUid})`);
-  if (entry.rpc?.session) lines.push(`session: ${entry.rpc.session}`);
+  lines.push(`duration: ${entry.durationMs.toFixed(1)}ms`);
   if (entry.rpc?.subs?.length) {
     lines.push('rpc subs:');
     for (const sub of entry.rpc.subs) lines.push(`  ${sub.name}  ${sub.answered}`);

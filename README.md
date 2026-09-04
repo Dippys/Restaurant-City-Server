@@ -71,7 +71,9 @@ All optional, via environment variables:
 |---|---|---|
 | `PORT` | `8090` | Listen port |
 | `HOST` | `0.0.0.0` | Bind address (`0.0.0.0` exposes it on the LAN) |
-| `MAX_LOG_ENTRIES` | `500` | Size of the in-memory request buffer |
+| `MAX_LOG_ENTRIES` | `50` production; `500` development | Maximum entries retained by the bounded in-memory request buffer |
+| `RC_RPC_CAPTURE_MODE` | `metadata` production; `full` development | Request capture detail. Production `metadata` omits headers, query values, URLs containing queries, and body encodings. Temporary `full` mode redacts authentication material. |
+| `RC_REQUEST_LOG_STDOUT` | `false` production; `true` development | Emit one console line per captured request. Leave disabled under normal production traffic. |
 | `RC_DB_PATH` | `server/dev.db` locally; required in production | SQLite file location. Production must use a durable path outside the release directory, e.g. `/var/lib/rc-reborn/dev.db`. |
 | `RC_ADMIN_USERNAME` | empty | Username promoted to admin when first registered |
 | `RC_PIN_PEPPER` | empty | Optional stable server secret mixed into PIN hashes |
@@ -80,9 +82,18 @@ All optional, via environment variables:
 | `RC_SOCIAL_DISABLED_KINDS` | empty | Comma-separated social-link kinds whose creation/actions are paused while public pages stay readable |
 | `RC_PUBLIC_ORIGIN` | request origin | Canonical HTTPS origin used for public link and Open Graph URLs |
 | `RC_DISCORD_ANOMALY_WEBHOOK` | empty | Optional Discord webhook for new or changed anomaly evidence; the secret remains environment-only |
+| `RC_DISCORD_CLIENT_ID` | empty | Discord application client ID; enables Discord sign-in/linking when paired with the client secret |
+| `RC_DISCORD_CLIENT_SECRET` | empty | Discord OAuth2 client secret; keep it in the deployment secret manager |
+| `RC_DISCORD_REDIRECT_URI` | `<public origin>/auth/discord/callback` | Exact OAuth2 redirect registered in the Discord Developer Portal |
+| `RC_DISCORD_BOT_TOKEN` | empty | Bot token used to join consenting users to the configured guild and send mail/restaurant-state DMs |
+| `RC_DISCORD_GUILD_ID` | empty | Discord server that consenting users are joined to through `guilds.join` |
 | `RC_MODERATION_SCAN_INTERVAL_MINUTES` | `60` | Full non-admin profile scan interval (minimum effective interval: 5 minutes) |
 | `RC_MODERATION_SNAPSHOT_RETENTION_DAYS` | `90` | Age limit for unprotected profile rollback snapshots |
 | `RC_MODERATION_MAX_SNAPSHOTS_PER_PLAYER` | `250` | Per-player count limit for unprotected rollback snapshots |
+| `RC_ACTIVITY_FLUSH_INTERVAL_SECONDS` | `60` | Coalesce per-player activity counters before an atomic database flush |
+| `RC_AUTO_SAVE_SNAPSHOT_INTERVAL_MINUTES` | `60` | Minimum interval between automatic full pre-save checkpoints for one player; every accepted save still records compact facts |
+| `RC_SHUTDOWN_TIMEOUT_SECONDS` | `15` | Graceful shutdown drain deadline before remaining HTTP connections are closed |
+| `RC_LEADERBOARD_CACHE_MS` | `60000` | Lifetime of the in-memory public leaderboard snapshot |
 
 ## How it works
 
@@ -139,6 +150,18 @@ SameSite session token; only its SHA-256 hash is stored. Sessions expire after
 30 days and state-changing browser APIs require a CSRF token. Unauthenticated
 RPC requests are rejected. See `src/session.ts` and `src/db/auth-store.ts`.
 
+Discord OAuth2 is an additive credential using the authorization-code flow and
+the `identify email guilds.join` scopes. A linked Discord identity maps to one
+game account and a game account maps to at most one Discord user. New Discord
+users explicitly choose between linking an existing username/PIN profile and
+creating a fresh Discord-only profile. OAuth access and refresh tokens are not
+stored. The bot uses the stable Discord user ID for opt-in DM embeds covering all
+new mail, the transition to all employees being exhausted, fully grown crops,
+and dry growing plots. Embeds contain relevant catalog names, ingredient rarity,
+sender details, available artwork, timestamps, and a link back to the game.
+Register the exact callback URI above in the Discord Developer Portal and
+add the bot to `RC_DISCORD_GUILD_ID`.
+
 ### Persistence
 
 Prisma models in `prisma/schema.prisma` cover the profile plus owned items,
@@ -164,9 +187,13 @@ avatar/furniture saves instead of producing a Prisma unique-key failure.
 
 ### Moderation and profile recovery
 
-ADR-0034 adds server-owned evidence without changing the PlayFish RPC bytes.
-Every accepted profile save records compact before/after facts and first stores
-the complete gameplay state immediately before the commit. The first scheduled
+ADR-0034 and ADR-0051 add server-owned evidence without changing the PlayFish
+RPC bytes. Every accepted profile save records exact compact before/after facts.
+The server stores or reuses an automatic full pre-save checkpoint for that
+player, bounded by `RC_AUTO_SAVE_SNAPSHOT_INTERVAL_MINUTES` (60 minutes by
+default); manual/admin/recovery snapshots remain immediate and unthrottled. The
+fact's `snapshotId` truthfully identifies the rollback checkpoint anchoring that
+save, which may precede it within the configured interval. The first scheduled
 scan gives older profiles one `INITIAL_BASELINE` snapshot. The **Anomalies**
 admin page ranks reason-coded findings and shows the exact evidence, measured
 activity since deployment, accepted-save history, rollback points, and the
@@ -188,6 +215,7 @@ Pages and control routes served outside the RPC/asset paths:
 |---|---|---|
 | `/` | GET | Public home page |
 | `/login`, `/signup`, `/account` | GET | Account pages |
+| `/auth/discord`, `/auth/discord/callback`, `/discord/complete` | GET | Discord OAuth2 start, callback, and first-login profile choice |
 | `/terms`, `/privacy`, `/cookies`, `/community-guidelines` | GET | Policy pages |
 | `/__dash`, `/dashboard`, `/database` | GET | Redirect to the single `/admin` dashboard (legacy aliases) |
 | `/game`, `/play` | GET | Client launcher page |
@@ -196,12 +224,14 @@ Pages and control routes served outside the RPC/asset paths:
 | `/__api/requests` | GET | JSON snapshot of the capture buffer |
 | `/__api/clear` | POST | Admin-only: clear the capture buffer |
 | `/__api/reindex` | POST | Admin-only: rescan asset files |
-| `/__api/admin/overview` | GET | Admin: server health (asset count, buffer stats, online players, uptime, DB size) |
+| `/__api/admin/overview` | GET | Admin-only: server health plus bounded request/RPC latency, memory, event-loop delay, activity-queue, and background-job metrics |
 | `/__api/admin/assets` | GET | Admin: indexed asset list (served name → file → size) |
 | `/__api/session` | GET | Current logged-in account |
 | `/__api/login`, `/__api/signup` | POST | Authenticate or create an account |
 | `/__api/account` | PATCH | Update names/PIN after PIN re-verification |
 | `/__api/logout` | POST | Revoke the current session |
+| `/__api/discord/pending`, `/__api/discord/complete` | GET/POST | Inspect and complete a short-lived first-time Discord login |
+| `/__api/account/discord`, `/__api/account/discord/prompt` | PATCH/DELETE/POST | Notification preference, unlinking, and one-time link prompt state |
 | `/__api/profile-image/:uid/:type.png` | GET | Render a stored ARGB image as PNG |
 | `/__api/social-links` | POST | Create a validated player-template link |
 | `/__api/social-links/:slug` | GET | Public/viewer-specific link state |
@@ -254,6 +284,7 @@ Pages and control routes served outside the RPC/asset paths:
 | `npm run start:built` | Run `dist/server.js` without rebuilding |
 | `npm run build` | `prisma generate` + `tsc` |
 | `npm run check` | Type-check only (`tsc --noEmit`) |
+| `npm run bench:hotfix` | Build, then compare capture, activity, and checkpoint hot paths on a disposable SQLite database |
 | `npm run db:push` | Apply the schema to `dev.db` |
 | `npm run db:generate` | Regenerate the Prisma client |
 
@@ -317,6 +348,12 @@ also required:
    to enable the 12:00 UTC ingredient announcement. The server rotates exactly
    three coin-market rows even without it; failed/pending Discord delivery is
    retried after configuration. Never commit or log the webhook URL.
+9. Keep the performance-hotfix production defaults from `.env.example`:
+   metadata-only capture, no per-request stdout, a 50-entry request buffer,
+   60-second activity flushes, 60-minute automatic save checkpoints, and a
+   15-second shutdown deadline. See the
+   [performance-hotfix runbook](Documentation/projects/restaurant-city-server/operations/performance-hotfix.md)
+   for health checks, deployment, rollback, and recovery implications.
 
 Preview the deterministic announcement image after a build with:
 

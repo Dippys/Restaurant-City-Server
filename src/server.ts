@@ -6,6 +6,10 @@ import { repairLegacyCashIngredientPurchases } from './db/legacy-cash-ingredient
 import { startDiscordNotificationScheduler } from './discord-notifications';
 import { repairMisclassifiedRestaurantEntitlements } from './db/special-entitlement-repair';
 import { repairLegacyAdminCoinMailRewards } from './db/legacy-coin-mail-repair';
+import { configureRpcActivityBuffer } from './activity-buffer';
+import { configureAutomaticSnapshotInterval } from './moderation/service';
+import { gracefulShutdown } from './graceful-shutdown';
+import type { SchedulerHandle } from './job-runner';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -31,7 +35,25 @@ async function main(): Promise<void> {
       + `${coinMailRepair.mails} mail(s) across ${coinMailRepair.profiles} profile(s).`,
     );
   }
-  const { httpServer, staticFiles } = createServer(config);
+  const { httpServer, staticFiles, backgroundScheduler } = createServer(config);
+  configureRpcActivityBuffer(config.activityFlushIntervalSeconds);
+  configureAutomaticSnapshotInterval(config.autoSaveSnapshotIntervalMinutes);
+  const schedulers: SchedulerHandle[] = [backgroundScheduler];
+  let shuttingDown = false;
+  const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal} received; stopping new work and draining requests.`);
+    try {
+      const result = await gracefulShutdown(httpServer, schedulers, config.shutdownTimeoutSeconds * 1000);
+      console.log(`Shutdown complete (requestsDrained=${result.drained}, activityFlushed=${result.activityFlushed}).`);
+    } catch (error) {
+      console.error('Graceful shutdown failed:', error);
+      process.exitCode = 1;
+    }
+  };
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+  process.once('SIGINT', () => void shutdown('SIGINT'));
 
   httpServer.listen(config.port, config.host, () => {
     console.log('====================================================================');
@@ -45,9 +67,13 @@ async function main(): Promise<void> {
     console.log(' Launch the client so it loads FROM this server:');
     console.log(`   "C:\\flex\\Player\\flashplayer_32_sa_debug.exe" http://localhost:${config.port}/game.swf`);
     console.log('====================================================================');
-    startDailyIngredientScheduler(config.serverRoot, config.discordDailyIngredientsWebhook);
-    startModerationScheduler(config.discordAnomalyWebhook, config.moderationScanIntervalMinutes, config.moderationSnapshotRetentionDays, config.moderationMaxSnapshotsPerPlayer);
-    startDiscordNotificationScheduler();
+    if (!shuttingDown) {
+      schedulers.push(
+        startDailyIngredientScheduler(config.serverRoot, config.discordDailyIngredientsWebhook),
+        startModerationScheduler(config.discordAnomalyWebhook, config.moderationScanIntervalMinutes, config.moderationSnapshotRetentionDays, config.moderationMaxSnapshotsPerPlayer),
+        startDiscordNotificationScheduler(),
+      );
+    }
   });
 }
 

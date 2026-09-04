@@ -13,6 +13,7 @@
     "preview:daily-ingredients": "node scripts/render-daily-ingredients-preview.cjs",
     "check": "prisma generate && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.admin.json --noEmit",
     "test": "npm run build && node --test test/*.test.cjs",
+    "bench:hotfix": "npm run build && node --expose-gc scripts/benchmark-performance-hotfix.cjs",
     "start": "npm run db:push && npm run build && node dist/server.js",
     "start:built": "node dist/server.js"
   },

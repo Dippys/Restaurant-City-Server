@@ -13,7 +13,7 @@ export interface RpcBuildResult {
 
 export async function buildResponse(buf: Buffer, account: ActiveAccount): Promise<RpcBuildResult> {
   const req = parseRequest(buf);
-  const summary: RpcSummary = { call: req.name, session: req.session, subs: [] };
+  const summary: RpcSummary = { call: req.name, subs: [] };
 
   if (req.error) {
     summary.error = req.error;

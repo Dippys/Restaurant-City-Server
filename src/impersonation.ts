@@ -67,7 +67,7 @@ export async function startImpersonation(
 }
 
 /** Resolve the separate game-only identity while keeping the admin login intact. */
-export async function impersonationFromRequest(req: IncomingMessage): Promise<ImpersonationState> {
+export async function impersonationFromRequest(req: IncomingMessage, resolvedActor?: ActiveAccount | null): Promise<ImpersonationState> {
   const rawToken = parseCookies(req.headers.cookie || '')[IMPERSONATION_COOKIE];
   if (!rawToken) return { present: false, account: null };
   const tokenHash = hashSessionToken(rawToken);
@@ -77,7 +77,7 @@ export async function impersonationFromRequest(req: IncomingMessage): Promise<Im
     return { present: true, account: null };
   }
 
-  const actor = await accountFromRequest(req);
+  const actor = resolvedActor === undefined ? await accountFromRequest(req) : resolvedActor;
   if (actor?.role !== 'ADMIN' || actor.id !== record.actorAccountId || actor.sessionId !== record.actorSessionId) {
     return { present: true, account: null };
   }
