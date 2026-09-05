@@ -90,6 +90,19 @@ test('first scan creates one baseline rollback point and later scans do not dupl
   assert.equal(snapshots[0].reason, 'INITIAL_BASELINE');
 });
 
+test('concurrent scans for one profile coalesce into one findings update', async () => {
+  const account = await seed('81009', 'ConcurrentScanChef', { profile: { userLevel: 20, gourmetPoint: 0 } });
+  await Promise.all([
+    scanPlayer(account.networkUid),
+    scanPlayer(account.networkUid),
+    scanPlayer(account.networkUid),
+  ]);
+  const finding = await prisma.anomalyFinding.findUniqueOrThrow({
+    where: { fingerprint: `${account.networkUid}:LEVEL_GOURMET_MISMATCH` },
+  });
+  assert.equal(finding.occurrenceCount, 1);
+});
+
 test('accepted saves create immutable facts and rollback restores state while revoking sessions', async () => {
   const account = await seed('81001', 'RollbackChef');
   await session(account, 'rpc-rollback');

@@ -20,8 +20,18 @@ if (process.env.NODE_ENV === 'production' && !postgresUrl && !process.env.RC_DB_
 
 function createClient(): PrismaClient {
   if (postgresUrl) {
-    const adapter = new PrismaPg({ connectionString: postgresUrl });
-    return new PostgresqlPrismaClient({ adapter }) as unknown as PrismaClient;
+    const configuredPoolMax = Number.parseInt(process.env.RC_DB_POOL_MAX ?? '', 10);
+    const poolMax = Number.isInteger(configuredPoolMax) && configuredPoolMax > 0 ? configuredPoolMax : 20;
+    const adapter = new PrismaPg({
+      connectionString: postgresUrl,
+      max: poolMax,
+      connectionTimeoutMillis: 15_000,
+      idleTimeoutMillis: 30_000,
+    });
+    return new PostgresqlPrismaClient({
+      adapter,
+      transactionOptions: { maxWait: 15_000, timeout: 30_000 },
+    }) as unknown as PrismaClient;
   }
 
   const databasePath = path.resolve(explicitSqlitePath || process.env.RC_DB_PATH || path.join(__dirname, '..', '..', 'dev.db'));

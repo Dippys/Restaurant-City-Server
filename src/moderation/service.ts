@@ -45,6 +45,11 @@ export interface ScanSummary {
 }
 
 let automaticSnapshotIntervalMinutes = 60;
+const MAX_CONCURRENT_PROFILE_SCANS = 2;
+let activeProfileScans = 0;
+const profileScanWaiters: Array<() => void> = [];
+const profileScans = new Map<string, Promise<ScanSummary>>();
+const scheduledProfileScans = new Set<Promise<void>>();
 
 export function configureAutomaticSnapshotInterval(intervalMinutes: number): void {
   automaticSnapshotIntervalMinutes = Math.max(0, Math.floor(intervalMinutes));
@@ -125,7 +130,43 @@ export async function resetAllFindings(): Promise<number> {
   return deleted.count;
 }
 
-export async function scanPlayer(networkUid: string, now = new Date()): Promise<ScanSummary> {
+export function scanPlayer(networkUid: string, now = new Date()): Promise<ScanSummary> {
+  const existing = profileScans.get(networkUid);
+  if (existing) return existing;
+  const scan = withProfileScanSlot(() => scanPlayerOnce(networkUid, now));
+  profileScans.set(networkUid, scan);
+  void scan.then(
+    () => clearProfileScan(networkUid, scan),
+    () => clearProfileScan(networkUid, scan),
+  );
+  return scan;
+}
+
+/** Queue post-save moderation without extending the gameplay RPC response. */
+export function schedulePlayerScan(networkUid: string): void {
+  const scheduled = scanPlayer(networkUid)
+    .then(() => undefined)
+    .catch((error) => console.error('Post-save moderation scan failed:', error));
+  scheduledProfileScans.add(scheduled);
+  void scheduled.then(() => scheduledProfileScans.delete(scheduled));
+}
+
+export async function drainScheduledPlayerScans(timeoutMs: number): Promise<boolean> {
+  if (scheduledProfileScans.size === 0) return true;
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      Promise.allSettled([...scheduledProfileScans]).then(() => true),
+      new Promise<boolean>((resolve) => {
+        timeout = setTimeout(() => resolve(false), Math.max(1, timeoutMs));
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+async function scanPlayerOnce(networkUid: string, now: Date): Promise<ScanSummary> {
   const account = await prisma.account.findUnique({ where: { networkUid }, select: { id: true, role: true, username: true, disabled: true, createdAt: true } });
   if (!account || account.role === 'ADMIN') return emptySummary();
   const [profile, activity, latestFact, fallbackRecoveryCount] = await Promise.all([
@@ -139,7 +180,7 @@ export async function scanPlayer(networkUid: string, now = new Date()): Promise<
   // profiles. Recover that known server-caused state before moderation judges
   // the dependent level, employee, garden, or menu fields.
   if (await recoverFallbackProfileScalars(networkUid)) {
-    return scanPlayer(networkUid, now);
+    return scanPlayerOnce(networkUid, now);
   }
   // Existing accounts predate ADR-0034. Give each one an immediate, immutable
   // rollback point the first time it is assessed instead of waiting for its
@@ -240,6 +281,23 @@ export async function createManualSnapshot(networkUid: string, actor: ActiveAcco
   const snapshotId = await captureProfileSnapshot(networkUid, 'ADMIN_MANUAL', String(label || '').trim().slice(0, 200), actor);
   await prisma.moderationAction.create({ data: { id: randomUUID(), targetNetworkUid: networkUid, actorAccountId: actor.id, actorUsername: actor.username, actionType: 'CREATE_SNAPSHOT', reason: String(label || 'Manual snapshot').trim().slice(0, 500), snapshotId } });
   return { snapshotId };
+}
+
+async function withProfileScanSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (activeProfileScans >= MAX_CONCURRENT_PROFILE_SCANS) {
+    await new Promise<void>((resolve) => profileScanWaiters.push(resolve));
+  }
+  activeProfileScans += 1;
+  try {
+    return await task();
+  } finally {
+    activeProfileScans -= 1;
+    profileScanWaiters.shift()?.();
+  }
+}
+
+function clearProfileScan(networkUid: string, scan: Promise<ScanSummary>): void {
+  if (profileScans.get(networkUid) === scan) profileScans.delete(networkUid);
 }
 
 const DURABLE_EVENT_RULES = new Set(['SAVE_PRICING_WARNING', 'LARGE_LAYOUT_CLEAR', 'FALLBACK_PROFILE_BLOCKED']);

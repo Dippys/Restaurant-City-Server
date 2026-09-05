@@ -3,6 +3,7 @@ import type { SchedulerHandle } from './job-runner';
 import { rpcActivityBuffer } from './activity-buffer';
 import { performanceMetrics } from './performance';
 import { prisma } from './db/client';
+import { drainScheduledPlayerScans } from './moderation/service';
 
 export async function gracefulShutdown(
   server: Server,
@@ -12,6 +13,7 @@ export async function gracefulShutdown(
   for (const scheduler of schedulers) scheduler.stop();
   const drained = await drainServer(server, timeoutMs);
   const activityFlushed = await rpcActivityBuffer.shutdown(timeoutMs);
+  await drainScheduledPlayerScans(timeoutMs);
   performanceMetrics.stop();
   await prisma.$disconnect();
   return { drained, activityFlushed };

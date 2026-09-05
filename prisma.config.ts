@@ -1,8 +1,6 @@
 import { defineConfig } from 'prisma/config';
 import { resolve } from 'node:path';
-import { loadProjectEnv } from './src/env';
 
-loadProjectEnv(resolve('.'));
 const postgresUrl = process.env.DATABASE_URL?.trim();
 
 if (process.env.NODE_ENV === 'production' && !postgresUrl && !process.env.RC_DB_PATH) {

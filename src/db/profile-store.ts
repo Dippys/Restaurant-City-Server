@@ -19,7 +19,7 @@ import {
 import type { ActiveAccount } from '../session';
 import { IN_GAME_ACTIVITY_WINDOW_MS, prioritizeInGameRoster } from '../rpc/street-roster';
 import { gardenIngredientForSeed } from '../rpc/garden-plot';
-import { capturePreSaveSnapshotTx, recordAcceptedSaveTx, recordSaveEventFindingTx, scanPlayer } from '../moderation/service';
+import { capturePreSaveSnapshotTx, recordAcceptedSaveTx, recordSaveEventFindingTx, schedulePlayerScan } from '../moderation/service';
 import { captureProfileSnapshotTx, type SnapshotPayloadV1 } from '../moderation/snapshots';
 import { isNonEditableRestaurantEntitlementItem, isStackableItemId, isWallDecorationItemId } from './item-catalog';
 import { levelForGourmet } from '../moderation/rules';
@@ -884,7 +884,7 @@ export async function savePlayerProfile(
     return { status: 'saved', savedVersion: audit.saveVersion };
   });
   if (result.status === 'saved') {
-    await scanPlayer(profile.id.networkUid).catch((error) => console.error('Post-save moderation scan failed:', error));
+    schedulePlayerScan(profile.id.networkUid);
   }
   return result;
 }

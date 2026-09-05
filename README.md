@@ -74,8 +74,9 @@ All optional, via environment variables:
 | `MAX_LOG_ENTRIES` | `50` production; `500` development | Maximum entries retained by the bounded in-memory request buffer |
 | `RC_RPC_CAPTURE_MODE` | `metadata` production; `full` development | Request capture detail. Production `metadata` omits headers, query values, URLs containing queries, and body encodings. Temporary `full` mode redacts authentication material. |
 | `RC_REQUEST_LOG_STDOUT` | `false` production; `true` development | Emit one console line per captured request. Leave disabled under normal production traffic. |
-| `DATABASE_URL` | empty locally; required in production | PostgreSQL connection URL. When set, runtime and Prisma commands use PostgreSQL. |
-| `RC_DB_PATH` | `server/dev.db` locally | SQLite development or rollback file. Ignored by runtime when `DATABASE_URL` is set. |
+| `DATABASE_URL` | empty locally; required in production | PostgreSQL connection URL. Runtime loads it from the repository `.env` before creating Prisma. |
+| `RC_DB_PATH` | `server/dev.db` locally | SQLite development or rollback file. An explicit shell/service value overrides `.env` database selection; otherwise `DATABASE_URL` selects PostgreSQL. |
+| `RC_DB_POOL_MAX` | `20` | Maximum PostgreSQL connections used by this server process. Size against the database connection limit and the number of server processes. |
 | `RC_ADMIN_USERNAME` | empty | Username promoted to admin when first registered |
 | `RC_PIN_PEPPER` | empty | Optional stable server secret mixed into PIN hashes |
 | `RC_TRUST_PROXY` | `false` | Trust forwarded IP/protocol headers only behind your proxy |
