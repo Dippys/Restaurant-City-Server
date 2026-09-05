@@ -61,6 +61,16 @@ function rarityWeightedPick(pool: readonly IngredientEntry[], rand: () => number
 const DAILY_POOL = INGREDIENTS.filter((i) => !i.noDaily);
 const FIRST_VISIT_POOL = INGREDIENTS.filter((i) => !i.noFirstTimeVisit);
 
+export function isQuizIngredientId(id: number): boolean {
+  const ingredient = BY_ID.get(id);
+  return Boolean(ingredient && !ingredient.noQuiz);
+}
+
+export function isFirstVisitIngredientId(id: number): boolean {
+  const ingredient = BY_ID.get(id);
+  return Boolean(ingredient && !ingredient.noFirstTimeVisit);
+}
+
 // `count` distinct rarity-weighted ingredient ids for a daily-bonus mail, drawn
 // from ingredients not flagged noDaily (matches the client's daily eligibility).
 export function dailyBonusIngredientIds(count: number, rand: () => number = Math.random): number[] {

@@ -4,7 +4,7 @@ import { prisma } from './client';
 import { FACEBOOK_NETWORK, PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, isNpcUid } from './defaults';
 import { getAllFriends, getProfiles, readOwnerProfile, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
 import { ensureDailyContent, sendNpcGift, grantMailItem } from './system-mail';
-import { resolveIngredientId, ingredientRarity, firstVisitIngredientId } from './ingredient-catalog';
+import { resolveIngredientId, ingredientRarity, firstVisitIngredientId, isQuizIngredientId } from './ingredient-catalog';
 import { isGiftableItemId } from './item-catalog';
 import { coinBundleForToken, ingredientCashCost, ingredientIdForCashToken, ownedItemCashCost } from './cash-catalog';
 import type { ActiveAccount } from '../session';
@@ -546,24 +546,56 @@ export async function firstVisitFriend(account: ActiveAccount, friend: NetworkUi
   const giftIngredientId = existing?.giftIngredientId ?? firstVisitIngredientId();
   const now = nowSeconds();
 
-  // Record the visit only. The returned gift is added to the visitor's inventory
-  // CLIENT-side (RpcFirstTimeVisitFriend adds it and it persists via saveProfile),
-  // so the server must not also grant it — that would double the gift on reload.
-  await prisma.friendVisit.upsert({
-    where: { userProfileId_friendNetworkUid: { userProfileId: profileKey(account.networkUid), friendNetworkUid } },
-    update: { lastVisitedAt: now },
-    create: {
-      id: `${profileKey(account.networkUid)}:visit:${friendNetworkUid}`,
-      userProfileId: profileKey(account.networkUid),
-      friendNetwork: friend.network || FACEBOOK_NETWORK,
-      friendNetworkUid,
-      friendPlayfishUid: friend.playfishUid,
-      firstVisitedAt: now,
-      lastVisitedAt: now,
-      giftIngredientId,
-    },
-  });
+  // GameUser.addIngredient changes only client memory; no save audit records the
+  // addition. Persist it here under a durable per-visitor/friend grant marker.
+  const profileId = profileKey(account.networkUid);
+  const markerWhere = {
+    userProfileId_kind_dayKey: { userProfileId: profileId, kind: 'firstVisitReward', dayKey: friendNetworkUid },
+  };
+  const alreadyGranted = await prisma.systemGrant.findUnique({ where: markerWhere });
+  if (alreadyGranted) {
+    await prisma.friendVisit.updateMany({
+      where: { userProfileId: profileId, friendNetworkUid },
+      data: { lastVisitedAt: now },
+    });
+    return { status: STATUS_OK, gift: { globalItemId: 0, number: 0, isSelected: false } };
+  }
 
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.systemGrant.create({
+        data: {
+          id: `${profileId}:firstVisitReward:${friendNetworkUid}`,
+          userProfileId: profileId,
+          kind: 'firstVisitReward',
+          dayKey: friendNetworkUid,
+          createdAtUnix: now,
+        },
+      });
+      await tx.friendVisit.upsert({
+        where: { userProfileId_friendNetworkUid: { userProfileId: profileId, friendNetworkUid } },
+        update: { lastVisitedAt: now },
+        create: {
+          id: `${profileId}:visit:${friendNetworkUid}`,
+          userProfileId: profileId,
+          friendNetwork: friend.network || FACEBOOK_NETWORK,
+          friendNetworkUid,
+          friendPlayfishUid: friend.playfishUid,
+          firstVisitedAt: now,
+          lastVisitedAt: now,
+          giftIngredientId,
+        },
+      });
+      await adjustIngredient(tx, account.networkUid, giftIngredientId, 1, true);
+    });
+  } catch (error: any) {
+    // If two identical RPCs race, the unique grant marker makes one the winner.
+    if (error?.code !== 'P2002') throw error;
+    return { status: STATUS_OK, gift: { globalItemId: 0, number: 0, isSelected: false } };
+  }
+
+  // The client applies this response to its loaded count while the same
+  // increment is durable, keeping the client and server views aligned.
   return { status: STATUS_OK, gift: { globalItemId: giftIngredientId, number: 1, isSelected: false } };
 }
 
@@ -799,28 +831,39 @@ export async function buyMysteryBox(account: ActiveAccount, category: string, to
 // Answering the daily quiz. `quizId` is the quiz mail id, `answer` the chosen
 // reward ingredient's hash, `correct` whether the answer was right.
 //
-// Matches the PlayFish client: WorldQuiz applies the reward CLIENT-side — it adds
-// the reward ingredient (locked, so it persists via saveProfile) and this build
-// forces the coin reward to 0 (RpcReplyQuiz zeroes it). So the server grants
-// nothing (doing so would double the ingredient); it only consumes the quiz mail
-// so it can't be answered twice, and returns the unchanged coin balance.
+// WorldQuiz adds the reward to client memory but emits no ingredient-add save
+// audit. Claim the live quiz mail and persist a validated reward atomically.
 export async function replyQuiz(account: ActiveAccount, quizId: number, answer: string, correct: boolean): Promise<number> {
   const profile = await ensureAccountProfile(account);
+  const profileId = profileKey(account.networkUid);
+  const ingredientId = correct ? resolveIngredientId(answer) : null;
+  const rewardId = ingredientId !== null && isQuizIngredientId(ingredientId) ? ingredientId : null;
 
-  if (quizId > 0) {
-    await prisma.mail.updateMany({
-      where: { id: quizId, recipientProfileId: profileKey(account.networkUid) },
+  await prisma.$transaction(async (tx) => {
+    const claimed = quizId > 0 ? await tx.mail.updateMany({
+      where: { id: quizId, recipientProfileId: profileId, type: 2, deleted: false },
       data: { deleted: true },
+    }) : { count: 0 };
+    if (claimed.count === 1 && rewardId !== null) {
+      await tx.systemGrant.create({
+        data: {
+          id: `${profileId}:quizReward:${quizId}`,
+          userProfileId: profileId,
+          kind: 'quizReward',
+          dayKey: String(quizId),
+          createdAtUnix: nowSeconds(),
+        },
+      });
+      await adjustIngredient(tx, account.networkUid, rewardId, 1, true);
+    }
+    await tx.gameEvent.create({
+      data: {
+        userProfileId: profileId,
+        eventType: 25,
+        eventText: JSON.stringify({ quizId, answer, correct }),
+        createdAtUnix: nowSeconds(),
+      },
     });
-  }
-
-  await prisma.gameEvent.create({
-    data: {
-      userProfileId: profileKey(account.networkUid),
-      eventType: 25,
-      eventText: JSON.stringify({ quizId, answer, correct }),
-      createdAtUnix: nowSeconds(),
-    },
   });
   return profile.credits;
 }

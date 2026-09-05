@@ -290,6 +290,7 @@ Pages and control routes served outside the RPC/asset paths:
 | `npm run db:push` | Apply the schema to `DATABASE_URL`, or local SQLite when it is unset |
 | `npm run db:generate` | Regenerate both PostgreSQL and SQLite Prisma clients |
 | `npm run db:migrate:postgres` | Stream an offline SQLite database into an empty PostgreSQL database and verify every table count |
+| `npm run repair:ingredient-rewards` | Preview or apply idempotent recovery of historically lost quiz and first-visit ingredients |
 
 ### Purge inactive accounts
 
