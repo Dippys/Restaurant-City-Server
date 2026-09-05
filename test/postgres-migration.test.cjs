@@ -23,6 +23,9 @@ test('COPY CSV rendering preserves null, booleans, blobs, quotes, and newlines',
   assert.equal(csv(0, 'boolean'), '"f"');
   assert.equal(csv(Buffer.from([0, 255]), 'bytea'), '"\\x00ff"');
   assert.equal(csv('say "hi"\nnext', 'text'), '"say ""hi""\nnext"');
+  let sanitized = 0;
+  assert.equal(csv('bad\0event\0text', 'text', (count) => { sanitized += count; }), '"bad�event�text"');
+  assert.equal(sanitized, 2);
 });
 
 test('migration flags require explicit destructive or resume choices', () => {

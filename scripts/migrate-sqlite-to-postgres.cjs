@@ -7,7 +7,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { once } = require('node:events');
+const { Readable } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
 const Database = require('better-sqlite3');
 const { Client } = require('pg');
 const { from: copyFrom } = require('pg-copy-streams');
@@ -46,13 +47,20 @@ function quoteIdent(value) {
   return `"${String(value).replace(/"/g, '""')}"`;
 }
 
-function csv(value, dataType) {
+function csv(value, dataType, onSanitizedNullBytes = () => {}) {
   if (value === null || value === undefined) return '\\N';
   let rendered = value;
   if (dataType === 'boolean') rendered = value === true || value === 1 || value === '1' ? 't' : 'f';
   else if (dataType === 'bytea') rendered = `\\x${Buffer.from(value).toString('hex')}`;
   else if (dataType.startsWith('timestamp') && typeof value === 'number') rendered = new Date(value).toISOString();
   else if (value instanceof Date) rendered = value.toISOString();
+  if (typeof rendered === 'string' && ['text', 'character varying', 'character'].includes(dataType) && rendered.includes('\0')) {
+    const count = rendered.split('\0').length - 1;
+    onSanitizedNullBytes(count);
+    // PostgreSQL text cannot represent U+0000. Preserve the corruption marker
+    // visibly instead of silently dropping surrounding content.
+    rendered = rendered.replace(/\0/g, '\uFFFD');
+  }
   return `"${String(rendered).replace(/"/g, '""')}"`;
 }
 
@@ -119,19 +127,27 @@ async function copyTable(sqlite, client, table, targetColumns, sourceColumnNames
   const namesSql = columns.map((column) => quoteIdent(column.name)).join(', ');
   const selectSql = `SELECT ${namesSql} FROM ${quoteIdent(table)}`;
   const sink = client.query(copyFrom(`COPY ${quoteIdent(table)} (${namesSql}) FROM STDIN WITH (FORMAT csv, NULL '\\N')`));
-  const completion = new Promise((resolve, reject) => { sink.once('finish', resolve); sink.once('error', reject); });
   let copied = 0n;
   let bytes = 0;
-  for (const row of sqlite.prepare(selectSql).iterate()) {
-    const line = `${columns.map((column) => csv(row[column.name], column.type)).join(',')}\n`;
-    bytes += Buffer.byteLength(line);
-    copied += 1n;
-    if (!sink.write(line)) await once(sink, 'drain');
-    if (copied % 100000n === 0n) console.log(`    ${copied.toLocaleString()} rows copied`);
+  const sanitizedNullBytes = new Map();
+  function *lines() {
+    for (const row of sqlite.prepare(selectSql).iterate()) {
+      const line = `${columns.map((column) => csv(row[column.name], column.type, (count) => {
+        sanitizedNullBytes.set(column.name, (sanitizedNullBytes.get(column.name) || 0) + count);
+      })).join(',')}\n`;
+      bytes += Buffer.byteLength(line);
+      copied += 1n;
+      if (copied % 100000n === 0n) console.log(`    ${copied.toLocaleString()} rows copied`);
+      yield line;
+    }
   }
-  sink.end();
-  await completion;
-  return { copied, bytes };
+  // pipeline propagates a server-side COPY failure immediately, stops reading
+  // SQLite, and lets the caller roll back the current table transaction.
+  await pipeline(Readable.from(lines()), sink);
+  for (const [column, count] of sanitizedNullBytes) {
+    console.warn(`    warning: replaced ${count.toLocaleString()} NUL byte(s) in ${table}.${column} with U+FFFD`);
+  }
+  return { copied, bytes, sanitizedNullBytes };
 }
 
 async function resetSequences(client) {
