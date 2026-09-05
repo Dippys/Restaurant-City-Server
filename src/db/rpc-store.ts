@@ -9,7 +9,7 @@ import { isGiftableItemId } from './item-catalog';
 import { coinBundleForToken, ingredientCashCost, ingredientIdForCashToken, ownedItemCashCost } from './cash-catalog';
 import type { ActiveAccount } from '../session';
 import { enqueueLiveMail, pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
-import { IN_GAME_ACTIVITY_WINDOW_MS, prioritizeInGameRoster } from '../rpc/street-roster';
+import { IN_GAME_ACTIVITY_WINDOW_MS, prioritizeInGameRoster, selectGourmetStreetProfiles } from '../rpc/street-roster';
 
 const STATUS_OK = 0;
 const STATUS_NOT_ENOUGH_CASH = 1;
@@ -606,7 +606,13 @@ export async function streetUsers(account: ActiveAccount, count: number): Promis
 
 export async function gourmetStreetUsers(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
   await readOwnerProfile(account);
-  return prioritizedEnabledProfiles(account.networkUid, [account.networkUid], count);
+  const excluded = [PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, account.networkUid];
+  const accounts = await prisma.account.findMany({
+    where: { disabled: false, networkUid: { notIn: excluded } },
+    select: { networkUid: true },
+  });
+  const profiles = await getProfiles(accounts.map((candidate) => candidate.networkUid), '');
+  return selectGourmetStreetProfiles(profiles, account.networkUid, count);
 }
 
 export async function hireCandidates(account: ActiveAccount, count: number): Promise<StoredProfile[]> {

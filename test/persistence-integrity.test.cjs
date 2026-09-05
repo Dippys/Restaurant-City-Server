@@ -18,7 +18,7 @@ process.env.RC_DB_PATH = testDbPath;
 
 const { prisma } = require('../dist/db/client.js');
 const { getPlayerProfile, savePlayerProfile } = require('../dist/db/profile-store.js');
-const { sendMail, swapIngredient } = require('../dist/db/rpc-store.js');
+const { gourmetStreetUsers, sendMail, swapIngredient } = require('../dist/db/rpc-store.js');
 const { grantMailItem } = require('../dist/db/system-mail.js');
 const { buildResponse } = require('../dist/rpc/index.js');
 const { writeBool, writeNetworkUid, writeString, writeU8, writeVarint } = require('../dist/rpc/codec.js');
@@ -488,6 +488,28 @@ test('direct trades are rejected when the target is not on the caller\'s Friends
 
   // A secure trade mail to a non-friend is rejected the same way.
   assert.equal(await sendMail(player, { recipient: targetRef, globalItemIds: [4000002, 4000004], itemId: 0, message: '', type: 6 }), 4);
+});
+
+test('Gourmet Street selects restaurant quality instead of recent activity', async () => {
+  const owner = await seedProfile('gourmetowner');
+  const quality = await seedProfile('gourmetquality');
+  const recent = await seedProfile('gourmetrecent');
+  await Promise.all([makeAccountBacked(owner), makeAccountBacked(quality), makeAccountBacked(recent)]);
+  await prisma.userProfile.update({
+    where: { networkUid: quality.networkUid },
+    data: { gourmetPoint: 1_000_000, nbVote: 20, totalMark: 100 },
+  });
+  await prisma.playerActivity.create({
+    data: {
+      accountId: `account-${recent.networkUid}`,
+      networkUid: recent.networkUid,
+      lastSeenAt: new Date(),
+      lastLoginAt: new Date(),
+    },
+  });
+
+  const users = await gourmetStreetUsers(owner, 1);
+  assert.deepEqual(users.map((profile) => profile.networkUid), [quality.networkUid]);
 });
 
 test('NPC trades cannot mint ingredients the NPC does not hold', async () => {
