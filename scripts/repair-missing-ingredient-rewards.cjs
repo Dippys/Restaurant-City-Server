@@ -11,7 +11,11 @@ async function main() {
   const { prisma } = require('../dist/db/client.js');
   const { repairMissingIngredientRewards } = require('../dist/db/ingredient-reward-repair.js');
   try {
-    const result = await repairMissingIngredientRewards(args.has('--apply'));
+    const result = await repairMissingIngredientRewards(args.has('--apply'), (progress) => {
+      if (progress.phase === 'loading') console.log('[scan] Loading reward evidence and existing repair markers...');
+      else if (progress.phase === 'planning') console.log('[scan] Building the missing-reward plan...');
+      else console.log(`[apply] ${progress.completed}/${progress.total} rewards committed`);
+    });
     console.log(`Missing first-visit rewards: ${result.missingFirstVisitRewards}`);
     console.log(`Missing correct-quiz rewards: ${result.missingQuizRewards}`);
     console.log(`Ignored invalid/unrecoverable quiz events: ${result.invalidQuizEvents}`);

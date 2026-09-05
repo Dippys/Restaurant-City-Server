@@ -16,6 +16,7 @@
     "repair:coin-reward-gifts": "node scripts/remove-coin-reward-gifts.cjs",
     "repair:mail-integrity": "node scripts/remove-coin-reward-gifts.cjs",
     "repair:ingredient-rewards": "node scripts/repair-missing-ingredient-rewards.cjs",
+    "repair:unopened-gifts": "node scripts/remove-unopened-gifts.cjs",
     "check": "npm run db:generate && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.admin.json --noEmit",
     "test": "npm run build && node --test test/*.test.cjs",
     "bench:hotfix": "npm run build && node --expose-gc scripts/benchmark-performance-hotfix.cjs",

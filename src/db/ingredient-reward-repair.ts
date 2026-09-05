@@ -18,6 +18,12 @@ export interface IngredientRewardRepairResult {
   readonly rewardsGranted: number;
 }
 
+export interface IngredientRewardRepairProgress {
+  readonly phase: 'loading' | 'planning' | 'applying';
+  readonly completed?: number;
+  readonly total?: number;
+}
+
 function markerKey(userProfileId: string, kind: RewardKind, dayKey: string): string {
   return `${userProfileId}\0${kind}\0${dayKey}`;
 }
@@ -34,13 +40,18 @@ function parseQuizEvent(value: string): { quizId: number; ingredientId: number }
   }
 }
 
-export async function repairMissingIngredientRewards(apply = false): Promise<IngredientRewardRepairResult> {
+export async function repairMissingIngredientRewards(
+  apply = false,
+  onProgress?: (progress: IngredientRewardRepairProgress) => void,
+): Promise<IngredientRewardRepairResult> {
+  onProgress?.({ phase: 'loading' });
   const [visits, quizEvents, quizMails, markers] = await Promise.all([
     prisma.friendVisit.findMany({ select: { id: true, userProfileId: true, friendNetworkUid: true, giftIngredientId: true } }),
     prisma.gameEvent.findMany({ where: { eventType: 25 }, select: { id: true, userProfileId: true, eventText: true } }),
     prisma.mail.findMany({ where: { type: 2 }, select: { id: true, recipientProfileId: true } }),
     prisma.systemGrant.findMany({ where: { kind: { in: ['firstVisitReward', 'quizReward'] } }, select: { userProfileId: true, kind: true, dayKey: true } }),
   ]);
+  onProgress?.({ phase: 'planning' });
   const existing = new Set(markers.map((row) => markerKey(row.userProfileId, row.kind as RewardKind, row.dayKey)));
   const quizOwner = new Map(quizMails.map((mail) => [mail.id, mail.recipientProfileId]));
   const plans: RewardPlan[] = [];
@@ -76,6 +87,7 @@ export async function repairMissingIngredientRewards(apply = false): Promise<Ing
   const missingQuizRewards = plans.length - missingFirstVisitRewards;
   let rewardsGranted = 0;
   if (apply) {
+    onProgress?.({ phase: 'applying', completed: 0, total: plans.length });
     // Keep each interactive transaction small enough for a remote PostgreSQL
     // connection. Completed batches are independently durable and excluded by
     // their markers if an operator resumes after a later batch fails.
@@ -104,6 +116,7 @@ export async function repairMissingIngredientRewards(apply = false): Promise<Ing
         }
       }, { maxWait: 10_000, timeout: 30_000 });
       rewardsGranted += batch.length;
+      onProgress?.({ phase: 'applying', completed: rewardsGranted, total: plans.length });
     }
   }
 
