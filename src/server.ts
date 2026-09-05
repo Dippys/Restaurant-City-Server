@@ -10,6 +10,7 @@ import { configureRpcActivityBuffer } from './activity-buffer';
 import { configureAutomaticSnapshotInterval } from './moderation/service';
 import { gracefulShutdown } from './graceful-shutdown';
 import type { SchedulerHandle } from './job-runner';
+import { databaseProvider } from './db/client';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -62,6 +63,7 @@ async function main(): Promise<void> {
     console.log(` Listening      : http://localhost:${config.port}`);
     console.log(` Dashboard      : http://localhost:${config.port}/__dash`);
     console.log(` Static files   : ${staticFiles.size} indexed (self-contained: server/public)`);
+    console.log(` Database       : ${databaseProvider}`);
     console.log(` game.swf serves: ${staticFiles.servesRebuiltGameSwf() ? 'REBUILT (localhost-wired)' : 'original'}`);
     console.log('');
     console.log(' Launch the client so it loads FROM this server:');

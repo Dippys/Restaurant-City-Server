@@ -12,6 +12,7 @@ import { loadProjectEnv } from '../env';
 const explicitSqlitePath = process.env.RC_DB_PATH?.trim();
 loadProjectEnv();
 const postgresUrl = explicitSqlitePath ? undefined : process.env.DATABASE_URL?.trim();
+export const databaseProvider = postgresUrl ? 'PostgreSQL' : 'SQLite';
 
 if (process.env.NODE_ENV === 'production' && !postgresUrl && !process.env.RC_DB_PATH) {
   throw new Error('DATABASE_URL is required in production (RC_DB_PATH remains available for SQLite rollback).');
