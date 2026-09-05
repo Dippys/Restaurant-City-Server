@@ -59,7 +59,7 @@ function csv(value, dataType) {
 function createSchema(postgresUrl) {
   require('./generate-postgresql-schema.cjs');
   const prismaCli = require.resolve('prisma/build/index.js');
-  const result = spawnSync(process.execPath, [prismaCli, 'db', 'push', '--schema', 'prisma/schema.postgresql.prisma', '--skip-generate'], {
+  const result = spawnSync(process.execPath, [prismaCli, 'db', 'push', '--schema', 'prisma/schema.postgresql.prisma'], {
     cwd: path.resolve(__dirname, '..'),
     env: { ...process.env, DATABASE_URL: postgresUrl },
     stdio: 'inherit',
