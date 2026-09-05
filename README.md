@@ -6,8 +6,8 @@ in a modern browser via Ruffle. It does four things:
 
 - **Serves the game's assets** (SWF, XML, `.bin`) from this repo.
 - **Answers the game's binary RPC calls** with real responses.
-- **Persists player state** (profile, inventory, garden, economy, mail, …) in a
-  local SQLite database.
+- **Persists player state** (profile, inventory, garden, economy, mail, …) in
+  PostgreSQL in production, with SQLite retained for local development.
 - **Creates safe social links** with Discord previews, explicit claims,
   transactional escrow, friendships, and administrator campaigns.
 - **Ranks explainable profile anomalies** and provides immutable rollback,
@@ -16,8 +16,8 @@ in a modern browser via Ruffle. It does four things:
   editing the database.
 
 Stack: Node.js + TypeScript on the built-in `http` module (no web framework),
-Prisma 7 over SQLite via the better-sqlite3 adapter, with a pinned local Ruffle
-fork for the browser game page.
+Prisma 7 over PostgreSQL in production or SQLite locally, with a pinned local
+Ruffle fork for the browser game page.
 
 ## Requirements
 
@@ -74,7 +74,8 @@ All optional, via environment variables:
 | `MAX_LOG_ENTRIES` | `50` production; `500` development | Maximum entries retained by the bounded in-memory request buffer |
 | `RC_RPC_CAPTURE_MODE` | `metadata` production; `full` development | Request capture detail. Production `metadata` omits headers, query values, URLs containing queries, and body encodings. Temporary `full` mode redacts authentication material. |
 | `RC_REQUEST_LOG_STDOUT` | `false` production; `true` development | Emit one console line per captured request. Leave disabled under normal production traffic. |
-| `RC_DB_PATH` | `server/dev.db` locally; required in production | SQLite file location. Production must use a durable path outside the release directory, e.g. `/var/lib/rc-reborn/dev.db`. |
+| `DATABASE_URL` | empty locally; required in production | PostgreSQL connection URL. When set, runtime and Prisma commands use PostgreSQL. |
+| `RC_DB_PATH` | `server/dev.db` locally | SQLite development or rollback file. Ignored by runtime when `DATABASE_URL` is set. |
 | `RC_ADMIN_USERNAME` | empty | Username promoted to admin when first registered |
 | `RC_PIN_PEPPER` | empty | Optional stable server secret mixed into PIN hashes |
 | `RC_TRUST_PROXY` | `false` | Trust forwarded IP/protocol headers only behind your proxy |
@@ -265,13 +266,14 @@ Pages and control routes served outside the RPC/asset paths:
 | `src/rpc/calls.ts` | msgType → call-name table |
 | `src/rpc/responders.ts` | Per-call response implementations |
 | `src/rpc/save-profile-parser.ts` | Decoder for the `saveProfile` payload |
-| `src/db/client.ts` | Prisma client (better-sqlite3 adapter) |
+| `src/db/client.ts` | Prisma client (PostgreSQL or local SQLite adapter) |
 | `src/db/defaults.ts` | Seed values for new profiles and the economy |
 | `src/db/profile-store.ts` | Profile read/write and `saveProfile` application |
 | `src/moderation/` | Evidence rules, scan persistence, Discord digest, snapshots, rollback, and scheduler |
 | `src/db/rpc-store.ts` | Persistence for the remaining RPC calls |
 | `src/db/admin-store.ts` | Queries behind the `/__api/db` editor |
-| `prisma/schema.prisma` | SQLite schema |
+| `prisma/schema.prisma` | Canonical data model (SQLite development schema) |
+| `prisma/schema.postgresql.prisma` | Generated PostgreSQL form of the canonical schema |
 | `prisma.config.ts` | Prisma 7 datasource config |
 | `public/` | Self-contained asset store + pages: `swf/` (served SWFs), `data/` (game-data `.bin`/`.xml` + decompressed views), `ruffle/` (vendored Ruffle), `assets/` (site art), `admin/` (compiled admin dashboard JS), `index.html`/`game.html`/`admin.html`/… |
 | `server.js` | Shim that runs `dist/server.js`, or tells you to build |
@@ -285,8 +287,9 @@ Pages and control routes served outside the RPC/asset paths:
 | `npm run build` | `prisma generate` + `tsc` |
 | `npm run check` | Type-check only (`tsc --noEmit`) |
 | `npm run bench:hotfix` | Build, then compare capture, activity, and checkpoint hot paths on a disposable SQLite database |
-| `npm run db:push` | Apply the schema to `dev.db` |
-| `npm run db:generate` | Regenerate the Prisma client |
+| `npm run db:push` | Apply the schema to `DATABASE_URL`, or local SQLite when it is unset |
+| `npm run db:generate` | Regenerate both PostgreSQL and SQLite Prisma clients |
+| `npm run db:migrate:postgres` | Stream an offline SQLite database into an empty PostgreSQL database and verify every table count |
 
 ### Purge inactive accounts
 
@@ -331,12 +334,10 @@ also required:
 4. Set `RC_TRUST_PROXY=true` only when the server is reachable solely through a
    trusted proxy. The proxy must replace (not append untrusted) forwarded
    protocol and client-IP headers.
-5. Set `RC_DB_PATH` to durable storage outside the application release
-   directory (for example `/var/lib/rc-reborn/dev.db`). Deployment syncs must
-   exclude SQLite databases, WAL/SHM files, and backups. Back it up off-host,
-   test restores, restrict filesystem permissions,
-   and use a production database strategy before running multiple Node
-   instances. SQLite is a single-host deployment choice.
+5. Set `DATABASE_URL` to the migrated PostgreSQL database, restrict its role and
+   network access, take tested PostgreSQL backups, and keep the original SQLite
+   file unchanged until cutover is verified. `RC_DB_PATH` remains a local
+   development and rollback option only.
 6. The policy pages (`public/legal.html`: terms, privacy, cookies, community
    guidelines) are final as shipped, naming the Restaurant City Project as
    operator with in-service contact and England & Wales governing law. Have

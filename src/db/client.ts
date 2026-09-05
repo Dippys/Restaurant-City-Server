@@ -1,12 +1,24 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient as PostgresqlPrismaClient } from '../../generated/postgresql';
 import * as path from 'node:path';
 
-if (process.env.NODE_ENV === 'production' && !process.env.RC_DB_PATH) {
-  throw new Error('RC_DB_PATH is required in production; keep player data outside the release directory.');
+const postgresUrl = process.env.DATABASE_URL?.trim();
+
+if (process.env.NODE_ENV === 'production' && !postgresUrl && !process.env.RC_DB_PATH) {
+  throw new Error('DATABASE_URL is required in production (RC_DB_PATH remains available for SQLite rollback).');
 }
 
-const databasePath = path.resolve(process.env.RC_DB_PATH ?? path.join(__dirname, '..', '..', 'dev.db'));
-const adapter = new PrismaBetterSqlite3({ url: databasePath });
+function createClient(): PrismaClient {
+  if (postgresUrl) {
+    const adapter = new PrismaPg({ connectionString: postgresUrl });
+    return new PostgresqlPrismaClient({ adapter }) as unknown as PrismaClient;
+  }
 
-export const prisma = new PrismaClient({ adapter });
+  const databasePath = path.resolve(process.env.RC_DB_PATH ?? path.join(__dirname, '..', '..', 'dev.db'));
+  const adapter = new PrismaBetterSqlite3({ url: databasePath });
+  return new PrismaClient({ adapter });
+}
+
+export const prisma = createClient();

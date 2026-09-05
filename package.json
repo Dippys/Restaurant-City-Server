@@ -6,14 +6,16 @@
   "type": "commonjs",
   "main": "dist/server.js",
   "scripts": {
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "build": "prisma generate && tsc -p tsconfig.json && tsc -p tsconfig.admin.json",
+    "db:schema:postgres": "node scripts/generate-postgresql-schema.cjs",
+    "db:generate": "node scripts/generate-postgresql-schema.cjs && prisma generate --schema prisma/schema.prisma && prisma generate --schema prisma/schema.postgresql.prisma",
+    "db:push": "node scripts/generate-postgresql-schema.cjs && prisma db push",
+    "db:migrate:postgres": "node scripts/migrate-sqlite-to-postgres.cjs",
+    "build": "npm run db:generate && tsc -p tsconfig.json && tsc -p tsconfig.admin.json",
     "assets:social-icons": "node scripts/sync-social-ingredient-icons.cjs",
     "preview:daily-ingredients": "node scripts/render-daily-ingredients-preview.cjs",
     "repair:coin-reward-gifts": "node scripts/remove-coin-reward-gifts.cjs",
     "repair:mail-integrity": "node scripts/remove-coin-reward-gifts.cjs",
-    "check": "prisma generate && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.admin.json --noEmit",
+    "check": "npm run db:generate && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.admin.json --noEmit",
     "test": "npm run build && node --test test/*.test.cjs",
     "bench:hotfix": "npm run build && node --expose-gc scripts/benchmark-performance-hotfix.cjs",
     "start": "npm run db:push && npm run build && node dist/server.js",
@@ -21,14 +23,18 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
+    "@types/pg": "^8.15.5",
     "prisma": "^7.8.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.8.0",
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@ruffle-rs/ruffle": "0.5.0",
     "better-sqlite3": "^12.11.1",
+    "pg": "^8.16.3",
+    "pg-copy-streams": "^7.0.0",
     "sharp": "^0.34.5"
   }
 }

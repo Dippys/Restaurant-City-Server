@@ -1,0 +1,669 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/postgresql"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id           String    @id
+  username     String
+  usernameKey  String    @unique
+  firstName    String
+  lastName     String
+  pinHash      String
+  pinSalt      String
+  pinEnabled   Boolean   @default(true)
+  networkUid   String    @unique
+  playfishUid  Int       @unique
+  role         String    @default("USER")
+  disabled     Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastLoginAt  DateTime?
+  discordLinkPromptedAt DateTime?
+  sessions     Session[]
+  discordIdentity DiscordIdentity?
+  discordNotificationState DiscordNotificationState?
+  socialLinksCreated SocialLink[] @relation("SocialLinkCreator")
+  socialLinksAdministered SocialLink[] @relation("SocialLinkAdmin")
+  socialActions SocialLinkAction[]
+  escrowsOwned SocialLinkEscrow[]
+  friendRequestsSent FriendRequest[] @relation("FriendRequestSender")
+  friendRequestsReceived FriendRequest[] @relation("FriendRequestRecipient")
+  friendshipsA Friendship[] @relation("FriendshipA")
+  friendshipsB Friendship[] @relation("FriendshipB")
+}
+
+// A Discord identity is an alternate credential for exactly one game account.
+// OAuth access/refresh tokens are deliberately not retained; the bot only needs
+// the stable Discord user id to deliver opt-in direct-message notifications.
+model DiscordIdentity {
+  discordUserId         String   @id
+  accountId             String   @unique
+  username              String
+  globalName            String   @default("")
+  email                 String?
+  avatarHash            String   @default("")
+  dmNotificationsEnabled Boolean @default(true)
+  linkedAt              DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  lastLoginAt           DateTime?
+  account               Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+// Short-lived, single-use handoff after Discord OAuth when the Discord user has
+// not yet chosen whether to link an existing profile or create a new one.
+model DiscordLoginTicket {
+  tokenHash     String   @id
+  discordUserId String
+  username      String
+  globalName    String   @default("")
+  email         String?
+  avatarHash    String   @default("")
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([discordUserId])
+}
+
+// Durable cursor + edge state for bot DMs. The first sweep baselines current
+// state, so enabling the feature never floods a player with historical mail.
+model DiscordNotificationState {
+  accountId                 String   @id
+  lastMailId                Int      @default(0)
+  allEmployeesExhausted     Boolean  @default(false)
+  gardenReadyPlotIdsJson    String   @default("[]")
+  gardenDryPlotIdsJson      String   @default("[]")
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  account                   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id             String   @id
+  tokenHash      String   @unique
+  csrfToken      String
+  accountId      String
+  expiresAt      DateTime
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  ipAddress      String   @default("")
+  userAgent      String   @default("")
+  rpcSessionToken String  @default("")
+  rpcSaveVersion Int      @default(0)
+  rpcSaveTime    Int      @default(0)
+  rpcSaveDigest  String   @default("")
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([expiresAt])
+}
+
+model UserProfile {
+  id               String      @id
+  network          Int         @default(2)
+  networkUid       String      @unique
+  playfishUid      Int         @default(0)
+  firstName        String
+  fullName         String
+  restaurantName   String
+  imageUrl         String      @default("")
+  largeImageUrl    String      @default("")
+  gender           Int         @default(0)
+  credits          Int         @default(50000)
+  playCount        Int         @default(0)
+  userLevel        Int         @default(2)
+  gourmetPoint     Int         @default(10000)
+  nbVote           Int         @default(0)
+  totalMark        Int         @default(0)
+  trashPoint       Int         @default(0)
+  demandPoint      Int         @default(0)
+  musicPlay        Int         @default(1)
+  cashBalance      Int         @default(250)
+  bookmarkCount    Int         @default(0)
+  isInStreet       Boolean     @default(false)
+  activeFloorIndex Int         @default(0)
+  saveVersion      Int         @default(1)
+  lastSave         Int         @default(0)
+  lastSurveyTime   Int         @default(0)
+  consecutionCount Int         @default(0)
+  awards           Bytes?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  ownedItems       OwnedItem[]
+  inventoryItems   InventoryItem[]
+  ingredients      IngredientInventory[]
+  gardenPlots      GardenPlot[]
+  floors           RestaurantFloor[]
+  employees        Employee[]
+  mailsSent        Mail[]      @relation("SentMails")
+  mailsReceived    Mail[]      @relation("ReceivedMails")
+  visits           FriendVisit[]
+  visitCredits     FriendVisitCredit[]
+  rankingsGiven    RestaurantRank[] @relation("RankingsGiven")
+  rankingsReceived RestaurantRank[] @relation("RankingsReceived")
+  gameEvents       GameEvent[]
+  storedImages     StoredImage[]
+  notificationsSent Notification[] @relation("NotificationsSent")
+  notificationsReceived Notification[] @relation("NotificationsReceived")
+  cashTransactions CashTransaction[]
+}
+
+model OwnedItem {
+  id                 String      @id
+  userProfileId      String
+  serverId           Int
+  globalItemId       Int
+  positionX          Int
+  positionY          Int
+  data               Int         @default(0)
+  roomIndex          Int         @default(0)
+  employeeNetwork    Int         @default(0)
+  employeeNetworkUid String      @default("")
+  employeePlayfishUid Int        @default(0)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  userProfile        UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, serverId])
+  @@index([userProfileId])
+}
+
+model InventoryItem {
+  id            String      @id
+  userProfileId String
+  globalItemId  Int
+  number        Int         @default(0)
+  isSelected    Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, globalItemId])
+  @@index([userProfileId])
+}
+
+model IngredientInventory {
+  id            String      @id
+  userProfileId String
+  globalItemId  Int
+  number        Int         @default(0)
+  isLocked      Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, globalItemId])
+  @@index([userProfileId])
+}
+
+model GardenPlot {
+  id            String      @id
+  userProfileId String
+  plotId        Int
+  ingredientId  Int
+  plantWetTime  Int         @default(0)
+  timeToDry     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, plotId])
+  @@index([userProfileId])
+}
+
+model RestaurantFloor {
+  id            String      @id
+  userProfileId String
+  floorIndex    Int
+  tilesJson     String      @default("[]")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, floorIndex])
+  @@index([userProfileId])
+}
+
+model Employee {
+  id                 String      @id
+  userProfileId      String
+  network            Int         @default(0)
+  networkUid         String      @default("")
+  playfishUid        Int         @default(0)
+  happiness          Int         @default(100)
+  task               Int         @default(0)
+  notify             Boolean     @default(false)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  userProfile        UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, networkUid])
+  @@index([userProfileId])
+}
+
+model Mail {
+  id                  Int         @id @default(autoincrement())
+  senderProfileId     String
+  recipientProfileId  String
+  senderNetwork       Int         @default(2)
+  senderNetworkUid    String
+  senderPlayfishUid   Int         @default(0)
+  recipientNetwork    Int         @default(2)
+  recipientNetworkUid String
+  recipientPlayfishUid Int        @default(0)
+  globalItemIdsJson   String      @default("[]")
+  itemId              Int         @default(0)
+  message             String      @default("")
+  read                Boolean     @default(false)
+  deleted             Boolean     @default(false)
+  sendDate            Int
+  deleteTime          Int         @default(0)
+  type                Int         @default(1)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  sender              UserProfile @relation("SentMails", fields: [senderProfileId], references: [id], onDelete: Cascade)
+  recipient           UserProfile @relation("ReceivedMails", fields: [recipientProfileId], references: [id], onDelete: Cascade)
+
+  @@index([recipientProfileId, deleted, sendDate])
+  @@index([senderProfileId])
+}
+
+model FriendVisit {
+  id            String      @id
+  userProfileId String
+  friendNetwork Int         @default(2)
+  friendNetworkUid String
+  friendPlayfishUid Int     @default(0)
+  firstVisitedAt Int
+  lastVisitedAt  Int
+  giftIngredientId Int      @default(4000000)
+  visitsTodayDate String    @default("")
+  visitsTodayCount Int      @default(0)
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, friendNetworkUid])
+  @@index([userProfileId])
+}
+
+model FriendVisitCredit {
+  id            String      @id
+  userProfileId String
+  friendNetwork Int         @default(2)
+  friendNetworkUid String
+  friendPlayfishUid Int     @default(0)
+  creditedAt    Int
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, friendNetworkUid])
+  @@index([userProfileId])
+}
+
+model RestaurantRank {
+  id                  String      @id
+  fromProfileId       String
+  targetProfileId     String?
+  targetNetwork       Int         @default(2)
+  targetNetworkUid    String
+  targetPlayfishUid   Int         @default(0)
+  rating              Int
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  fromProfile         UserProfile @relation("RankingsGiven", fields: [fromProfileId], references: [id], onDelete: Cascade)
+  targetProfile       UserProfile? @relation("RankingsReceived", fields: [targetProfileId], references: [id], onDelete: SetNull)
+
+  @@unique([fromProfileId, targetNetworkUid])
+  @@index([targetNetworkUid])
+}
+
+model GameEvent {
+  id            Int         @id @default(autoincrement())
+  userProfileId String
+  eventType     Int
+  eventText     String
+  createdAtUnix Int
+  createdAt     DateTime    @default(now())
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@index([userProfileId, createdAt])
+}
+
+model StoredImage {
+  id            Int         @id @default(autoincrement())
+  userProfileId String
+  imageType     Int
+  width         Int
+  height        Int
+  data          Bytes
+  createdAt     DateTime    @default(now())
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@index([userProfileId, createdAt])
+}
+
+model Notification {
+  id                  Int         @id @default(autoincrement())
+  senderProfileId     String
+  recipientProfileId  String?
+  recipientNetwork    Int         @default(2)
+  recipientNetworkUid String
+  recipientPlayfishUid Int        @default(0)
+  createdAtUnix       Int
+  createdAt           DateTime    @default(now())
+  sender              UserProfile @relation("NotificationsSent", fields: [senderProfileId], references: [id], onDelete: Cascade)
+  recipient           UserProfile? @relation("NotificationsReceived", fields: [recipientProfileId], references: [id], onDelete: SetNull)
+
+  @@index([recipientNetworkUid, createdAt])
+}
+
+model CashTransaction {
+  id            Int         @id @default(autoincrement())
+  userProfileId String
+  kind          String
+  token         String
+  amount        Int
+  balanceAfter  Int
+  createdAtUnix Int
+  createdAt     DateTime    @default(now())
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@index([userProfileId, createdAt])
+}
+
+// ADR-0034: server-owned moderation evidence. These tables are deliberately
+// additive and do not participate in the PlayFish RPC wire format.
+model PlayerActivity {
+  accountId          String   @id
+  networkUid         String   @unique
+  firstSeenAt        DateTime @default(now())
+  lastSeenAt         DateTime @default(now())
+  lastLoginAt        DateTime @default(now())
+  totalActiveSeconds Int      @default(0)
+  loginCount         Int      @default(0)
+  requestCount       Int      @default(0)
+  rpcCount           Int      @default(0)
+  saveCount          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([lastSeenAt])
+}
+
+model ProfileSnapshot {
+  id             String   @id
+  networkUid     String
+  reason         String
+  label          String   @default("")
+  payloadVersion Int      @default(1)
+  payloadJson    String
+  payloadDigest  String
+  userLevel      Int
+  gourmetPoint   Int
+  credits        Int
+  cashBalance    Int
+  placedItems    Int
+  inventoryUnits Int
+  ingredientUnits Int
+  employeeCount  Int
+  createdByAccountId String?
+  createdAt      DateTime @default(now())
+
+  @@index([networkUid, createdAt])
+  @@index([payloadDigest])
+}
+
+model ProfileSaveFact {
+  id                Int      @id @default(autoincrement())
+  networkUid        String
+  snapshotId        String?  // ADR-0051 interval checkpoint anchor; not necessarily the exact immediately-before state
+  saveVersion       Int
+  rpcSessionToken   String   @default("") // ADR-0042: fence token (per SWF load) for exact same-session clock comparisons
+  clientTime        Int
+  previousClientTime Int
+  serverDeltaSeconds Int
+  clientDeltaSeconds Int
+  previousCredits   Int
+  credits           Int
+  creditDelta       Int
+  previousGourmet   Int
+  gourmetPoint      Int
+  gourmetDelta      Int
+  previousLevel     Int
+  userLevel         Int
+  actionCount       Int
+  unknownActionCount Int
+  actionCountsJson  String   @default("{}")
+  placedItems       Int
+  inventoryUnits    Int
+  ingredientUnits   Int
+  employeeCount     Int
+  gardenPlotCount   Int
+  selectedRecipeCount Int
+  createdAt         DateTime @default(now())
+
+  @@index([networkUid, createdAt])
+  @@index([snapshotId])
+}
+
+model AnomalyFinding {
+  id              String   @id
+  fingerprint     String   @unique
+  networkUid      String
+  ruleId          String
+  severity        String
+  score           Int
+  title           String
+  summary         String
+  evidenceJson    String
+  evidenceVersion Int      @default(1)
+  notifiedVersion Int      @default(0)
+  status          String   @default("OPEN")
+  occurrenceCount Int      @default(1)
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  resolvedAt      DateTime?
+  reviewedAt      DateTime?
+  reviewedByAccountId String?
+  reviewNote      String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([networkUid, status, lastSeenAt])
+  @@index([status, severity, score])
+  @@index([notifiedVersion, evidenceVersion])
+}
+
+model ModerationAction {
+  id                String   @id
+  targetNetworkUid  String
+  actorAccountId    String?
+  actorUsername     String   @default("system")
+  actionType        String
+  reason            String
+  snapshotId        String?
+  detailsJson       String   @default("{}")
+  createdAt         DateTime @default(now())
+
+  @@index([targetNetworkUid, createdAt])
+  @@index([actionType, createdAt])
+}
+
+model ModerationScan {
+  id               Int      @id @default(autoincrement())
+  startedAt        DateTime @default(now())
+  completedAt      DateTime?
+  profilesScanned  Int      @default(0)
+  findingsCreated  Int      @default(0)
+  findingsUpdated  Int      @default(0)
+  findingsResolved Int      @default(0)
+  discordAttempted Boolean  @default(false)
+  discordSent      Boolean  @default(false)
+  discordError     String   @default("")
+}
+
+// Idempotency marker for once-per-day server-generated content (daily quiz mail,
+// daily free-ingredient bonus, NPC gifts/ranks). One row per (player, kind, day).
+model SystemGrant {
+  id            String   @id
+  userProfileId String
+  kind          String
+  dayKey        String
+  createdAtUnix Int
+  createdAt     DateTime @default(now())
+
+  @@unique([userProfileId, kind, dayKey])
+  @@index([userProfileId])
+}
+
+model Pricepoint {
+  id              Int      @id @default(autoincrement())
+  productType     Int
+  payoutParameter Int
+  paymentProvider Int
+  price           Int
+  currency        String
+  currencyScale   Int
+  clientData      String   @default("")
+  token           String   @unique
+  enabled         Boolean  @default(true)
+}
+
+model PurchasableItem {
+  id       Int     @id @default(autoincrement())
+  skuId    Int
+  price    Int
+  currency String
+  token    String  @unique
+  enabled  Boolean @default(true)
+}
+
+model IngredientMarketItem {
+  id           Int     @id @default(autoincrement())
+  ingredientId Int     @unique
+  price        Int
+  enabled      Boolean @default(true)
+}
+
+// One row per UTC market day makes the noon rotation and Discord delivery
+// restart-safe. The RPC continues to read IngredientMarketItem unchanged.
+model DailyIngredientRotation {
+  utcDate           String    @id
+  ingredientIdsJson String
+  pricesJson        String
+  rotatedAt         DateTime  @default(now())
+  announcedAt       DateTime?
+  attemptCount      Int       @default(0)
+  lastError         String    @default("")
+}
+
+// ADR-0020: additive web social-link state. These rows do not alter the
+// PlayFish RPC envelope; rewards land in the existing profile tables.
+model SocialLink {
+  id                    String   @id
+  slug                  String   @unique
+  kind                  String
+  status                String   @default("DRAFT")
+  creatorAccountId      String?
+  adminAccountId        String?
+  payloadJson           String
+  payloadVersion        Int      @default(1)
+  title                 String
+  description           String
+  imagePath             String   @default("/assets/chef.png")
+  shareText             String   @default("")
+  notBefore             DateTime?
+  expiresAt             DateTime?
+  totalActionLimit      Int?
+  perAccountLimit       Int      @default(1)
+  allowSelfAction       Boolean  @default(false)
+  successfulActionCount Int      @default(0)
+  activatedAt           DateTime?
+  revokedAt             DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  creator               Account? @relation("SocialLinkCreator", fields: [creatorAccountId], references: [id], onDelete: SetNull)
+  administrator         Account? @relation("SocialLinkAdmin", fields: [adminAccountId], references: [id], onDelete: SetNull)
+  actions               SocialLinkAction[]
+  escrows               SocialLinkEscrow[]
+
+  @@index([kind, status])
+  @@index([creatorAccountId, createdAt])
+  @@index([notBefore, expiresAt])
+}
+
+model SocialLinkAction {
+  id              String   @id
+  socialLinkId    String
+  actorAccountId  String
+  action          String
+  outcome         String
+  resultSummary   String
+  idempotencyKey  String
+  createdAt       DateTime @default(now())
+  socialLink      SocialLink @relation(fields: [socialLinkId], references: [id], onDelete: Cascade)
+  actor           Account @relation(fields: [actorAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([socialLinkId, actorAccountId, idempotencyKey])
+  @@index([socialLinkId, actorAccountId, action, outcome])
+  @@index([socialLinkId, createdAt])
+}
+
+model SocialLinkEscrow {
+  id              String   @id
+  socialLinkId    String
+  ownerAccountId  String
+  category        String
+  globalItemId    Int
+  quantity        Int
+  state           String   @default("HELD")
+  transferredAt   DateTime?
+  returnedAt      DateTime?
+  createdAt       DateTime @default(now())
+  socialLink      SocialLink @relation(fields: [socialLinkId], references: [id], onDelete: Cascade)
+  owner           Account @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
+
+  @@index([socialLinkId, state])
+  @@index([ownerAccountId, state])
+}
+
+model FoodKingEncounter {
+  id               String   @id
+  creatorAccountId String
+  offersJson       String
+  selectedItemId   Int
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+
+  @@index([creatorAccountId, expiresAt])
+}
+
+model FriendRequest {
+  id                 String   @id
+  senderAccountId    String
+  recipientAccountId String
+  status             String   @default("PENDING")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  sender             Account @relation("FriendRequestSender", fields: [senderAccountId], references: [id], onDelete: Cascade)
+  recipient          Account @relation("FriendRequestRecipient", fields: [recipientAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([senderAccountId, recipientAccountId])
+  @@index([recipientAccountId, status])
+}
+
+model Friendship {
+  id         String   @id
+  accountAId String
+  accountBId String
+  createdAt  DateTime @default(now())
+  accountA   Account @relation("FriendshipA", fields: [accountAId], references: [id], onDelete: Cascade)
+  accountB   Account @relation("FriendshipB", fields: [accountBId], references: [id], onDelete: Cascade)
+
+  @@unique([accountAId, accountBId])
+  @@index([accountAId])
+  @@index([accountBId])
+}

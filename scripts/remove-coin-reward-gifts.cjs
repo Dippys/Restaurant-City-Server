@@ -290,6 +290,10 @@ function applyPlan(db, plan, revokeOpenedRewards) {
 }
 
 async function main() {
+  if (process.env.DATABASE_URL && !process.argv.slice(2).includes('--database')) {
+    await require('./repair-mail-integrity-postgresql.cjs').main();
+    return;
+  }
   const options = parseArgs(process.argv.slice(2));
   if (options.help) { printHelp(); return; }
   if (options.revokeOpenedRewards && !options.apply) throw new Error('--revoke-opened-rewards requires --apply.');
