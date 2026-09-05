@@ -31,6 +31,8 @@ const { coinPriceForItemId } = require('../dist/db/item-catalog.js');
 const INVISIBLE_STATUE = 3500093; // 3 Million Fans Statue — invisible=true
 const VISIBLE_CHAIR = 3040001;    // Classic Chair — normal shop item
 
+const COIN_REWARD = 6020019; // 10000 Coins — fanPageFeed reward token
+
 let seq = 0;
 async function seedProfile(name) {
   seq += 1;
@@ -74,6 +76,12 @@ test('a type-4 gift mail of an invisible item is rejected and mints nothing', as
 
   // An unknown id is refused too.
   assert.equal(await sendMail(sender, { recipient: target, globalItemIds: [999999999], itemId: 0, message: '', type: 4 }), 4);
+
+  // Visible feed-reward tokens are renderable catalog rows, but are not items
+  // players may transfer through a gift mail.
+  assert.equal(await sendMail(sender, { recipient: target, globalItemIds: [COIN_REWARD], itemId: 0, message: '', type: 4 }), 4);
+  assert.equal(await inventoryItem(recipient, COIN_REWARD), null);
+  assert.equal(await sendMail(sender, { recipient: target, globalItemIds: [VISIBLE_CHAIR, COIN_REWARD], itemId: 0, message: '', type: 4 }), 4);
 
   // A real, visible shop item still gifts fine.
   const ok = await sendMail(sender, { recipient: target, globalItemIds: [VISIBLE_CHAIR], itemId: 0, message: 'A chair for you', type: 4 });

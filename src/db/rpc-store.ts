@@ -300,7 +300,10 @@ export async function sendMail(account: ActiveAccount, mail: {
   // Without this check a crafted sendMail could mint any item id — including
   // invisible/unavailable rows like the 3 Million Fans Statue (3500093) — into
   // the recipient's inventory via grantMailItem below.
-  if (mail.type === MAIL_TYPE_GIFT && !isGiftableItemId(mail.globalItemIds[0] ?? 0)) {
+  if (mail.type === MAIL_TYPE_GIFT && (
+    mail.globalItemIds.length !== 1
+    || !isGiftableItemId(mail.globalItemIds[0] ?? 0)
+  )) {
     return STATUS_INVALID_TOKEN;
   }
 

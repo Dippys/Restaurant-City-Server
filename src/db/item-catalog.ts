@@ -303,6 +303,10 @@ export function isGiftableItemId(id: number): boolean {
   const attrs = itemAttributes(id);
   if (!attrs) return false;
   if (attrs.invisible === 'true') return false;
+  // Coin/popularity reward tokens are feed rewards, not transferable items.
+  // They are visible in perk.xml so the client can render the reward, but a
+  // crafted type-4 mail containing one applies its reward semantics on open.
+  if (attrs.fanPageFeed === 'true') return false;
   if (/\bnotGiftable\b/.test(attrs.type ?? '')) return false;
   return true;
 }
