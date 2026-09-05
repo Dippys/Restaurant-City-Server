@@ -24,7 +24,9 @@ process.env.RC_DB_PATH = testDbPath;
 const { prisma } = require('../dist/db/client.js');
 const { getPlayerProfile, savePlayerProfile } = require('../dist/db/profile-store.js');
 const { itemAttributes, itemIdForToken } = require('../dist/db/item-catalog.js');
+const { resolveRecipeEntry } = require('../dist/db/recipe-catalog.js');
 const { parseSaveProfile } = require('../dist/rpc/save-profile-parser.js');
+const { responders } = require('../dist/rpc/responders.js');
 const { writeBool, writeIntvar32, writeNetworkUid, writeString, writeU8, writeVarint } = require('../dist/rpc/codec.js');
 
 // Shipped prices from server/public/data (restaurant.xml / perk.xml).
@@ -127,6 +129,12 @@ async function ownedCount(account, globalItemId) {
 
 async function inventoryNumber(account, globalItemId) {
   return (await prisma.inventoryItem.findUnique({
+    where: { userProfileId_globalItemId: { userProfileId: `facebook:${account.networkUid}`, globalItemId } },
+  }))?.number ?? 0;
+}
+
+async function ingredientNumber(account, globalItemId) {
+  return (await prisma.ingredientInventory.findUnique({
     where: { userProfileId_globalItemId: { userProfileId: `facebook:${account.networkUid}`, globalItemId } },
   }))?.number ?? 0;
 }
@@ -298,6 +306,111 @@ test('ingredient purchase charges the enabled market price and preserves disable
   assert.equal((await prisma.anomalyFinding.findUnique({ where: { fingerprint: `${account.networkUid}:SAVE_PRICING_WARNING` } }))?.status, 'OPEN');
 });
 
+test('dish upgrades consume their full XML ingredient cost and return the pre-consumption client snapshot', async () => {
+  const account = await seedProfile('recipeupgrade');
+  const fence = await setupFence(account);
+  const profileId = `facebook:${account.networkUid}`;
+  const recipe = resolveRecipeEntry('hZCTH.T8AgK_CtefRwFlPMC9z5WrjsUV0XA8hMv_1D5_Sui78WJ9ED6I_OzjlX9w');
+  assert.ok(recipe); // Chicken + two Leeks in recipe.xml
+  const required = new Map();
+  for (const ingredientId of recipe.ingredientIds) required.set(ingredientId, (required.get(ingredientId) ?? 0) + 1);
+  await prisma.ingredientInventory.createMany({ data: [...required].map(([globalItemId, count]) => ({
+    id: `${profileId}:ingredient:${globalItemId}`, userProfileId: profileId,
+    globalItemId, number: count + 2, isLocked: true,
+  })) });
+
+  const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
+    recipeUpgrades: [{ recipeId: recipe.id }],
+  }), { ...fence, payloadDigest: 'recipe-upgrade-v1' });
+  assert.equal(result.status, 'saved');
+  assert.equal(result.recipeUpgradeRejected, undefined);
+  assert.equal(await inventoryNumber(account, recipe.id), 1);
+  for (const [ingredientId, count] of required) {
+    assert.equal(await ingredientNumber(account, ingredientId), 2);
+    assert.equal(result.responseIngredients.find((item) => item.globalItemId === ingredientId)?.number, count + 2);
+  }
+});
+
+test('save RPC sends the optional ingredient reconciliation used by the live recipe callback', async () => {
+  const account = await seedProfile('recipewire');
+  const fence = await setupFence(account);
+  const profileId = `facebook:${account.networkUid}`;
+  const token = 'hZCTH.T8AgK_CtefRwFlPMC9z5WrjsUV0XA8hMv_1D5_Sui78WJ9ED6I_OzjlX9w';
+  const recipe = resolveRecipeEntry(token);
+  const required = new Map();
+  for (const ingredientId of recipe.ingredientIds) required.set(ingredientId, (required.get(ingredientId) ?? 0) + 1);
+  await prisma.ingredientInventory.createMany({ data: [...required].map(([globalItemId, number]) => ({
+    id: `${profileId}:ingredient:${globalItemId}`, userProfileId: profileId,
+    globalItemId, number, isLocked: true,
+  })) });
+  const body = Buffer.concat([
+    writeNetworkUid(2, account.networkUid, account.playfishUid), writeString('Recipe Wire'),
+    writeVarint(0), writeVarint(0), writeVarint(120), writeVarint(0),
+    writeBool(false), writeBool(false), writeU8(1), writeU8(0),
+    writeVarint(1), writeVarint(100), writeVarint(1),
+    writeU8(33), writeVarint(0), writeIntvar32(0), writeString(token),
+  ]);
+  const response = await responders[5]({ msgType: 5, name: 'saveProfile', len: body.length, body, session: fence.rpcSessionToken }, {
+    ...account, id: `account-${account.networkUid}`, sessionId: fence.authSessionId,
+  });
+  // status, savedVersion, empty mail array, then the optional-ingredients flag.
+  assert.deepEqual([...response.subarray(0, 4)], [0, 1, 0, 1]);
+  assert.ok(response[4] > 0, 'ingredient reconciliation array must not be empty');
+});
+
+test('dish upgrades are rejected atomically when an ingredient is missing', async () => {
+  const account = await seedProfile('recipeupgradepoor');
+  const fence = await setupFence(account);
+  const profileId = `facebook:${account.networkUid}`;
+  const recipe = resolveRecipeEntry('bvh_82BPH6bHag.k56VJllK1tN8lll8yR7GgOuXSYVyMVfJkyh0Jzx8NciPkHFOq');
+  assert.ok(recipe);
+  const firstIngredient = recipe.ingredientIds[0];
+  await prisma.ingredientInventory.create({ data: {
+    id: `${profileId}:ingredient:${firstIngredient}`, userProfileId: profileId,
+    globalItemId: firstIngredient, number: 1, isLocked: true,
+  } });
+
+  const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
+    recipeUpgrades: [{ recipeId: recipe.id }],
+  }), { ...fence, payloadDigest: 'recipe-upgrade-poor-v1' });
+  assert.equal(result.recipeUpgradeRejected, true);
+  assert.equal(await inventoryNumber(account, recipe.id), 0);
+  assert.equal(await ingredientNumber(account, firstIngredient), 1);
+  assert.equal((await prisma.anomalyFinding.findUnique({
+    where: { fingerprint: `${account.networkUid}:RECIPE_UPGRADE_REJECTED` },
+  }))?.status, 'OPEN');
+});
+
+test('generic inventory and selection actions cannot learn or level recipes', async () => {
+  const account = await seedProfile('forgedrecipe');
+  const fence = await setupFence(account);
+  const recipe = resolveRecipeEntry('bvh_82BPH6bHag.k56VJllK1tN8lll8yR7GgOuXSYVyMVfJkyh0Jzx8NciPkHFOq');
+  assert.ok(recipe);
+  await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
+    inventoryChanges: [
+      { globalItemId: recipe.id, delta: 1 },
+      { globalItemId: recipe.id, delta: 0, selected: true },
+    ],
+  }), { ...fence, payloadDigest: 'forged-recipe-v1' });
+  assert.equal(await inventoryNumber(account, recipe.id), 0);
+});
+
+test('dish upgrades cannot exceed the shipped level-10 cap', async () => {
+  const account = await seedProfile('maxrecipe');
+  const fence = await setupFence(account);
+  const profileId = `facebook:${account.networkUid}`;
+  const recipe = resolveRecipeEntry('bvh_82BPH6bHag.k56VJllK1tN8lll8yR7GgOuXSYVyMVfJkyh0Jzx8NciPkHFOq');
+  await prisma.inventoryItem.create({ data: {
+    id: `${profileId}:inventory:${recipe.id}`, userProfileId: profileId,
+    globalItemId: recipe.id, number: 10, isSelected: false,
+  } });
+  const result = await savePlayerProfile(await savedProfile(account), emptyAudit(1, 100, {
+    recipeUpgrades: [{ recipeId: recipe.id }],
+  }), { ...fence, payloadDigest: 'max-recipe-v1' });
+  assert.equal(result.recipeUpgradeRejected, true);
+  assert.equal(await inventoryNumber(account, recipe.id), 10);
+});
+
 test('cost-0 starter avatar items are granted for free', async () => {
   const account = await seedProfile('freeavatar');
   const fence = await setupFence(account);
@@ -435,15 +548,15 @@ test('the save parser records purchase actions and resolves inventory tokens by 
   ]);
   assert.deepEqual(parsed.audit.inventoryChanges, [
     { globalItemId: RED_BRICK_PILLAR, delta: 2 },
-    { globalItemId: 5000008, delta: 1 },
     { globalItemId: RED_BRICK_PILLAR, delta: -2, selected: false },
   ]);
+  assert.deepEqual(parsed.audit.recipeUpgrades, [{ recipeId: 5000008 }]);
   assert.deepEqual(parsed.audit.gardenChanges, [{ plotId: 2, action: 'seed' }]);
   assert.deepEqual(parsed.audit.sales, [
     { kind: 'owned', itemId: WHITE_ROOM_DIVIDER, qty: 1, token: 'voNvhmQe5ogIYR21dTGXJa', serverId: 7 },
     { kind: 'inventory', itemId: RED_BRICK_PILLAR, qty: 2, token: '3Sa4YP7xjnf.CerAt_gFna' },
   ]);
   assert.deepEqual(parsed.audit.orderedMutations.map((mutation) => mutation.kind), [
-    'upsertOwned', 'inventory', 'inventory', 'removeOwned', 'inventory',
+    'upsertOwned', 'inventory', 'removeOwned', 'inventory',
   ]);
 });

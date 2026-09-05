@@ -55,7 +55,7 @@ import {
   type StoredMail,
 } from '../db/rpc-store';
 import type { LiveEvent } from '../live-events';
-import { saveStatusCode } from './save-status';
+import { SAVE_STATUS_ADD_RECIPE_FAILED, saveStatusCode } from './save-status';
 
 type RpcResponder = (
   request: ParsedRequest | ParsedSubRequest,
@@ -282,11 +282,13 @@ async function saveProfile(request: ParsedRequest | ParsedSubRequest, account: A
     fallbackProfile,
   });
 
+  const responseIngredients = result.responseIngredients;
   return Buffer.concat([
-    writeU8(saveStatusCode(result.status)),
+    writeU8(saveStatusCode(result.status) | (result.recipeUpgradeRejected ? SAVE_STATUS_ADD_RECIPE_FAILED : 0)),
     writeVarint(result.savedVersion),
     writeArray([]),
-    writeBool(false),
+    writeBool(responseIngredients !== undefined),
+    ...(responseIngredients ? [writeArray(responseIngredients.map(writeIngredient))] : []),
     writeVarint(0),
     writeArray([]),
   ]);

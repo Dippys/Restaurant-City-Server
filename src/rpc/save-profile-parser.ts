@@ -9,6 +9,7 @@ import type {
   NetworkUidData,
   OwnedItemData,
   PurchaseAuditData,
+  RecipeUpgradeData,
   SaleAuditData,
   SaveMutation,
   SaveAuditData,
@@ -137,6 +138,7 @@ function readAuditChanges(
   const bulkInventoryMoves: BulkInventoryMoveData[] = [];
   const orderedMutations: SaveMutation[] = [];
   const ingredientChanges: IngredientChangeData[] = [];
+  const recipeUpgrades: RecipeUpgradeData[] = [];
   const lockIngredientChanges: IngredientLockData[] = [];
   const gardenChanges: GardenChangeData[] = [];
   const floorChanges: FloorData[] = [];
@@ -246,13 +248,18 @@ function readAuditChanges(
           if (action === ACTION_PURCHASE_PERKS || action === ACTION_PURCHASE_INVENTORY_ITEM) {
             let qty = 0;
             [qty, pos] = readVarint(body, pos);
-            const itemId = itemIdForToken(token);
+            // Recipes are learned only through addRecipe (33), whose cost is
+            // ingredients. Treating a recipe hash as a normal inventory buy
+            // would let a modified client level it for its nominal coin cost.
+            const itemId = action === ACTION_PURCHASE_INVENTORY_ITEM && resolveRecipeEntry(token)
+              ? undefined
+              : itemIdForToken(token);
             // purchasePerks (32) is the direct employee-feeding path. The
             // client applies the perk immediately and separately saves the
             // employee state; it does not add the purchased snack to inventory.
-            if (action === ACTION_PURCHASE_INVENTORY_ITEM) {
-              inventoryChanges.push({ globalItemId: itemId ?? 0, delta: Math.max(1, qty) });
-              orderedMutations.push({ kind: 'inventory', change: { globalItemId: itemId ?? 0, delta: Math.max(1, qty) } });
+            if (action === ACTION_PURCHASE_INVENTORY_ITEM && itemId !== undefined) {
+              inventoryChanges.push({ globalItemId: itemId, delta: Math.max(1, qty) });
+              orderedMutations.push({ kind: 'inventory', change: { globalItemId: itemId, delta: Math.max(1, qty) } });
             }
             purchases.push({
               kind: action === ACTION_PURCHASE_PERKS ? 'perk' : 'inventory',
@@ -268,18 +275,14 @@ function readAuditChanges(
             // its digits in the token. Unknown tokens stay unresolved so the
             // save is preserved and flagged by the pricing audit.
             if (!recipe) {
+              recipeUpgrades.push({ recipeId: 0 });
               purchases.push({ kind: 'inventory', itemId: itemIdForToken(token), qty: 1, token, unresolved: true });
               break;
             }
-            const recipeId = recipe.id;
             // SaveProfileHandler.addRecipe() means "learn/level this recipe".
-            // It carries no menu-selection flag; forcing selected=true here
-            // made ordinary upgrades exceed the shipped per-course menu cap.
-            inventoryChanges.push({ globalItemId: recipeId, delta: 1 });
-            orderedMutations.push({ kind: 'inventory', change: { globalItemId: recipeId, delta: 1 } });
-            for (const ingredientId of recipe.ingredientIds) {
-              ingredientChanges.push({ globalItemId: ingredientId, delta: -1 });
-            }
+            // Keep it distinct from generic inventory mutations so persistence
+            // can validate and consume the whole ingredient cost atomically.
+            recipeUpgrades.push({ recipeId: recipe.id });
           }
         }
         break;
@@ -416,6 +419,7 @@ function readAuditChanges(
     bulkInventoryMoves,
     orderedMutations,
     ingredientChanges,
+    recipeUpgrades,
     lockIngredientChanges,
     gardenChanges,
     floorChanges,

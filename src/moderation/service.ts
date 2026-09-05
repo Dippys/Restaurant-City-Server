@@ -306,7 +306,12 @@ function clearProfileScan(networkUid: string, scan: Promise<ScanSummary>): void 
   if (profileScans.get(networkUid) === scan) profileScans.delete(networkUid);
 }
 
-const DURABLE_EVENT_RULES = new Set(['SAVE_PRICING_WARNING', 'LARGE_LAYOUT_CLEAR', 'FALLBACK_PROFILE_BLOCKED']);
+const DURABLE_EVENT_RULES = new Set([
+  'SAVE_PRICING_WARNING',
+  'LARGE_LAYOUT_CLEAR',
+  'FALLBACK_PROFILE_BLOCKED',
+  'RECIPE_UPGRADE_REJECTED',
+]);
 
 /** Records an operator-facing event without blocking or rolling back gameplay. */
 export async function recordSaveEventFindingTx(

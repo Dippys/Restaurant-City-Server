@@ -312,8 +312,15 @@ test('two employees can wear the same avatar item without stealing each other un
   assert.deepEqual(shirts.map((row) => row.employeeNetworkUid).sort(), ['employee-a', 'employee-b']);
 });
 
-test('selecting a new recipe creates it at level 1, never level 0', async () => {
+test('selecting a recipe changes only an already learned recipe', async () => {
   const account = await seedProfile('waterrecipe', []);
+  await prisma.inventoryItem.create({ data: {
+    id: `facebook:${account.networkUid}:inventory:5300000`,
+    userProfileId: `facebook:${account.networkUid}`,
+    globalItemId: 5300000,
+    number: 2,
+    isSelected: false,
+  } });
   const current = await readOwnerProfile(account);
   await savePlayerProfile(
     savedProfile(current, account),
@@ -326,7 +333,7 @@ test('selecting a new recipe creates it at level 1, never level 0', async () => 
   const water = await prisma.inventoryItem.findUnique({
     where: { userProfileId_globalItemId: { userProfileId: `facebook:${account.networkUid}`, globalItemId: 5300000 } },
   });
-  assert.equal(water?.number, 1);
+  assert.equal(water?.number, 2);
   assert.equal(water?.isSelected, true);
 });
 

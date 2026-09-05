@@ -4,6 +4,7 @@ import type { SaveResult } from '../db/profile-store';
 // to moderation; only a genuine stale fence returns already-done.
 export const SAVE_STATUS_OK = 0;
 export const SAVE_STATUS_ALREADY_DONE = 2;
+export const SAVE_STATUS_ADD_RECIPE_FAILED = 8;
 
 export function saveStatusCode(status: SaveResult['status']): number {
   if (status === 'stale') return SAVE_STATUS_ALREADY_DONE;

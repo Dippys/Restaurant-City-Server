@@ -24,6 +24,7 @@ import { captureProfileSnapshotTx, type SnapshotPayloadV1 } from '../moderation/
 import { isNonEditableRestaurantEntitlementItem, isStackableItemId, isWallDecorationItemId } from './item-catalog';
 import { levelForGourmet } from '../moderation/rules';
 import { queryBatches } from './query-batches';
+import { resolveRecipeEntry } from './recipe-catalog';
 
 export type StoredProfile = UserProfile & {
   ownedItems: OwnedItem[];
@@ -104,6 +105,8 @@ export interface SaveAuditData {
    */
   readonly orderedMutations?: readonly SaveMutation[];
   readonly ingredientChanges: readonly IngredientChangeData[];
+  /** Authoritative learn/level requests decoded from addRecipe (action 33). */
+  readonly recipeUpgrades?: readonly RecipeUpgradeData[];
   readonly lockIngredientChanges: readonly IngredientLockData[];
   readonly gardenChanges: readonly GardenChangeData[];
   readonly floorChanges: readonly FloorData[];
@@ -132,6 +135,10 @@ export interface SaveFence {
 export interface SaveResult {
   readonly status: 'saved' | 'duplicate' | 'stale';
   readonly savedVersion: number;
+  /** The shipped client treats bit 8 as an addRecipe rejection. */
+  readonly recipeUpgradeRejected?: true;
+  /** Ingredient state immediately before a recipe batch is accepted or rejected. */
+  readonly responseIngredients?: readonly IngredientResponseData[];
 }
 
 export interface InventoryItemData {
@@ -160,6 +167,16 @@ export interface GardenChangeData {
   readonly action: 'seed' | 'water' | 'harvest';
 }
 
+export interface RecipeUpgradeData {
+  readonly recipeId: number;
+}
+
+export interface IngredientResponseData {
+  readonly globalItemId: number;
+  readonly number: number;
+  readonly isLocked: boolean;
+}
+
 export interface FloorData {
   readonly floorIndex: number;
   readonly tiles: readonly number[];
@@ -186,6 +203,8 @@ const profileInclude = {
 const FLOOR_TILE_COUNT = 20 * 40;
 const STARTER_FLOOR_INDEXES = [0, 1] as const;
 const EMPLOYEE_MAX_WORK_TIME_MS = 4 * 60 * 60 * 1000;
+// WorldRecipeMenu.RECIPE_LEVEL_NAMES has entries 0 through 10.
+const MAX_DISH_LEVEL = 10;
 const GARDEN_WETNESS_PER_WATER_SECONDS = 3 * 60 * 60;
 const GARDEN_MAX_WETNESS_SECONDS = 9 * 60 * 60;
 const GARDEN_PLOTS_BY_LEVEL = [
@@ -761,6 +780,39 @@ export async function savePlayerProfile(
       await applyGardenChange(tx, profileId, profile.id.networkUid, saneUserLevel, change);
     }
 
+    let recipeUpgradeRejected = false;
+    let responseIngredients: IngredientResponseData[] | undefined;
+    if ((audit.recipeUpgrades?.length ?? 0) > 0) {
+      // RpcClient applies this snapshot before WorldRecipeMenu's success
+      // callback removes the accepted recipe cost locally. Returning the state
+      // before consumption keeps the live Flash model and database identical.
+      responseIngredients = await tx.ingredientInventory.findMany({
+        where: { userProfileId: profileId, number: { gt: 0 } },
+        select: { globalItemId: true, number: true, isLocked: true },
+        orderBy: { globalItemId: 'asc' },
+      });
+      const recipeResult = await applyRecipeUpgradeBatch(
+        tx,
+        profileId,
+        profile.id.networkUid,
+        audit.recipeUpgrades ?? [],
+      );
+      recipeUpgradeRejected = !recipeResult.accepted;
+      if (!recipeResult.accepted) {
+        await recordSaveEventFindingTx(tx, profile.id.networkUid, {
+          ruleId: 'RECIPE_UPGRADE_REJECTED', severity: 'HIGH', score: 70,
+          title: 'Invalid dish upgrade was rejected',
+          summary: `Save ${audit.saveVersion} requested a dish upgrade that could not be paid from authoritative ingredients.`,
+          evidence: {
+            saveVersion: audit.saveVersion,
+            requestedRecipeIds: audit.recipeUpgrades?.map((upgrade) => upgrade.recipeId) ?? [],
+            reason: recipeResult.reason,
+            missingIngredients: recipeResult.missingIngredients,
+          },
+        }, acceptedAt);
+      }
+    }
+
     if (!orderedMutations) {
       for (const floor of audit.floorChanges) {
         await upsertRestaurantFloor(tx, profileId, profile.id.networkUid, floor);
@@ -881,7 +933,12 @@ export async function savePlayerProfile(
       rpcSessionToken: fence.rpcSessionToken ?? '',
     });
 
-    return { status: 'saved', savedVersion: audit.saveVersion };
+    return {
+      status: 'saved',
+      savedVersion: audit.saveVersion,
+      ...(recipeUpgradeRejected ? { recipeUpgradeRejected: true as const } : {}),
+      ...(responseIngredients ? { responseIngredients } : {}),
+    };
   });
   if (result.status === 'saved') {
     await schedulePlayerScan(profile.id.networkUid);
@@ -1391,10 +1448,21 @@ async function changeInventoryItem(
   const existing = await tx.inventoryItem.findUnique({
     where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: change.globalItemId } },
   });
+  if (resolveRecipeEntry(String(change.globalItemId))) {
+    // Recipe levels are changed only by the authoritative addRecipe path.
+    // Selection may update an already learned recipe but can never create one.
+    if (change.delta !== 0 || !existing || existing.number <= 0) return;
+    if (change.selected !== undefined) {
+      await tx.inventoryItem.update({
+        where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: change.globalItemId } },
+        data: { isSelected: change.selected },
+      });
+    }
+    return;
+  }
   const changedNumber = Math.max(0, (existing?.number ?? 0) + change.delta);
-  // Selecting a recipe is also proof that the recipe is owned. The shipped
-  // client sends delta=0 for selection, so a newly selected recipe starts at
-  // level 1 instead of an unusable level 0.
+  // Non-recipe inventory selection retains the historic create-on-select
+  // behavior. Recipes returned above and require prior ownership.
   const nextNumber = change.selected === undefined ? changedNumber : Math.max(1, changedNumber);
 
   if (nextNumber === 0 && !change.selected) {
@@ -1416,6 +1484,73 @@ async function changeInventoryItem(
       isSelected: Boolean(change.selected),
     },
   });
+}
+
+interface RecipeUpgradeBatchResult {
+  readonly accepted: boolean;
+  readonly reason?: 'invalid-recipe' | 'max-level' | 'missing-ingredient';
+  readonly missingIngredients?: readonly { globalItemId: number; required: number; available: number }[];
+}
+
+async function applyRecipeUpgradeBatch(
+  tx: Prisma.TransactionClient,
+  profileId: string,
+  networkUid: string,
+  upgrades: readonly RecipeUpgradeData[],
+): Promise<RecipeUpgradeBatchResult> {
+  const recipeCounts = countIds(upgrades.map((upgrade) => upgrade.recipeId));
+  const resolvedUpgrades = upgrades.map((upgrade) => resolveRecipeEntry(String(upgrade.recipeId)));
+  if (resolvedUpgrades.some((recipe) => recipe === undefined)) {
+    return { accepted: false, reason: 'invalid-recipe' };
+  }
+  const ingredientCounts = countIds(resolvedUpgrades.flatMap((recipe) => [...(recipe?.ingredientIds ?? [])]));
+  const recipes = await tx.inventoryItem.findMany({
+    where: { userProfileId: profileId, globalItemId: { in: [...recipeCounts.keys()] } },
+    select: { globalItemId: true, number: true },
+  });
+  const levels = new Map(recipes.map((recipe) => [recipe.globalItemId, recipe.number]));
+  if ([...recipeCounts].some(([recipeId, count]) => (levels.get(recipeId) ?? 0) + count > MAX_DISH_LEVEL)) {
+    return { accepted: false, reason: 'max-level' };
+  }
+
+  const ingredients = await tx.ingredientInventory.findMany({
+    where: { userProfileId: profileId, globalItemId: { in: [...ingredientCounts.keys()] } },
+    select: { globalItemId: true, number: true },
+  });
+  const available = new Map(ingredients.map((ingredient) => [ingredient.globalItemId, ingredient.number]));
+  const missingIngredients = [...ingredientCounts]
+    .filter(([ingredientId, required]) => (available.get(ingredientId) ?? 0) < required)
+    .map(([globalItemId, required]) => ({ globalItemId, required, available: available.get(globalItemId) ?? 0 }));
+  if (missingIngredients.length > 0) {
+    return { accepted: false, reason: 'missing-ingredient', missingIngredients };
+  }
+
+  for (const [ingredientId, count] of ingredientCounts) {
+    await tx.ingredientInventory.update({
+      where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: ingredientId } },
+      data: { number: { decrement: count } },
+    });
+  }
+  await tx.ingredientInventory.deleteMany({ where: { userProfileId: profileId, number: { lte: 0 } } });
+
+  for (const [recipeId, count] of recipeCounts) {
+    const nextLevel = (levels.get(recipeId) ?? 0) + count;
+    await tx.inventoryItem.upsert({
+      where: { userProfileId_globalItemId: { userProfileId: profileId, globalItemId: recipeId } },
+      update: { number: nextLevel },
+      create: {
+        id: inventoryKey(networkUid, recipeId), userProfileId: profileId,
+        globalItemId: recipeId, number: nextLevel, isSelected: false,
+      },
+    });
+  }
+  return { accepted: true };
+}
+
+function countIds(ids: readonly number[]): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+  return counts;
 }
 
 async function applyOrderedSaveMutations(
