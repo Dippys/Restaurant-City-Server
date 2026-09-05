@@ -884,7 +884,7 @@ export async function savePlayerProfile(
     return { status: 'saved', savedVersion: audit.saveVersion };
   });
   if (result.status === 'saved') {
-    schedulePlayerScan(profile.id.networkUid);
+    await schedulePlayerScan(profile.id.networkUid);
   }
   return result;
 }

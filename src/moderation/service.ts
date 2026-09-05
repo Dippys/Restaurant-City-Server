@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
-import { prisma } from '../db/client';
+import { databaseProvider, prisma } from '../db/client';
 import type { SaveAuditData } from '../db/profile-store';
 import type { ActiveAccount } from '../session';
 import { disconnectOnlineUser, listOnlineUsers } from '../live-events';
@@ -143,7 +143,13 @@ export function scanPlayer(networkUid: string, now = new Date()): Promise<ScanSu
 }
 
 /** Queue post-save moderation without extending the gameplay RPC response. */
-export function schedulePlayerScan(networkUid: string): void {
+export async function schedulePlayerScan(networkUid: string): Promise<void> {
+  // SQLite tests and rollback mode retain deterministic completion. Production
+  // PostgreSQL keeps this work off the latency-sensitive save response.
+  if (databaseProvider === 'SQLite') {
+    await scanPlayer(networkUid).catch((error) => console.error('Post-save moderation scan failed:', error));
+    return;
+  }
   const scheduled = scanPlayer(networkUid)
     .then(() => undefined)
     .catch((error) => console.error('Post-save moderation scan failed:', error));

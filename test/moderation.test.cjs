@@ -91,7 +91,7 @@ test('first scan creates one baseline rollback point and later scans do not dupl
 });
 
 test('concurrent scans for one profile coalesce into one findings update', async () => {
-  const account = await seed('81009', 'ConcurrentScanChef', { profile: { userLevel: 20, gourmetPoint: 0 } });
+  const account = await seed('81999', 'ConcurrentScanChef', { profile: { userLevel: 20, gourmetPoint: 0 } });
   await Promise.all([
     scanPlayer(account.networkUid),
     scanPlayer(account.networkUid),
