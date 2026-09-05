@@ -120,4 +120,12 @@ test('admin fan-out validates layouts, grants rewards, and targets enabled accou
     createAdminMails({ recipientNetworkUids: ['70002'], senderNetworkUid: '1', type: 6, globalItemIds: [4000040] }),
     /exactly two ingredient ids/,
   );
+  await assert.rejects(
+    createAdminMails({ recipientNetworkUids: ['70002'], senderNetworkUid: '1', type: 4, globalItemIds: [6020019] }),
+    /visible, transferable catalog item/,
+  );
+  await assert.rejects(
+    createAdminMails({ recipientNetworkUids: ['70002'], senderNetworkUid: '1', type: 10, globalItemIds: [3040001] }),
+    /Food King reward item/,
+  );
 });

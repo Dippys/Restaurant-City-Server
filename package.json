@@ -12,6 +12,7 @@
     "assets:social-icons": "node scripts/sync-social-ingredient-icons.cjs",
     "preview:daily-ingredients": "node scripts/render-daily-ingredients-preview.cjs",
     "repair:coin-reward-gifts": "node scripts/remove-coin-reward-gifts.cjs",
+    "repair:mail-integrity": "node scripts/remove-coin-reward-gifts.cjs",
     "check": "prisma generate && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.admin.json --noEmit",
     "test": "npm run build && node --test test/*.test.cjs",
     "bench:hotfix": "npm run build && node --expose-gc scripts/benchmark-performance-hotfix.cjs",

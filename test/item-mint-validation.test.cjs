@@ -32,6 +32,7 @@ const INVISIBLE_STATUE = 3500093; // 3 Million Fans Statue — invisible=true
 const VISIBLE_CHAIR = 3040001;    // Classic Chair — normal shop item
 
 const COIN_REWARD = 6020019; // 10000 Coins — fanPageFeed reward token
+const FEED_ELIGIBLE_INGREDIENT = 4000036; // Strawberry — real item, also fanPageFeed
 
 let seq = 0;
 async function seedProfile(name) {
@@ -83,11 +84,21 @@ test('a type-4 gift mail of an invisible item is rejected and mints nothing', as
   assert.equal(await inventoryItem(recipient, COIN_REWARD), null);
   assert.equal(await sendMail(sender, { recipient: target, globalItemIds: [VISIBLE_CHAIR, COIN_REWARD], itemId: 0, message: '', type: 4 }), 4);
 
+  // Player RPC mail cannot impersonate funded system/currency mail or attach
+  // hidden payloads to an ordinary message.
+  assert.equal(await sendMail(sender, { recipient: target, globalItemIds: [], itemId: 0, message: '1000000', type: 7 }), 4);
+  assert.equal(await sendMail(sender, { recipient: target, globalItemIds: [VISIBLE_CHAIR], itemId: 0, message: 'hello', type: 1 }), 4);
+
   // A real, visible shop item still gifts fine.
   const ok = await sendMail(sender, { recipient: target, globalItemIds: [VISIBLE_CHAIR], itemId: 0, message: 'A chair for you', type: 4 });
   assert.equal(ok, 0); // STATUS_OK
   const granted = await inventoryItem(recipient, VISIBLE_CHAIR);
   assert.equal(granted?.number, 1);
+
+  assert.equal(await sendMail(sender, { recipient: target, globalItemIds: [FEED_ELIGIBLE_INGREDIENT], itemId: 0, message: '', type: 4 }), 0);
+  assert.equal((await prisma.ingredientInventory.findUnique({
+    where: { userProfileId_globalItemId: { userProfileId: `facebook:${recipient.networkUid}`, globalItemId: FEED_ELIGIBLE_INGREDIENT } },
+  }))?.number, 1);
 });
 
 test('buyMysteryBox refuses non-catalog or invisible tokens and mints nothing', async () => {

@@ -19,6 +19,8 @@ const STATUS_INVALID_TOKEN = 4;
 const MAIL_TYPE_GIFT = 4;
 const MAIL_TYPE_SECURECHANGE = 6;
 const MAIL_TYPE_SECUREECHANGE_OK = 8;
+const MAIL_TYPE_PLAYER_MESSAGE = 1;
+const PLAYER_SENDABLE_MAIL_TYPES = new Set([MAIL_TYPE_PLAYER_MESSAGE, MAIL_TYPE_GIFT, MAIL_TYPE_SECURECHANGE]);
 const GARDEN_WETNESS_PER_WATER_SECONDS = 3 * 60 * 60;
 const GARDEN_MAX_WETNESS_SECONDS = 9 * 60 * 60;
 const MAX_VISIT_ACTIVITY_GP = 15;
@@ -276,6 +278,18 @@ export async function sendMail(account: ActiveAccount, mail: {
 }): Promise<number> {
   const sender = await ensureAccountProfile(account);
   const recipientUid = mail.recipient.networkUid || String(mail.recipient.playfishUid || PLAYER_NETWORK_UID);
+
+  // RPC 19 is a player action, not a general mail composer. System/reward mail
+  // is created through trusted server/admin paths with type-specific funding.
+  if (!PLAYER_SENDABLE_MAIL_TYPES.has(mail.type) || recipientUid === sender.networkUid) {
+    return STATUS_INVALID_TOKEN;
+  }
+  if (mail.type === MAIL_TYPE_PLAYER_MESSAGE && (
+    mail.globalItemIds.length !== 0
+    || !mail.message.trim()
+  )) {
+    return STATUS_INVALID_TOKEN;
+  }
 
   if (mail.type === MAIL_TYPE_SECURECHANGE) {
     const playerGives = mail.globalItemIds[0] ?? 0;

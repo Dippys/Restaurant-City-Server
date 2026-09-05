@@ -14,7 +14,7 @@ import {
 } from './defaults';
 import { ensureEconomyCatalog } from './rpc-store';
 import { ensureStarterFriends } from './profile-store';
-import { fullCatalog, isCatalogItemId, isEmployeeSnackItem } from './item-catalog';
+import { fullCatalog, isCatalogItemId, isEmployeeSnackItem, isFoodKingEligibleItem, isGiftableItemId } from './item-catalog';
 import { grantMailItem } from './system-mail';
 import { enqueueLiveMail } from '../live-events';
 import { queryBatches } from './query-batches';
@@ -875,6 +875,9 @@ function validateComposedMailInput(input: MailInput) {
   if ([4, 9, 10, 11].includes(clean.type) && clean.globalItemIds.length !== 1) {
     throw new Error('This mail type requires exactly one reward item.');
   }
+  if (clean.type === 4 && !isGiftableItemId(clean.globalItemIds[0] ?? 0)) {
+    throw new Error('Gift mail requires a visible, transferable catalog item.');
+  }
   if (clean.type === 5 && (clean.globalItemIds.length < 1 || clean.globalItemIds.length > 5)) {
     throw new Error('Daily ingredient mail requires between one and five ingredients.');
   }
@@ -886,6 +889,9 @@ function validateComposedMailInput(input: MailInput) {
   }
   if (clean.type === 9 && !isEmployeeSnackItem(clean.globalItemIds[0] ?? 0)) {
     throw new Error('Invite-food gift mail requires a shipped employee snack perk.');
+  }
+  if (clean.type === 10 && !isFoodKingEligibleItem(clean.globalItemIds[0] ?? 0)) {
+    throw new Error('Food King mail requires a shipped Food King reward item.');
   }
   if (clean.type === 13 && clean.globalItemIds.length > 1) {
     throw new Error('Special-day mail accepts at most one reward item.');
