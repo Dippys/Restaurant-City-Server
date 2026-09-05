@@ -76,8 +76,11 @@ export async function repairMissingIngredientRewards(apply = false): Promise<Ing
   const missingQuizRewards = plans.length - missingFirstVisitRewards;
   let rewardsGranted = 0;
   if (apply) {
-    for (let offset = 0; offset < plans.length; offset += 250) {
-      const batch = plans.slice(offset, offset + 250);
+    // Keep each interactive transaction small enough for a remote PostgreSQL
+    // connection. Completed batches are independently durable and excluded by
+    // their markers if an operator resumes after a later batch fails.
+    for (let offset = 0; offset < plans.length; offset += 25) {
+      const batch = plans.slice(offset, offset + 25);
       await prisma.$transaction(async (tx) => {
         for (const plan of batch) {
           await tx.systemGrant.create({ data: {
@@ -99,7 +102,7 @@ export async function repairMissingIngredientRewards(apply = false): Promise<Ing
             },
           });
         }
-      });
+      }, { maxWait: 10_000, timeout: 30_000 });
       rewardsGranted += batch.length;
     }
   }
