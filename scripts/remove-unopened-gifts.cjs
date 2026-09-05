@@ -29,7 +29,10 @@ async function main() {
     });
     if (!profile) throw new Error(`No user profile exists for network UID ${options.networkUid}.`);
 
-    const where = { recipientProfileId: profile.id, type: 4, read: false, deleted: false };
+    // In this schema `read` only records whether the envelope was viewed. A gift
+    // remains visible/unclaimed until the client deletes it, so target every
+    // currently visible gift regardless of the read flag.
+    const where = { recipientProfileId: profile.id, type: 4, deleted: false };
     const [count, senders] = await Promise.all([
       prisma.mail.count({ where }),
       prisma.mail.groupBy({
@@ -42,7 +45,7 @@ async function main() {
     ]);
 
     console.log(`Recipient: ${profile.fullName} (${profile.networkUid})`);
-    console.log(`Unopened visible gifts: ${count}`);
+    console.log(`Visible/unclaimed gifts: ${count}`);
     for (const sender of senders) console.log(`  sender ${sender.senderNetworkUid}: ${sender._count._all}`);
 
     if (!options.apply) {
@@ -51,7 +54,7 @@ async function main() {
     }
 
     const result = await prisma.mail.updateMany({ where, data: { deleted: true } });
-    console.log(`Removed ${result.count} unopened gifts from ${profile.networkUid}.`);
+    console.log(`Removed ${result.count} visible/unclaimed gifts from ${profile.networkUid}.`);
   } finally {
     await prisma.$disconnect();
   }
