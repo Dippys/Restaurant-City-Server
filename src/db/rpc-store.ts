@@ -600,8 +600,38 @@ export async function firstVisitFriend(account: ActiveAccount, friend: NetworkUi
 }
 
 export async function streetUsers(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
-  const owner = await readOwnerProfile(account);
-  return prioritizedEnabledProfiles(account.networkUid, [account.networkUid, ...owner.employees.map((employee) => employee.networkUid)], count);
+  const [owner, activeAccount] = await Promise.all([
+    readOwnerProfile(account),
+    prisma.account.findUnique({ where: { networkUid: account.networkUid }, select: { id: true } }),
+  ]);
+  const [friendshipRows, employerRows] = await Promise.all([
+    activeAccount ? prisma.friendship.findMany({
+      where: { OR: [{ accountAId: activeAccount.id }, { accountBId: activeAccount.id }] },
+      include: {
+        accountA: { select: { id: true, networkUid: true } },
+        accountB: { select: { id: true, networkUid: true } },
+      },
+    }) : [],
+    prisma.employee.findMany({
+      where: { networkUid: account.networkUid },
+      select: { userProfile: { select: { networkUid: true } } },
+    }),
+  ]);
+  const explicitFriendUids = friendshipRows.map((friendship) => (
+    friendship.accountAId === activeAccount?.id
+      ? friendship.accountB.networkUid
+      : friendship.accountA.networkUid
+  ));
+
+  // Random Street must be disjoint from every relationship shown on Your
+  // Street: explicit links, people the owner hired, and reverse employers.
+  const excluded = [
+    account.networkUid,
+    ...owner.employees.map((employee) => employee.networkUid),
+    ...explicitFriendUids,
+    ...employerRows.map((row) => row.userProfile.networkUid),
+  ];
+  return prioritizedEnabledProfiles(account.networkUid, excluded, count);
 }
 
 export async function gourmetStreetUsers(account: ActiveAccount, count: number): Promise<StoredProfile[]> {
@@ -625,12 +655,12 @@ async function prioritizedEnabledProfiles(
   excludedNetworkUids: readonly string[],
   requestedCount: number,
 ): Promise<StoredProfile[]> {
-  const excluded = [...new Set([PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, ...excludedNetworkUids])];
+  const excluded = new Set([PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, ...excludedNetworkUids]);
   const now = new Date();
   const cutoff = new Date(now.getTime() - IN_GAME_ACTIVITY_WINDOW_MS);
   const [accounts, employerRows, activityRows] = await Promise.all([
     prisma.account.findMany({
-      where: { disabled: false, networkUid: { notIn: excluded } },
+      where: { disabled: false, networkUid: { notIn: [PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID] } },
       select: { networkUid: true },
     }),
     prisma.employee.findMany({
@@ -644,7 +674,7 @@ async function prioritizedEnabledProfiles(
   ]);
   const employers = new Set(employerRows.map((row) => row.userProfile.networkUid));
   const activityByUid = new Map(activityRows.map((row) => [row.networkUid, row.lastSeenAt]));
-  const ranked = prioritizeInGameRoster(accounts.map((candidate) => ({
+  const ranked = prioritizeInGameRoster(accounts.filter((candidate) => !excluded.has(candidate.networkUid)).map((candidate) => ({
     networkUid: candidate.networkUid,
     employsActivePlayer: employers.has(candidate.networkUid),
     lastSeenAt: activityByUid.get(candidate.networkUid) ?? null,

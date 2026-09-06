@@ -18,7 +18,7 @@ process.env.RC_DB_PATH = testDbPath;
 
 const { prisma } = require('../dist/db/client.js');
 const { getPlayerProfile, savePlayerProfile } = require('../dist/db/profile-store.js');
-const { gourmetStreetUsers, sendMail, swapIngredient } = require('../dist/db/rpc-store.js');
+const { gourmetStreetUsers, sendMail, streetUsers, swapIngredient } = require('../dist/db/rpc-store.js');
 const { grantMailItem } = require('../dist/db/system-mail.js');
 const { buildResponse } = require('../dist/rpc/index.js');
 const { writeBool, writeNetworkUid, writeString, writeU8, writeVarint } = require('../dist/rpc/codec.js');
@@ -510,6 +510,37 @@ test('Gourmet Street selects restaurant quality instead of recent activity', asy
 
   const users = await gourmetStreetUsers(owner, 1);
   assert.deepEqual(users.map((profile) => profile.networkUid), [quality.networkUid]);
+});
+
+test('Random Street excludes every user visible on Your Street', async () => {
+  const owner = await seedProfile('randomowner');
+  const hired = await seedProfile('randomhired');
+  const explicitFriend = await seedProfile('randomfriend');
+  const employer = await seedProfile('randomemployer');
+  const outsider = await seedProfile('randomoutsider');
+  await Promise.all([
+    makeAccountBacked(owner),
+    makeAccountBacked(hired),
+    makeAccountBacked(explicitFriend),
+    makeAccountBacked(employer),
+    makeAccountBacked(outsider),
+  ]);
+  await makeFriends(owner, hired);
+  await makeFriends(employer, owner);
+  await prisma.friendship.create({
+    data: {
+      id: `friendship-${owner.networkUid}-${explicitFriend.networkUid}`,
+      accountAId: `account-${owner.networkUid}`,
+      accountBId: `account-${explicitFriend.networkUid}`,
+    },
+  });
+
+  const users = await streetUsers(owner, 20);
+  const returnedUids = new Set(users.map((profile) => profile.networkUid));
+  assert.equal(returnedUids.has(hired.networkUid), false);
+  assert.equal(returnedUids.has(explicitFriend.networkUid), false);
+  assert.equal(returnedUids.has(employer.networkUid), false);
+  assert.equal(returnedUids.has(outsider.networkUid), true);
 });
 
 test('NPC trades cannot mint ingredients the NPC does not hold', async () => {

@@ -44,6 +44,21 @@ play.bat
 
 or open <http://localhost:8090/game> and use the launcher page.
 
+### Maintenance mode
+
+Stop the normal server, then double-click `maintenance.bat` or run:
+
+```bat
+npm run maintenance
+```
+
+This starts a lightweight standalone server on the normal `HOST` and `PORT`.
+Every browser route shows the maintenance screen with HTTP `503`; `/health`
+returns HTTP `200` with `{"status":"maintenance"}` for uptime checks. It does
+not connect to the database, build the application, or start background jobs.
+Set `RC_MAINTENANCE_MESSAGE` to replace the displayed message and
+`RC_MAINTENANCE_RETRY_SECONDS` to change the default `300`-second retry hint.
+
 | URL | Page |
 |---|---|
 | <http://localhost:8090/> | Public home page |
@@ -285,6 +300,7 @@ Pages and control routes served outside the RPC/asset paths:
 |---|---|
 | `npm start` | `db:push` → `build` → run `dist/server.js` |
 | `npm run start:built` | Run `dist/server.js` without rebuilding |
+| `npm run maintenance` | Run only the standalone maintenance screen, without the database or build |
 | `npm run build` | `prisma generate` + `tsc` |
 | `npm run check` | Type-check only (`tsc --noEmit`) |
 | `npm run bench:hotfix` | Build, then compare capture, activity, and checkpoint hot paths on a disposable SQLite database |
@@ -438,11 +454,11 @@ rows. The Flash client needs the self entry to substitute its canonical
 `GameWorld.gameUser`, render the owner's street building, and enable building
 decoration. This response is the exact Your Street roster.
 
-Random Street selects a fresh shuffled set of at most 10 enabled accounts after
-excluding the owner and employee/friend UIDs. Gourmet Street returns at most 10
-other enabled players with level ≥10 and gourmet points ≥100,000.
-`getHireCandidates` independently returns up to 50 freshly shuffled non-hired
-players for the patched SWF Hire loader. See ADR-0017.
+Random Street returns at most 20 enabled accounts after excluding the owner and
+every user already shown on Your Street: explicit friends, hired employees, and
+reverse employers. Gourmet Street returns at most 20 other enabled players
+ranked by restaurant quality. `getHireCandidates` independently returns at most
+20 non-hired players for the patched SWF Hire loader.
 
 When a full profile contains a garden ingredient that is unknown or has no
 `plantClassName` in `public/data/ingredient.xml`, the responder writes the
