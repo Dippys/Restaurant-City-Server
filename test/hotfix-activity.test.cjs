@@ -66,6 +66,25 @@ test('failed flushes retain counters, do not overlap, and retry successfully', a
   assert.equal(buffer.size, 0);
 });
 
+test('due activity flushes obey the configured global concurrency limit', async () => {
+  let active = 0;
+  let maximumActive = 0;
+  let persisted = 0;
+  const buffer = new ActivityBuffer(1, async () => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    await new Promise((resolve) => setImmediate(resolve));
+    active -= 1;
+    persisted += 1;
+  }, Date.now, undefined, 2);
+  for (let index = 0; index < 8; index += 1) {
+    buffer.enqueueRpc({ id: `bounded-${index}`, username: 'chef', networkUid: `72${index}`, playfishUid: 720 + index });
+  }
+  await buffer.flushDue(true);
+  assert.equal(persisted, 8);
+  assert.equal(maximumActive, 2);
+});
+
 test('idle state is cleaned and shutdown forces a bounded final flush', async () => {
   let now = 10_000;
   const batches = [];

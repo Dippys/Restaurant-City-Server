@@ -28,6 +28,7 @@ export class ActivityBuffer {
     private readonly persist: ActivityPersist = persistActivity,
     private readonly now: () => number = Date.now,
     private readonly idleTtlMs = Math.max(flushIntervalMs * 5, 5 * 60_000),
+    private readonly maxConcurrency = 4,
   ) {}
 
   get size(): number {
@@ -84,7 +85,22 @@ export class ActivityBuffer {
     const accountIds = [...this.pending.entries()]
       .filter(([, state]) => state.rpcCount > 0 && (force || now - state.lastFlushAt >= this.flushIntervalMs))
       .map(([accountId]) => accountId);
-    await Promise.all(accountIds.map((accountId) => this.flushAccount(accountId)));
+    let cursor = 0;
+    const errors: unknown[] = [];
+    const worker = async () => {
+      while (cursor < accountIds.length) {
+        const accountId = accountIds[cursor++];
+        if (!accountId) return;
+        try {
+          await this.flushAccount(accountId);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+    };
+    const workerCount = Math.min(accountIds.length, Math.max(1, Math.floor(this.maxConcurrency)));
+    await Promise.all(Array.from({ length: workerCount }, worker));
+    if (errors.length > 0) throw errors[0];
     this.cleanupIdle(now);
   }
 
@@ -190,10 +206,13 @@ async function persistActivity(batch: ActivityBatch): Promise<void> {
   });
 }
 
-export const rpcActivityBuffer = new ActivityBuffer(60_000);
+export let rpcActivityBuffer = new ActivityBuffer(60_000);
 
-export function configureRpcActivityBuffer(intervalSeconds: number): void {
-  rpcActivityBuffer.start(Math.max(1, intervalSeconds) * 1000);
+export function configureRpcActivityBuffer(intervalSeconds: number, maxConcurrency = 4): void {
+  const intervalMs = Math.max(1, intervalSeconds) * 1000;
+  rpcActivityBuffer.stop();
+  rpcActivityBuffer = new ActivityBuffer(intervalMs, persistActivity, Date.now, undefined, maxConcurrency);
+  rpcActivityBuffer.start();
 }
 
 export function recordRpcActivity(account: ActiveAccount): void {

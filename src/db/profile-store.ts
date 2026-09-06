@@ -25,6 +25,7 @@ import { isNonEditableRestaurantEntitlementItem, isStackableItemId, isWallDecora
 import { levelForGourmet } from '../moderation/rules';
 import { queryBatches } from './query-batches';
 import { resolveRecipeEntry } from './recipe-catalog';
+import { profileSaveWork } from '../database-work';
 
 export type StoredProfile = UserProfile & {
   ownedItems: OwnedItem[];
@@ -610,6 +611,15 @@ export async function savePlayerProfile(
   profile: SavedProfileData,
   audit: SaveAuditData,
   fence: SaveFence = {},
+): Promise<SaveResult> {
+  const queueKey = profile.id.networkUid || PLAYER_NETWORK_UID;
+  return profileSaveWork.run(queueKey, () => savePlayerProfileOnce(profile, audit, fence));
+}
+
+async function savePlayerProfileOnce(
+  profile: SavedProfileData,
+  audit: SaveAuditData,
+  fence: SaveFence,
 ): Promise<SaveResult> {
   const profileId = profileKey(profile.id.networkUid);
   await ensureProfile(profile.id.networkUid || PLAYER_NETWORK_UID);

@@ -10,6 +10,7 @@ import { coinBundleForToken, ingredientCashCost, ingredientIdForCashToken, owned
 import type { ActiveAccount } from '../session';
 import { enqueueLiveMail, pollLiveEvents, touchOnline, type LiveEvent } from '../live-events';
 import { IN_GAME_ACTIVITY_WINDOW_MS, prioritizeInGameRoster, selectGourmetStreetProfiles } from '../rpc/street-roster';
+import { cachedReferenceData } from '../reference-cache';
 
 const STATUS_OK = 0;
 const STATUS_NOT_ENOUGH_CASH = 1;
@@ -102,23 +103,38 @@ export async function ensureEconomyCatalog(): Promise<void> {
   ]);
 }
 
-export async function ingredientMarketItems(): Promise<Array<{ ingredientId: number; price: number }>> {
-  await ensureEconomyCatalog();
-  return prisma.ingredientMarketItem.findMany({
-    where: { enabled: true },
-    select: { ingredientId: true, price: true },
-    orderBy: { ingredientId: 'asc' },
+interface EconomyCatalogSnapshot {
+  readonly ingredientMarketItems: Array<{ ingredientId: number; price: number }>;
+  readonly pricepoints: Pricepoint[];
+  readonly purchasableItems: PurchasableItem[];
+}
+
+async function economyCatalog(): Promise<EconomyCatalogSnapshot> {
+  return cachedReferenceData('economy-catalog', async () => {
+    await ensureEconomyCatalog();
+    const [ingredientMarketItems, pricepoints, purchasableItems] = await Promise.all([
+      prisma.ingredientMarketItem.findMany({
+        where: { enabled: true },
+        select: { ingredientId: true, price: true },
+        orderBy: { ingredientId: 'asc' },
+      }),
+      prisma.pricepoint.findMany({ where: { enabled: true }, orderBy: { id: 'asc' } }),
+      prisma.purchasableItem.findMany({ where: { enabled: true }, orderBy: { skuId: 'asc' } }),
+    ]);
+    return { ingredientMarketItems, pricepoints, purchasableItems };
   });
 }
 
+export async function ingredientMarketItems(): Promise<Array<{ ingredientId: number; price: number }>> {
+  return (await economyCatalog()).ingredientMarketItems;
+}
+
 export async function pricepoints(): Promise<Pricepoint[]> {
-  await ensureEconomyCatalog();
-  return prisma.pricepoint.findMany({ where: { enabled: true }, orderBy: { id: 'asc' } });
+  return (await economyCatalog()).pricepoints;
 }
 
 export async function purchasableItems(): Promise<PurchasableItem[]> {
-  await ensureEconomyCatalog();
-  return prisma.purchasableItem.findMany({ where: { enabled: true }, orderBy: { skuId: 'asc' } });
+  return (await economyCatalog()).purchasableItems;
 }
 
 export async function cashBalance(account: ActiveAccount): Promise<number> {

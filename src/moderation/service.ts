@@ -5,6 +5,7 @@ import type { SaveAuditData } from '../db/profile-store';
 import type { ActiveAccount } from '../session';
 import { disconnectOnlineUser, listOnlineUsers } from '../live-events';
 import { terminateGameInstance } from '../game-instances';
+import { invalidateAllCachedSessions } from '../session-cache';
 import { rebuildPlayerProfile, recoverFallbackProfileScalars } from '../db/profile-store';
 import { evaluateProfile, type RuleFinding } from './rules';
 import { captureProfileSnapshot, captureProfileSnapshotTx, listProfileSnapshots, resetProfileToStarter, rollbackProfile } from './snapshots';
@@ -16,7 +17,6 @@ const moderationProfileInclude = {
   ingredients: { select: { globalItemId: true, number: true } },
   gardenPlots: { select: { ingredientId: true } },
   employees: { select: { id: true } },
-  cashTransactions: { select: { amount: true } },
 } satisfies Prisma.UserProfileInclude;
 
 export interface AcceptedSaveEvidence {
@@ -45,7 +45,9 @@ export interface ScanSummary {
 }
 
 let automaticSnapshotIntervalMinutes = 60;
-const MAX_CONCURRENT_PROFILE_SCANS = 2;
+// A profile include fans out across several relations. One scan at a time keeps
+// background moderation from consuming most of the gameplay connection pool.
+const MAX_CONCURRENT_PROFILE_SCANS = 1;
 let activeProfileScans = 0;
 const profileScanWaiters: Array<() => void> = [];
 const profileScans = new Map<string, Promise<ScanSummary>>();
@@ -265,6 +267,7 @@ export async function terminatePlayerSessions(networkUid: string, actor: ActiveA
     await tx.moderationAction.create({ data: { id: randomUUID(), targetNetworkUid: networkUid, actorAccountId: actor.id, actorUsername: actor.username, actionType: 'TERMINATE_SESSIONS', reason: cleanReason, detailsJson: JSON.stringify({ revokedSessions }) } });
     return { revokedSessions };
   });
+  invalidateAllCachedSessions();
   terminateRuntime(networkUid);
   return result;
 }
@@ -279,6 +282,7 @@ export async function setPlayerBan(networkUid: string, banned: boolean, actor: A
     await tx.moderationAction.create({ data: { id: randomUUID(), targetNetworkUid: networkUid, actorAccountId: actor.id, actorUsername: actor.username, actionType: banned ? 'BAN' : 'UNBAN', reason: cleanReason, detailsJson: JSON.stringify({ previousDisabled: account.disabled, revokedSessions }) } });
     return { banned, revokedSessions };
   });
+  invalidateAllCachedSessions();
   if (banned) terminateRuntime(networkUid);
   return result;
 }
@@ -368,6 +372,7 @@ export async function repairFallbackPlayer(networkUid: string, actor: ActiveAcco
     } });
     return { recovered, revokedSessions };
   });
+  invalidateAllCachedSessions();
   terminateRuntime(networkUid);
   return result;
 }
@@ -387,6 +392,7 @@ export async function rebuildPlayerSave(networkUid: string, actor: ActiveAccount
     } });
     return { snapshotId, revokedSessions };
   });
+  invalidateAllCachedSessions();
   terminateRuntime(networkUid);
   return result;
 }

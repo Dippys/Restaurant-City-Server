@@ -5,6 +5,7 @@ import { DEFAULT_NEW_PLAYER_DEMAND, STARTER_BUILDING_ITEMS, STARTER_INGREDIENTS,
 import type { ActiveAccount } from '../session';
 import { terminateGameInstance } from '../game-instances';
 import { disconnectOnlineUser } from '../live-events';
+import { invalidateAllCachedSessions } from '../session-cache';
 
 const snapshotInclude = {
   ownedItems: { orderBy: { serverId: 'asc' as const } },
@@ -99,6 +100,7 @@ export async function rollbackProfile(networkUid: string, snapshotId: string, ac
     } });
     return { restoredSnapshotId: snapshotId, preRollbackSnapshotId, revokedSessions };
   });
+  invalidateAllCachedSessions();
   terminateRuntime(networkUid);
   return result;
 }
@@ -117,6 +119,7 @@ export async function resetProfileToStarter(networkUid: string, actor: ActiveAcc
     } });
     return { preResetSnapshotId, revokedSessions };
   });
+  invalidateAllCachedSessions();
   terminateRuntime(networkUid);
   return result;
 }

@@ -1,6 +1,11 @@
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { backgroundJobs } from './job-runner';
 import { rpcActivityBuffer } from './activity-buffer';
+import { databasePoolSnapshot } from './db/client';
+import { sessionCacheSnapshot } from './session-cache';
+import { profileSaveWork } from './database-work';
+import { referenceCacheSnapshot } from './reference-cache';
+import type { DatabasePoolSnapshot } from './db/client';
 
 interface RpcLatencyBucket {
   count: number;
@@ -15,6 +20,7 @@ export class PerformanceMetrics {
   private rpcCount = 0;
   private activeRequests = 0;
   private readonly rpcLatency = new Map<string, RpcLatencyBucket>();
+  private readonly slowRpcLastAlert = new Map<string, number>();
   private readonly requestLatency: RpcLatencyBucket = { count: 0, totalMs: 0, maxMs: 0, samples: [], cursor: 0 };
   private readonly eventLoop = monitorEventLoopDelay({ resolution: 20 });
 
@@ -42,10 +48,21 @@ export class PerformanceMetrics {
       this.rpcLatency.set(label, bucket);
     }
     recordLatency(bucket, durationMs);
+    const now = Date.now();
+    if (durationMs >= positiveInt(process.env.RC_RPC_P99_ALERT_MS, 3000)
+      && now - (this.slowRpcLastAlert.get(label) ?? 0) >= 60_000) {
+      this.slowRpcLastAlert.set(label, now);
+      console.warn(`Slow RPC ${label}: ${Math.round(durationMs)}ms.`);
+    }
   }
 
   snapshot() {
     const memory = process.memoryUsage();
+    const requestLatency = latencySnapshot(this.requestLatency);
+    const databasePool = databasePoolSnapshot();
+    const rpcLatency = Object.fromEntries([...this.rpcLatency.entries()].map(([label, bucket]) => {
+      return [label, latencySnapshot(bucket)];
+    }));
     return {
       uptimeSeconds: Math.floor(process.uptime()),
       memory: { rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal },
@@ -56,13 +73,16 @@ export class PerformanceMetrics {
         max: nanosecondsToMs(this.eventLoop.max),
       },
       requestCount: this.requestCount,
-      requestLatency: latencySnapshot(this.requestLatency),
+      requestLatency,
       rpcCount: this.rpcCount,
       activeRequests: this.activeRequests,
       activityQueueSize: rpcActivityBuffer.size,
-      rpcLatency: Object.fromEntries([...this.rpcLatency.entries()].map(([label, bucket]) => {
-        return [label, latencySnapshot(bucket)];
-      })),
+      databasePool,
+      sessionCache: sessionCacheSnapshot(),
+      referenceCache: referenceCacheSnapshot(),
+      profileSaves: profileSaveWork.snapshot(),
+      alerts: buildPerformanceAlerts(databasePool, rpcLatency),
+      rpcLatency,
       jobs: backgroundJobs.snapshot(),
     };
   }
@@ -70,6 +90,31 @@ export class PerformanceMetrics {
   stop(): void {
     this.eventLoop.disable();
   }
+}
+
+interface LatencySnapshot {
+  readonly count: number;
+  readonly averageMs: number;
+  readonly p50Ms: number;
+  readonly p95Ms: number;
+  readonly p99Ms: number;
+  readonly maxMs: number;
+}
+
+export function buildPerformanceAlerts(databasePool: DatabasePoolSnapshot, rpcLatency: Readonly<Record<string, LatencySnapshot>>) {
+  const alerts: Array<{ level: 'warning' | 'critical'; code: string; message: string }> = [];
+  if (databasePool.waiting > 0) alerts.push({ level: 'warning', code: 'db-pool-waiting', message: `${databasePool.waiting} request(s) are waiting for a database connection.` });
+  if (databasePool.consecutiveSaturatedSamples >= 5) alerts.push({ level: 'critical', code: 'db-pool-saturated', message: `The PostgreSQL pool has been saturated for ${databasePool.consecutiveSaturatedSamples} consecutive samples.` });
+  if (databasePool.errors > 0) alerts.push({ level: 'warning', code: 'db-pool-errors', message: `${databasePool.errors} idle PostgreSQL client error(s) occurred since startup.` });
+
+  const p95Limit = positiveInt(process.env.RC_RPC_P95_ALERT_MS, 1000);
+  const p99Limit = positiveInt(process.env.RC_RPC_P99_ALERT_MS, 3000);
+  for (const [label, latency] of Object.entries(rpcLatency)) {
+    if (latency.count < 20) continue;
+    if (latency.p99Ms >= p99Limit) alerts.push({ level: 'critical', code: `rpc-p99-${label}`, message: `${label} RPC p99 is ${latency.p99Ms}ms (limit ${p99Limit}ms).` });
+    else if (latency.p95Ms >= p95Limit) alerts.push({ level: 'warning', code: `rpc-p95-${label}`, message: `${label} RPC p95 is ${latency.p95Ms}ms (limit ${p95Limit}ms).` });
+  }
+  return alerts;
 }
 
 function recordLatency(bucket: RpcLatencyBucket, durationMs: number): void {
@@ -111,6 +156,11 @@ function nanosecondsToMs(value: number): number {
 
 function round(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+function positiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export const performanceMetrics = new PerformanceMetrics();

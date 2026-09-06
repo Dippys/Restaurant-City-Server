@@ -31,9 +31,11 @@ Ruffle fork for the browser game page.
 start.bat        REM or: npm start
 ```
 
-`npm start` pushes the Prisma schema to `dev.db`, compiles `src/` to `dist/`,
-then runs `dist/server.js`. On boot it prints the URLs and how many assets it
-indexed.
+For local development, `npm start` pushes the Prisma schema to `dev.db`,
+compiles `src/` to `dist/`, then runs `dist/server.js`. Production deployment
+builds and applies reviewed schema changes before systemd launches
+`npm run start:built`. On boot the server prints its URLs and indexed asset
+count.
 
 Then launch the client so it loads **from this server** (relative asset URLs
 only resolve correctly when the SWF is served here):
@@ -68,6 +70,7 @@ Set `RC_MAINTENANCE_MESSAGE` to replace the displayed message and
 | <http://localhost:8090/account> | Name and PIN settings |
 | `/terms`, `/privacy`, `/cookies`, `/community-guidelines` | Policy pages (see `public/legal.html`) |
 | `/robots.txt`, `/sitemap.xml` | SEO (canonical `https://rc-reborn.uk`) |
+| `/health/live`, `/health/ready` | Process-only liveness and cached database readiness probes (`/health` aliases readiness) |
 | `/admin` | **The single admin dashboard** (overview, live traffic, players, economy, game tools, assets) |
 | `/s/<slug>` | Public crawler-safe social-link landing page |
 | `/__dash`, `/dashboard`, `/database` | Redirect to `/admin` (legacy aliases) |
@@ -106,9 +109,22 @@ All optional, via environment variables:
 | `RC_DISCORD_BOT_TOKEN` | empty | Bot token used to join consenting users to the configured guild and send mail/restaurant-state DMs |
 | `RC_DISCORD_GUILD_ID` | empty | Discord server that consenting users are joined to through `guilds.join` |
 | `RC_MODERATION_SCAN_INTERVAL_MINUTES` | `60` | Full non-admin profile scan interval (minimum effective interval: 5 minutes) |
+| `RC_DB_STATEMENT_TIMEOUT_MS` | `30000` | PostgreSQL server-side limit for one SQL statement, including lock waits |
+| `RC_PROFILE_SAVE_CONCURRENCY` | `8` (lower when the pool is small) | Maximum profile-save transactions admitted at once; same-player saves always serialize |
 | `RC_MODERATION_SNAPSHOT_RETENTION_DAYS` | `90` | Age limit for unprotected profile rollback snapshots |
 | `RC_MODERATION_MAX_SNAPSHOTS_PER_PLAYER` | `250` | Per-player count limit for unprotected rollback snapshots |
 | `RC_ACTIVITY_FLUSH_INTERVAL_SECONDS` | `60` | Coalesce per-player activity counters before an atomic database flush |
+| `RC_ACTIVITY_FLUSH_CONCURRENCY` | `4` | Maximum simultaneous activity persistence transactions |
+| `RC_SESSION_CACHE_TTL_SECONDS` | `30` | Positive authentication-cache TTL; mutations invalidate immediately in-process, while other server processes observe them within this TTL |
+| `RC_SESSION_CACHE_NEGATIVE_TTL_SECONDS` | `2` | Short negative-cache TTL for invalid session tokens |
+| `RC_SESSION_CACHE_MAX` | `5000` | Maximum in-process authentication-cache entries |
+| `RC_REFERENCE_CACHE_TTL_SECONDS` | `300` | In-process TTL for small economy/reference datasets; player state is not cached |
+| `RC_HEALTH_READY_CACHE_MS` | `5000` | Readiness-result cache that prevents monitoring bursts from becoming SQL bursts |
+| `RC_HEALTH_READY_TIMEOUT_MS` | `5000` | Maximum time an HTTP readiness request waits for the shared database probe |
+| `RC_RPC_P95_ALERT_MS` | `1000` | Admin warning threshold after at least 20 samples for an RPC method |
+| `RC_RPC_P99_ALERT_MS` | `3000` | Critical/admin and rate-limited slow-RPC log threshold |
+| `RC_DISCORD_NOTIFICATION_BATCH_SIZE` | `100` | Linked Discord accounts loaded per notification sweep page |
+| `RC_DISCORD_NOTIFICATION_CONCURRENCY` | `4` | Maximum linked accounts processed concurrently, capped to reserve pool capacity |
 | `RC_AUTO_SAVE_SNAPSHOT_INTERVAL_MINUTES` | `60` | Minimum interval between automatic full pre-save checkpoints for one player; every accepted save still records compact facts |
 | `RC_SHUTDOWN_TIMEOUT_SECONDS` | `15` | Graceful shutdown drain deadline before remaining HTTP connections are closed |
 | `RC_LEADERBOARD_CACHE_MS` | `60000` | Lifetime of the in-memory public leaderboard snapshot |
@@ -166,7 +182,12 @@ Accounts require a unique username, first and last name, and a 6-12 digit PIN.
 PINs are salted and hashed with scrypt. The browser receives a random HttpOnly,
 SameSite session token; only its SHA-256 hash is stored. Sessions expire after
 30 days and state-changing browser APIs require a CSRF token. Unauthenticated
-RPC requests are rejected. See `src/session.ts` and `src/db/auth-store.ts`.
+RPC requests are rejected. Valid and invalid token lookups use a bounded,
+single-flight in-process TTL cache; login, logout, PIN changes, moderation
+actions, rollback, and reset invalidate cached authentication. Public and
+static routes bypass session resolution entirely, so asset traffic never needs
+a PostgreSQL connection. See `src/session.ts`, `src/session-cache.ts`, and
+`src/db/auth-store.ts`.
 
 Discord OAuth2 is an additive credential using the authorization-code flow and
 the `identify email guilds.join` scopes. A linked Discord identity maps to one
@@ -299,7 +320,7 @@ Pages and control routes served outside the RPC/asset paths:
 
 | Command | Does |
 |---|---|
-| `npm start` | `db:push` → `build` → run `dist/server.js` |
+| `npm start` | Development convenience: `db:push` → `build` → run `dist/server.js`; production systemd uses `start:built` |
 | `npm run start:built` | Run `dist/server.js` without rebuilding |
 | `npm run maintenance` | Run only the standalone maintenance screen, without the database or build |
 | `npm run build` | `prisma generate` + `tsc` |
@@ -309,6 +330,7 @@ Pages and control routes served outside the RPC/asset paths:
 | `npm run db:generate` | Regenerate both PostgreSQL and SQLite Prisma clients |
 | `npm run db:migrate:postgres` | Stream an offline SQLite database into an empty PostgreSQL database and verify every table count |
 | `npm run repair:ingredient-rewards` | Preview or apply idempotent recovery of historically lost quiz and first-visit ingredients |
+| `npm run repair:legacy-data-v1` | Build and explicitly run the three idempotent legacy repairs that no longer execute during normal server startup |
 
 ### Purge inactive accounts
 

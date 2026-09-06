@@ -269,6 +269,7 @@ model Mail {
   recipient           UserProfile @relation("ReceivedMails", fields: [recipientProfileId], references: [id], onDelete: Cascade)
 
   @@index([recipientProfileId, deleted, sendDate])
+  @@index([recipientNetworkUid, deleted, id])
   @@index([senderProfileId])
 }
 

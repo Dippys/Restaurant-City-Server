@@ -56,6 +56,11 @@ export interface OverviewResponse {
     rpcCount: number;
     activeRequests: number;
     activityQueueSize: number;
+    databasePool: { provider: 'PostgreSQL' | 'SQLite'; max: number; total: number; idle: number; waiting: number; errors: number; lastError: string; waitingHighWater: number; saturatedSamples: number; lastSaturatedAt: string; consecutiveSaturatedSamples: number };
+    sessionCache: { size: number; inFlight: number; hits: number; misses: number; coalesced: number; evictions: number; invalidations: number; maxEntries: number; positiveTtlSeconds: number; negativeTtlSeconds: number };
+    referenceCache: { size: number; inFlight: number; hits: number; misses: number; invalidations: number; ttlSeconds: number };
+    profileSaves: { active: number; waiting: number; serializedKeys: number; maxConcurrency: number };
+    alerts: ReadonlyArray<{ level: 'warning' | 'critical'; code: string; message: string }>;
     rpcLatency: Readonly<Record<string, { count: number; averageMs: number; p50Ms: number; p95Ms: number; p99Ms: number; maxMs: number }>>;
     jobs: Readonly<Record<string, { running: boolean; runs: number; skippedOverlaps: number; lastStartedAt: string | null; lastCompletedAt: string | null; lastDurationMs: number | null; lastError: string }>>;
   };

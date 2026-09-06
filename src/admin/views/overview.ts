@@ -26,7 +26,38 @@ export async function render(container: HTMLElement): Promise<void> {
     card('Event-loop p99', `${data.performance.eventLoopDelayMs.p99.toFixed(1)} ms`, `max ${data.performance.eventLoopDelayMs.max.toFixed(1)} ms`),
     card('Requests', fmt(data.performance.requestCount), `p95 ${data.performance.requestLatency.p95Ms.toFixed(1)} ms · ${fmt(data.performance.activeRequests)} active`),
     card('Activity queue', fmt(data.performance.activityQueueSize), `${fmt(data.performance.rpcCount)} RPC measured`),
+    card(
+      'Database pool',
+      data.performance.databasePool.provider === 'PostgreSQL'
+        ? `${fmt(data.performance.databasePool.total)} / ${fmt(data.performance.databasePool.max)}`
+        : 'SQLite',
+      data.performance.databasePool.provider === 'PostgreSQL'
+        ? `${fmt(data.performance.databasePool.idle)} idle · ${fmt(data.performance.databasePool.waiting)} waiting · peak ${fmt(data.performance.databasePool.waitingHighWater)}`
+        : 'No connection pool',
+    ),
+    card(
+      'Session cache',
+      `${fmt(data.performance.sessionCache.size)} / ${fmt(data.performance.sessionCache.maxEntries)}`,
+      `${fmt(data.performance.sessionCache.hits)} hits · ${fmt(data.performance.sessionCache.misses)} misses · ${fmt(data.performance.sessionCache.coalesced)} joined`,
+    ),
+    card(
+      'Reference cache',
+      fmt(data.performance.referenceCache.size),
+      `${fmt(data.performance.referenceCache.hits)} hits / ${fmt(data.performance.referenceCache.misses)} misses / ${fmt(data.performance.referenceCache.invalidations)} invalidations`,
+    ),
+    card(
+      'Profile saves',
+      `${fmt(data.performance.profileSaves.active)} / ${fmt(data.performance.profileSaves.maxConcurrency)}`,
+      `${fmt(data.performance.profileSaves.waiting)} waiting · ${fmt(data.performance.profileSaves.serializedKeys)} player queues`,
+    ),
   );
+
+  const healthAlerts = data.performance.alerts.length
+    ? h('section', { class: 'rc-panel rc-warn-banner' },
+      h('h2', {}, 'Performance alerts'),
+      h('ul', {}, ...data.performance.alerts.map((alert) => h('li', { class: alert.level === 'critical' ? 'rc-err' : '' }, alert.message))),
+    )
+    : h('section', { class: 'rc-panel' }, h('h2', {}, 'Performance alerts'), h('p', { class: 'rc-dim' }, 'No active database or RPC latency alerts.'));
 
   const actions = h('div', { class: 'rc-toolbar' },
     also(h('button', { class: 'rc-btn', type: 'button' }, 'Reindex assets'), (btn) => {
@@ -83,6 +114,7 @@ export async function render(container: HTMLElement): Promise<void> {
     h('h1', { class: 'rc-title' }, 'Server overview'),
     h('p', { class: 'rc-sub' }, `Server time: ${new Date(data.serverTime).toLocaleString('en-GB')}`),
     cards,
+    healthAlerts,
     actions,
     online,
     jobPanel,

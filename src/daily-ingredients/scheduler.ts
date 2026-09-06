@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { prisma } from '../db/client';
+import { invalidateReferenceData } from '../reference-cache';
 import { dailyIngredientCatalog, selectDailyIngredients, type DailyIngredient } from './catalog';
 import { sendDailyIngredientsDiscord } from './discord';
 import { renderDailyIngredientsImage } from './image';
@@ -78,6 +79,7 @@ async function runDailyIngredientRotationCore(
         },
       });
     });
+    invalidateReferenceData('economy-catalog');
     console.log(`Daily ingredients rotated for ${utcDate}: ${rotation.ingredientIdsJson}`);
   }
 
@@ -94,6 +96,7 @@ async function runDailyIngredientRotationCore(
       });
     }
   });
+  invalidateReferenceData('economy-catalog');
 
   if (rotation.announcedAt || !webhookUrl) return true;
   try {

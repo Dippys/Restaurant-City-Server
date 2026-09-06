@@ -28,7 +28,6 @@ export interface ModerationProfile {
   readonly ingredients: ReadonlyArray<{ globalItemId: number; number: number }>;
   readonly gardenPlots: ReadonlyArray<{ ingredientId: number }>;
   readonly employees: ReadonlyArray<unknown>;
-  readonly cashTransactions: ReadonlyArray<{ amount: number }>;
 }
 
 export interface ModerationActivityLike {

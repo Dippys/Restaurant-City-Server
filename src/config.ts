@@ -21,6 +21,7 @@ export interface ServerConfig {
   readonly moderationMaxSnapshotsPerPlayer: number;
   readonly leaderboardCacheMs: number;
   readonly activityFlushIntervalSeconds: number;
+  readonly activityFlushConcurrency: number;
   readonly autoSaveSnapshotIntervalMinutes: number;
   readonly shutdownTimeoutSeconds: number;
 }
@@ -33,6 +34,7 @@ export function loadConfig(): ServerConfig {
   }
   const rcRoot = path.resolve(serverRoot, '..');
   const production = process.env.NODE_ENV === 'production';
+  const dbPoolMax = positiveInt(process.env.RC_DB_POOL_MAX, 20);
 
   return {
     port: Number(process.env.PORT) || 8090,
@@ -54,6 +56,7 @@ export function loadConfig(): ServerConfig {
     moderationMaxSnapshotsPerPlayer: positiveInt(process.env.RC_MODERATION_MAX_SNAPSHOTS_PER_PLAYER, 250),
     leaderboardCacheMs: positiveInt(process.env.RC_LEADERBOARD_CACHE_MS, 60_000),
     activityFlushIntervalSeconds: positiveInt(process.env.RC_ACTIVITY_FLUSH_INTERVAL_SECONDS, 60),
+    activityFlushConcurrency: Math.min(Math.max(1, dbPoolMax - 4), positiveInt(process.env.RC_ACTIVITY_FLUSH_CONCURRENCY, 4)),
     autoSaveSnapshotIntervalMinutes: positiveInt(process.env.RC_AUTO_SAVE_SNAPSHOT_INTERVAL_MINUTES, 60),
     shutdownTimeoutSeconds: positiveInt(process.env.RC_SHUTDOWN_TIMEOUT_SECONDS, 15),
   };

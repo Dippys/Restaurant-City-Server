@@ -68,6 +68,7 @@ import { createManualSnapshot, moderationOverview, moderationPlayerDetail, rebui
 import { runModerationCycle } from './moderation/scheduler';
 import { startImpersonation, stopImpersonation } from './impersonation';
 import { clearImpersonationCookie, impersonationCookie } from './session';
+import { databaseReadiness } from './health';
 
 const CROSSDOMAIN = [
   '<?xml version="1.0"?>',
@@ -77,6 +78,14 @@ const CROSSDOMAIN = [
   '</cross-domain-policy>',
   '',
 ].join('\n');
+
+const PUBLIC_PAGE_PATHS = new Set([
+  '/', '/preserve', '/preservation', '/login', '/signup',
+  '/terms', '/privacy', '/cookies', '/community-guidelines',
+  '/leaderboards', '/leaderboard', '/crossdomain.xml', '/theme.css',
+  '/robots.txt', '/sitemap.xml',
+  '/health', '/health/live', '/health/ready',
+]);
 
 export interface RestaurantCityServer {
   readonly httpServer: http.Server;
@@ -100,7 +109,12 @@ export function createServer(config: ServerConfig): RestaurantCityServer {
     res.once('finish', finishRequest);
     res.once('close', finishRequest);
     applySecurityHeaders(res);
-    resolveRequestContext(requestLog.nextId(), req)
+    const requestId = requestLog.nextId();
+    const pathname = requestPathname(req, config.port);
+    const context = requestSkipsDatabaseAuth(pathname, staticFiles)
+      ? Promise.resolve(new RequestContext(requestId, req, null))
+      : resolveRequestContext(requestId, req);
+    context
       .then((context) => handleRequest(config, staticFiles, requestLog, context, req, res))
       .catch((error) => {
         console.error(error);
@@ -118,6 +132,25 @@ export function createServer(config: ServerConfig): RestaurantCityServer {
   const socialSweep = setInterval(() => void sweepSocialEscrow(), 60_000);
   socialSweep.unref();
   return { httpServer, staticFiles, requestLog, backgroundScheduler: { stop: () => clearInterval(socialSweep) } };
+}
+
+/** Public/static requests never need a database-backed session lookup. */
+export function requestSkipsDatabaseAuth(pathname: string, staticFiles: StaticFileIndex): boolean {
+  if (isRpcPath(pathname) || pathname.startsWith('/__api/') || pathname.startsWith('/s/')) return false;
+  if (pathname === '/game' || pathname === '/play' || pathname === '/account' || pathname === '/admin') return false;
+  if (pathname.startsWith('/auth/')) return false;
+  if (staticFiles.find(pathname)) return true;
+  if (/^\/(?:assets|ruffle|admin)\//.test(pathname)) return true;
+  if (pathname.startsWith('/__api/profile-image/')) return true;
+  return PUBLIC_PAGE_PATHS.has(pathname);
+}
+
+function requestPathname(req: IncomingMessage, port: number): string {
+  try {
+    return decodeURIComponent(new URL(req.url || '/', `http://localhost:${port}`).pathname);
+  } catch {
+    return '';
+  }
 }
 
 async function handleRequest(
@@ -138,6 +171,22 @@ async function handleRequest(
   // caused each request. Anonymous requests stay unstamped.
   if (context.account) {
     entry.account = { username: context.account.username, networkUid: context.account.networkUid };
+  }
+
+  if (pathname === '/health/live') {
+    sendJson(res, { status: 'ok', uptimeSeconds: Math.floor(process.uptime()) });
+    return;
+  }
+
+  if (pathname === '/health' || pathname === '/health/ready') {
+    const readiness = await databaseReadiness();
+    sendJson(res, {
+      status: readiness.status,
+      checkedAt: readiness.checkedAt,
+      latencyMs: readiness.latencyMs,
+      ...(readiness.error ? { error: 'database unavailable' } : {}),
+    }, readiness.status === 'ready' ? 200 : 503);
+    return;
   }
 
   if (pathname === '/') {

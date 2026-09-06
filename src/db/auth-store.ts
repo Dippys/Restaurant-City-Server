@@ -5,6 +5,7 @@ import type { ActiveAccount } from '../session';
 import { accountFromUsername, cleanPersonName, cleanPin, cleanUsername, hashSessionToken, IMPERSONATION_MAX_AGE_SECONDS, newCsrfToken, newSessionToken } from '../session';
 import { recordLoginActivity } from '../moderation/service';
 import { initializeDiscordNotificationState } from '../discord-notifications';
+import { cachedSessionAccount, invalidateAllCachedSessions, primeSessionCache } from '../session-cache';
 
 const scrypt = promisify(nodeScrypt);
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -50,19 +51,26 @@ export async function loginAccount(input: { username?: string; pin?: string }, i
 }
 
 export async function findSessionAccount(tokenHash: string): Promise<ActiveAccount | null> {
-  const session = await prisma.session.findUnique({ where: { tokenHash }, include: { account: true } });
-  if (!session || session.account.disabled || session.expiresAt.getTime() <= Date.now()) {
-    if (session) await prisma.session.delete({ where: { id: session.id } }).catch(() => undefined);
-    return null;
-  }
-  if (Date.now() - session.lastSeenAt.getTime() > 5 * 60 * 1000) {
-    await prisma.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } }).catch(() => undefined);
-  }
-  return toActiveAccount(session.account, session.csrfToken, session.id);
+  return cachedSessionAccount(tokenHash, async () => {
+    const session = await prisma.session.findUnique({ where: { tokenHash }, include: { account: true } });
+    if (!session || session.account.disabled || session.expiresAt.getTime() <= Date.now()) {
+      if (session) await prisma.session.delete({ where: { id: session.id } }).catch(() => undefined);
+      return { account: null };
+    }
+    if (Date.now() - session.lastSeenAt.getTime() > 5 * 60 * 1000) {
+      await prisma.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } }).catch(() => undefined);
+    }
+    return {
+      account: toActiveAccount(session.account, session.csrfToken, session.id),
+      ttlMs: session.expiresAt.getTime() - Date.now(),
+    };
+  });
 }
 
 export async function revokeSession(sessionId?: string): Promise<void> {
-  if (sessionId) await prisma.session.delete({ where: { id: sessionId } }).catch(() => undefined);
+  if (!sessionId) return;
+  await prisma.session.delete({ where: { id: sessionId } }).catch(() => undefined);
+  invalidateAllCachedSessions();
 }
 
 export async function createSessionForAccountId(accountId: string, ip: string, userAgent: string): Promise<AuthResult> {
@@ -205,10 +213,12 @@ export async function updateAccountSettings(accountId: string, sessionId: string
   }
   await prisma.account.update({ where: { id: accountId }, data: { ...data, ...(input.newPin ? { pinEnabled: true } : {}) } });
   if (input.newPin) await prisma.session.deleteMany({ where: { accountId, id: { not: sessionId } } });
+  invalidateAllCachedSessions();
 }
 
 export async function purgeExpiredSessions(): Promise<void> {
-  await prisma.session.deleteMany({ where: { expiresAt: { lte: new Date() } } });
+  const removed = await prisma.session.deleteMany({ where: { expiresAt: { lte: new Date() } } });
+  if (removed.count > 0) invalidateAllCachedSessions();
 }
 
 async function createSession(account: { id: string; username: string; firstName: string; lastName: string; networkUid: string; playfishUid: number; role: string; pinEnabled: boolean }, ip: string, userAgent: string): Promise<AuthResult> {
@@ -225,7 +235,10 @@ async function createSession(account: { id: string; username: string; firstName:
   await prisma.session.deleteMany({ where: { accountId: account.id, id: { not: session.id } } }).catch(() => undefined);
   await recordLoginActivity({ id: account.id, networkUid: account.networkUid });
 
-  return { account: toActiveAccount(account, csrfToken, session.id), rawToken };
+  const activeAccount = toActiveAccount(account, csrfToken, session.id);
+  invalidateAllCachedSessions();
+  primeSessionCache(hashSessionToken(rawToken), activeAccount);
+  return { account: activeAccount, rawToken };
 }
 
 function toActiveAccount(account: { id: string; username: string; firstName: string; lastName: string; networkUid: string; playfishUid: number; role: string; pinEnabled: boolean }, csrfToken: string, sessionId: string): ActiveAccount {

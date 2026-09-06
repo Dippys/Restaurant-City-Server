@@ -1,4 +1,4 @@
-import type { Employee, GardenPlot, Mail, UserProfile } from '@prisma/client';
+import type { DiscordNotificationState, Employee, GardenPlot, Mail, UserProfile } from '@prisma/client';
 import { prisma } from './db/client';
 import { ingredientRarity } from './db/ingredient-catalog';
 import { catalogEntry } from './db/item-catalog';
@@ -6,6 +6,7 @@ import { backgroundJobs, type SchedulerHandle } from './job-runner';
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const NOTIFICATION_INTERVAL_MS = 60_000;
+const DEFAULT_ACCOUNT_BATCH_SIZE = 100;
 const GARDEN_GROW_TIME_SECONDS = 48 * 60 * 60;
 const GIFT_COLOR = 0xf2b84b;
 const TRADE_COLOR = 0x5865f2;
@@ -34,6 +35,7 @@ interface DiscordMessage {
 }
 
 type MailWithSender = Mail & { sender: Pick<UserProfile, 'firstName' | 'fullName' | 'restaurantName'> };
+type NotificationProfile = UserProfile & { employees: Employee[]; gardenPlots: GardenPlot[] };
 
 export function startDiscordNotificationScheduler(intervalMs = NOTIFICATION_INTERVAL_MS): SchedulerHandle {
   if (!process.env.RC_DISCORD_BOT_TOKEN) return { stop() {} };
@@ -53,18 +55,41 @@ export async function runDiscordNotificationCycle(now = new Date()): Promise<voi
 }
 
 async function runDiscordNotificationCycleCore(now: Date): Promise<void> {
-  const identities = await prisma.discordIdentity.findMany({
-    where: { account: { disabled: false } },
-    include: { account: { select: { id: true, networkUid: true } } },
-  });
-  for (const identity of identities) {
-    await processLinkedAccount(
-      identity.account.id,
-      identity.account.networkUid,
-      identity.discordUserId,
-      identity.dmNotificationsEnabled,
-      now,
-    ).catch((error) => console.error(`Discord notification failed for account ${identity.account.id}:`, error));
+  const batchSize = Math.min(1000, positiveInt(process.env.RC_DISCORD_NOTIFICATION_BATCH_SIZE, DEFAULT_ACCOUNT_BATCH_SIZE));
+  const poolMax = positiveInt(process.env.RC_DB_POOL_MAX, 20);
+  const concurrency = Math.min(Math.max(1, poolMax - 4), positiveInt(process.env.RC_DISCORD_NOTIFICATION_CONCURRENCY, 4));
+  let cursor: string | undefined;
+  while (true) {
+    const identities = await prisma.discordIdentity.findMany({
+      where: { account: { disabled: false } },
+      include: { account: { select: { id: true, networkUid: true } } },
+      orderBy: { discordUserId: 'asc' },
+      take: batchSize,
+      ...(cursor ? { cursor: { discordUserId: cursor }, skip: 1 } : {}),
+    });
+    if (identities.length === 0) break;
+
+    const accountIds = identities.map((identity) => identity.account.id);
+    const networkUids = identities.map((identity) => identity.account.networkUid);
+    const [profiles, states] = await Promise.all([
+      prisma.userProfile.findMany({ where: { networkUid: { in: networkUids } }, include: { employees: true, gardenPlots: true } }),
+      prisma.discordNotificationState.findMany({ where: { accountId: { in: accountIds } } }),
+    ]);
+    const profilesByUid = new Map(profiles.map((profile) => [profile.networkUid, profile]));
+    const statesByAccount = new Map(states.map((state) => [state.accountId, state]));
+    await runBounded(identities, concurrency, async (identity) => {
+      await processLinkedAccount(
+        identity.account.id,
+        identity.account.networkUid,
+        identity.discordUserId,
+        identity.dmNotificationsEnabled,
+        now,
+        profilesByUid.get(identity.account.networkUid),
+        statesByAccount.get(identity.account.id),
+      ).catch((error) => console.error(`Discord notification state update failed for account ${identity.account.id}:`, error));
+    });
+    cursor = identities.at(-1)?.discordUserId;
+    if (identities.length < batchSize || !cursor) break;
   }
 }
 
@@ -78,15 +103,7 @@ export async function initializeDiscordNotificationState(accountId: string, now 
     include: { employees: true, gardenPlots: true },
   });
   if (!profile) return;
-  const latestMail = await prisma.mail.findFirst({ where: { recipientNetworkUid: account.networkUid }, orderBy: { id: 'desc' }, select: { id: true } });
-  const garden = gardenAlertState(profile.gardenPlots, now);
-  await prisma.discordNotificationState.create({ data: {
-    accountId,
-    lastMailId: latestMail?.id ?? 0,
-    allEmployeesExhausted: allEmployeesExhausted(profile.employees),
-    gardenReadyPlotIdsJson: idsJson(garden.ready),
-    gardenDryPlotIdsJson: idsJson(garden.dry),
-  } }).catch(() => undefined);
+  await initializeDiscordNotificationStateFromProfile(accountId, account.networkUid, profile, now);
 }
 
 export function allEmployeesExhausted(employees: readonly Pick<Employee, 'happiness'>[]): boolean {
@@ -196,17 +213,21 @@ export function buildDiscordMessage(notification: DiscordGameNotification, now =
   });
 }
 
-async function processLinkedAccount(accountId: string, networkUid: string, discordUserId: string, deliver: boolean, now: Date): Promise<void> {
-  const profile = await prisma.userProfile.findUnique({
-    where: { networkUid },
-    include: { employees: true, gardenPlots: true },
-  });
+async function processLinkedAccount(
+  accountId: string,
+  networkUid: string,
+  discordUserId: string,
+  deliver: boolean,
+  now: Date,
+  profile: NotificationProfile | undefined,
+  loadedState: DiscordNotificationState | undefined,
+): Promise<void> {
   if (!profile) return;
   const employeeState = allEmployeesExhausted(profile.employees);
   const gardenState = gardenAlertState(profile.gardenPlots, now);
-  let state = await prisma.discordNotificationState.findUnique({ where: { accountId } });
+  let state = loadedState;
   if (!state) {
-    await initializeDiscordNotificationState(accountId, now);
+    await initializeDiscordNotificationStateFromProfile(accountId, networkUid, profile, now);
     return;
   }
 
@@ -215,36 +236,42 @@ async function processLinkedAccount(accountId: string, networkUid: string, disco
     include: { sender: { select: { firstName: true, fullName: true, restaurantName: true } } },
     orderBy: { id: 'asc' }, take: 100,
   });
+  const stateUpdate: {
+    lastMailId?: number;
+    allEmployeesExhausted?: boolean;
+    gardenReadyPlotIdsJson?: string;
+    gardenDryPlotIdsJson?: string;
+  } = {};
   for (const mail of newMails) {
-    if (deliver) await sendDiscordNotificationToUser(discordUserId, notificationForMail(mail));
-    await prisma.discordNotificationState.update({ where: { accountId }, data: { lastMailId: mail.id } });
-    state = { ...state, lastMailId: mail.id };
+    if (deliver) await trySendDiscordNotificationToUser(discordUserId, notificationForMail(mail));
   }
+  if (newMails.length > 0) stateUpdate.lastMailId = newMails.at(-1)?.id;
 
   if (employeeState !== state.allEmployeesExhausted) {
-    if (deliver && employeeState) await sendDiscordNotificationToUser(discordUserId, { kind: 'employeesExhausted', employeeCount: profile.employees.length });
-    await prisma.discordNotificationState.update({ where: { accountId }, data: { allEmployeesExhausted: employeeState } });
+    if (deliver && employeeState) await trySendDiscordNotificationToUser(discordUserId, { kind: 'employeesExhausted', employeeCount: profile.employees.length });
+    stateUpdate.allEmployeesExhausted = employeeState;
   }
-  await updateGardenEdge(accountId, discordUserId, deliver, 'gardenReadyPlotIdsJson', gardenState.ready, state.gardenReadyPlotIdsJson, 'gardenReady');
-  await updateGardenEdge(accountId, discordUserId, deliver, 'gardenDryPlotIdsJson', gardenState.dry, state.gardenDryPlotIdsJson, 'gardenDry');
+  const ready = await nextGardenEdge(discordUserId, deliver, gardenState.ready, state.gardenReadyPlotIdsJson, 'gardenReady');
+  const dry = await nextGardenEdge(discordUserId, deliver, gardenState.dry, state.gardenDryPlotIdsJson, 'gardenDry');
+  if (ready !== undefined) stateUpdate.gardenReadyPlotIdsJson = ready;
+  if (dry !== undefined) stateUpdate.gardenDryPlotIdsJson = dry;
+  if (Object.keys(stateUpdate).length > 0) {
+    await prisma.discordNotificationState.update({ where: { accountId }, data: stateUpdate });
+  }
 }
 
-async function updateGardenEdge(
-  accountId: string,
+async function nextGardenEdge(
   discordUserId: string,
   deliver: boolean,
-  field: 'gardenReadyPlotIdsJson' | 'gardenDryPlotIdsJson',
   current: readonly GardenPlotAlert[],
   previousJson: string,
   kind: 'gardenReady' | 'gardenDry',
-): Promise<void> {
+): Promise<string | undefined> {
   const previous = new Set(readIds(previousJson));
   const newlyTrue = current.filter((plot) => !previous.has(plot.plotId));
-  if (deliver && newlyTrue.length) await sendDiscordNotificationToUser(discordUserId, { kind, plots: newlyTrue });
+  if (deliver && newlyTrue.length) await trySendDiscordNotificationToUser(discordUserId, { kind, plots: newlyTrue });
   const next = idsJson(current);
-  if (next !== normalizedIdsJson(previousJson)) {
-    await prisma.discordNotificationState.update({ where: { accountId }, data: { [field]: next } });
-  }
+  return next !== normalizedIdsJson(previousJson) ? next : undefined;
 }
 
 function notificationForMail(mail: MailWithSender): DiscordGameNotification {
@@ -257,18 +284,50 @@ function notificationForMail(mail: MailWithSender): DiscordGameNotification {
   };
 }
 
-async function sendDiscordNotificationToUser(discordUserId: string, notification: DiscordGameNotification): Promise<void> {
-  const headers = { Authorization: `Bot ${process.env.RC_DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' };
-  const channelResponse = await fetch(`${DISCORD_API}/users/@me/channels`, {
-    method: 'POST', headers, body: JSON.stringify({ recipient_id: discordUserId }), signal: AbortSignal.timeout(10_000),
-  });
-  if (!channelResponse.ok) throw new Error(`create DM returned ${channelResponse.status}`);
-  const channel = await channelResponse.json() as { id?: string };
-  if (!channel.id) throw new Error('create DM returned no channel id');
-  const response = await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
-    method: 'POST', headers, body: JSON.stringify(buildDiscordMessage(notification)), signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) throw new Error(`send DM returned ${response.status}`);
+async function trySendDiscordNotificationToUser(discordUserId: string, notification: DiscordGameNotification): Promise<boolean> {
+  try {
+    const headers = { Authorization: `Bot ${process.env.RC_DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' };
+    const channelResponse = await fetch(`${DISCORD_API}/users/@me/channels`, {
+      method: 'POST', headers, body: JSON.stringify({ recipient_id: discordUserId }), signal: AbortSignal.timeout(10_000),
+    });
+    if (!channelResponse.ok) return false;
+    const channel = await channelResponse.json() as { id?: string };
+    if (!channel.id) return false;
+    const response = await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
+      method: 'POST', headers, body: JSON.stringify(buildDiscordMessage(notification)), signal: AbortSignal.timeout(10_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function initializeDiscordNotificationStateFromProfile(
+  accountId: string,
+  networkUid: string,
+  profile: NotificationProfile,
+  now: Date,
+): Promise<void> {
+  const latestMail = await prisma.mail.findFirst({ where: { recipientNetworkUid: networkUid }, orderBy: { id: 'desc' }, select: { id: true } });
+  const garden = gardenAlertState(profile.gardenPlots, now);
+  await prisma.discordNotificationState.create({ data: {
+    accountId,
+    lastMailId: latestMail?.id ?? 0,
+    allEmployeesExhausted: allEmployeesExhausted(profile.employees),
+    gardenReadyPlotIdsJson: idsJson(garden.ready),
+    gardenDryPlotIdsJson: idsJson(garden.dry),
+  } }).catch(() => undefined);
+}
+
+async function runBounded<T>(items: readonly T[], concurrency: number, task: (item: T) => Promise<void>): Promise<void> {
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      if (item !== undefined) await task(item);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(items.length, Math.max(1, concurrency)) }, worker));
 }
 
 function message(input: {
@@ -373,6 +432,11 @@ function elapsedSeconds(from: Date, to: Date): number {
 
 function bounded(value: number, maximum: number): number {
   return Number.isInteger(value) ? Math.max(0, Math.min(maximum, value)) : 0;
+}
+
+function positiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function plural(count: number, singular: string, multiple: string): string {

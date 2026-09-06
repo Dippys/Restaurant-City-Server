@@ -16,9 +16,11 @@ process.env.RC_DB_PATH = testDbPath;
 
 const { prisma } = require('../dist/db/client.js');
 const { loadConfig } = require('../dist/config.js');
-const { createEntry, createServer } = require('../dist/http-server.js');
+const { createEntry, createServer, requestSkipsDatabaseAuth } = require('../dist/http-server.js');
 const { resolveRequestContext } = require('../dist/request-context.js');
 const { hashSessionToken } = require('../dist/session.js');
+const { invalidateAllCachedSessions, sessionCacheSnapshot } = require('../dist/session-cache.js');
+const { revokeSession } = require('../dist/db/auth-store.js');
 
 const tokens = {
   user: 'u'.repeat(43), admin: 'a'.repeat(43), expired: 'e'.repeat(43), disabled: 'd'.repeat(43),
@@ -46,7 +48,12 @@ test.after(async () => {
 });
 
 test('production capture defaults are lightweight and development keeps full debugging', () => {
-  const saved = { nodeEnv: process.env.NODE_ENV, pepper: process.env.RC_PIN_PEPPER };
+  const saved = {
+    nodeEnv: process.env.NODE_ENV,
+    pepper: process.env.RC_PIN_PEPPER,
+    poolMax: process.env.RC_DB_POOL_MAX,
+    activityConcurrency: process.env.RC_ACTIVITY_FLUSH_CONCURRENCY,
+  };
   delete process.env.RC_RPC_CAPTURE_MODE;
   delete process.env.RC_REQUEST_LOG_STDOUT;
   delete process.env.MAX_LOG_ENTRIES;
@@ -57,11 +64,17 @@ test('production capture defaults are lightweight and development keeps full deb
   assert.equal(production.requestLogStdout, false);
   assert.equal(production.maxLogEntries, 50);
   assert.equal(production.activityFlushIntervalSeconds, 60);
+  assert.equal(production.activityFlushConcurrency, 4);
+  process.env.RC_DB_POOL_MAX = '3';
+  process.env.RC_ACTIVITY_FLUSH_CONCURRENCY = '9';
+  assert.equal(loadConfig().activityFlushConcurrency, 1, 'small pools must retain capacity outside activity flushes');
   assert.equal(production.autoSaveSnapshotIntervalMinutes, 60);
   process.env.NODE_ENV = 'development';
   assert.equal(loadConfig().rpcCaptureMode, 'full');
   if (saved.nodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = saved.nodeEnv;
   if (saved.pepper === undefined) delete process.env.RC_PIN_PEPPER; else process.env.RC_PIN_PEPPER = saved.pepper;
+  if (saved.poolMax === undefined) delete process.env.RC_DB_POOL_MAX; else process.env.RC_DB_POOL_MAX = saved.poolMax;
+  if (saved.activityConcurrency === undefined) delete process.env.RC_ACTIVITY_FLUSH_CONCURRENCY; else process.env.RC_ACTIVITY_FLUSH_CONCURRENCY = saved.activityConcurrency;
 });
 
 test('metadata capture omits expensive encodings and full capture redacts secrets', () => {
@@ -98,6 +111,16 @@ test('request context resolves normal authentication exactly once', async () => 
   assert.equal('rawToken' in context, false);
 });
 
+test('public and static routes bypass database authentication', () => {
+  const staticFiles = { find: (pathname) => pathname === '/game-data.bin' ? {} : null };
+  for (const pathname of ['/', '/login', '/theme.css', '/assets/chef.png', '/ruffle/ruffle.js', '/admin/main.js', '/game-data.bin', '/health', '/health/live', '/health/ready']) {
+    assert.equal(requestSkipsDatabaseAuth(pathname, staticFiles), true, pathname);
+  }
+  for (const pathname of ['/game', '/account', '/admin', '/g/rpc/cooking', '/g/rpc/game.swf', '/__api/session', '/s/abc', '/auth/discord']) {
+    assert.equal(requestSkipsDatabaseAuth(pathname, staticFiles), false, pathname);
+  }
+});
+
 test('authenticated, anonymous, expired, disabled, and admin HTTP behavior is preserved', async () => {
   const server = createServer({ ...loadConfig(), port: 0, host: '127.0.0.1', requestLogStdout: false, rpcCaptureMode: 'metadata' });
   await new Promise((resolve) => server.httpServer.listen(0, '127.0.0.1', resolve));
@@ -105,7 +128,27 @@ test('authenticated, anonymous, expired, disabled, and admin HTTP behavior is pr
   const origin = `http://127.0.0.1:${port}`;
   const session = (token) => fetch(`${origin}/__api/session`, { headers: token ? { cookie: `rc_session=${token}` } : {} }).then((response) => response.json());
   try {
+    invalidateAllCachedSessions();
+    const cacheBefore = sessionCacheSnapshot();
     assert.equal((await session(tokens.user)).account.networkUid, '70001');
+    assert.equal((await session(tokens.user)).account.networkUid, '70001');
+    const cacheAfter = sessionCacheSnapshot();
+    assert.equal(cacheAfter.misses - cacheBefore.misses, 1);
+    assert.equal(cacheAfter.hits - cacheBefore.hits, 1);
+
+    invalidateAllCachedSessions();
+    const staticCacheBefore = sessionCacheSnapshot();
+    assert.equal((await fetch(`${origin}/theme.css`, { headers: { cookie: `rc_session=${tokens.user}` } })).status, 200);
+    assert.equal(sessionCacheSnapshot().misses, staticCacheBefore.misses, 'static assets must not resolve a database session');
+
+    const liveness = await fetch(`${origin}/health/live`);
+    assert.equal(liveness.status, 200);
+    assert.equal((await liveness.json()).status, 'ok');
+    const readiness = await fetch(`${origin}/health/ready`);
+    assert.equal(readiness.status, 200);
+    assert.equal((await readiness.json()).status, 'ready');
+    assert.equal(sessionCacheSnapshot().misses, staticCacheBefore.misses, 'health endpoints must not resolve a session');
+
     assert.equal((await session()).loggedIn, false);
     assert.equal((await session(tokens.expired)).loggedIn, false);
     assert.equal((await session(tokens.disabled)).loggedIn, false);
@@ -118,7 +161,16 @@ test('authenticated, anonymous, expired, disabled, and admin HTTP behavior is pr
     assert.equal(overview.performance.activeRequests >= 1, true);
     assert.equal(typeof overview.performance.memory.rssBytes, 'number');
     assert.equal(typeof overview.performance.eventLoopDelayMs.p99, 'number');
+    assert.equal(overview.performance.databasePool.provider, 'SQLite');
+    assert.equal(overview.performance.databasePool.waitingHighWater, 0);
+    assert.equal(typeof overview.performance.sessionCache.hits, 'number');
+    assert.equal(typeof overview.performance.referenceCache.hits, 'number');
+    assert.equal(Array.isArray(overview.performance.alerts), true);
     assert.deepEqual(Object.keys(overview.performance.rpcLatency), []);
+    assert.equal(overview.performance.sessionCache.hits >= 1, true);
+
+    await revokeSession('s-user');
+    assert.equal((await session(tokens.user)).loggedIn, false, 'revocation must invalidate a cached session');
   } finally {
     await new Promise((resolve) => server.httpServer.close(resolve));
   }

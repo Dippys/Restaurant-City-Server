@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from './client';
+import { invalidateReferenceData } from '../reference-cache';
 import {
   DEFAULT_NEW_PLAYER_DEMAND,
   FACEBOOK_NETWORK,
@@ -698,41 +699,44 @@ export async function deleteAdminGameEvent(networkUid: string, eventId: number):
 
 export async function upsertAdminPricepoint(id: number | null, input: PricepointInput) {
   const item = validatePricepointInput(input);
-  if (id === null) {
-    return prisma.pricepoint.create({ data: item });
-  }
-
-  return prisma.pricepoint.update({ where: { id: boundedInt(id, 'id', 1, 2147483647) }, data: item });
+  const result = id === null
+    ? await prisma.pricepoint.create({ data: item })
+    : await prisma.pricepoint.update({ where: { id: boundedInt(id, 'id', 1, 2147483647) }, data: item });
+  invalidateReferenceData('economy-catalog');
+  return result;
 }
 
 export async function deleteAdminPricepoint(id: number): Promise<void> {
   await prisma.pricepoint.deleteMany({ where: { id: boundedInt(id, 'id', 1, 2147483647) } });
+  invalidateReferenceData('economy-catalog');
 }
 
 export async function upsertAdminPurchasableItem(id: number | null, input: PurchasableItemInput) {
   const item = validatePurchasableItemInput(input);
-  if (id === null) {
-    return prisma.purchasableItem.create({ data: item });
-  }
-
-  return prisma.purchasableItem.update({ where: { id: boundedInt(id, 'id', 1, 2147483647) }, data: item });
+  const result = id === null
+    ? await prisma.purchasableItem.create({ data: item })
+    : await prisma.purchasableItem.update({ where: { id: boundedInt(id, 'id', 1, 2147483647) }, data: item });
+  invalidateReferenceData('economy-catalog');
+  return result;
 }
 
 export async function deleteAdminPurchasableItem(id: number): Promise<void> {
   await prisma.purchasableItem.deleteMany({ where: { id: boundedInt(id, 'id', 1, 2147483647) } });
+  invalidateReferenceData('economy-catalog');
 }
 
 export async function upsertAdminIngredientMarketItem(id: number | null, input: IngredientMarketInput) {
   const item = validateIngredientMarketInput(input);
-  if (id === null) {
-    return prisma.ingredientMarketItem.create({ data: item });
-  }
-
-  return prisma.ingredientMarketItem.update({ where: { id: boundedInt(id, 'id', 1, 2147483647) }, data: item });
+  const result = id === null
+    ? await prisma.ingredientMarketItem.create({ data: item })
+    : await prisma.ingredientMarketItem.update({ where: { id: boundedInt(id, 'id', 1, 2147483647) }, data: item });
+  invalidateReferenceData('economy-catalog');
+  return result;
 }
 
 export async function deleteAdminIngredientMarketItem(id: number): Promise<void> {
   await prisma.ingredientMarketItem.deleteMany({ where: { id: boundedInt(id, 'id', 1, 2147483647) } });
+  invalidateReferenceData('economy-catalog');
 }
 
 export async function getAdminUser(networkUid: string): Promise<AdminUser> {

@@ -17,7 +17,7 @@ function renderPostgresqlSchema(source) {
   if (withProvider === source) throw new Error('Could not find the SQLite datasource in prisma/schema.prisma.');
   return withProvider.replace(
     /generator client \{\s*provider\s*=\s*"prisma-client-js"\s*\}/m,
-    `generator client {\n  provider = "prisma-client-js"\n  output   = "${generatedClient}"\n}`,
+    `generator client {\n  provider        = "prisma-client-js"\n  output          = "${generatedClient}"\n  previewFeatures = ["relationJoins"]\n}`,
   );
 }
 
