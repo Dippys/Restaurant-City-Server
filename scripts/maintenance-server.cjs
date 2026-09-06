@@ -39,7 +39,7 @@ function maintenanceOptions(env = process.env) {
   return {
     host: env.HOST || '0.0.0.0',
     port: positiveInteger(env.PORT, 8090),
-    retrySeconds: positiveInteger(env.RC_MAINTENANCE_RETRY_SECONDS, 300),
+    retryText: env.RC_MAINTENANCE_RETRY_SECONDS || 'a few minutes',
     message: env.RC_MAINTENANCE_MESSAGE || 'Our chefs are making a few improvements. Please check back shortly.',
   };
 }
@@ -48,8 +48,9 @@ function createMaintenanceServer(options = maintenanceOptions()) {
   const template = fs.readFileSync(path.join(projectRoot, 'public', 'maintenance.html'), 'utf8');
   const html = template
     .replaceAll('{{MAINTENANCE_MESSAGE}}', escapeHtml(options.message))
-    .replaceAll('{{RETRY_SECONDS}}', String(options.retrySeconds));
+    .replaceAll('{{RETRY_TEXT}}', escapeHtml(options.retryText));
   const body = Buffer.from(html);
+  const numericRetry = /^\d+$/.test(String(options.retryText)) ? String(options.retryText) : undefined;
 
   return http.createServer((req, res) => {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname;
@@ -74,7 +75,7 @@ function createMaintenanceServer(options = maintenanceOptions()) {
         ...headers,
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Length': body.length,
-        'Retry-After': String(options.retrySeconds),
+        ...(numericRetry ? { 'Retry-After': numericRetry } : {}),
       });
       res.end(req.method === 'HEAD' ? undefined : body);
       return;
@@ -85,7 +86,7 @@ function createMaintenanceServer(options = maintenanceOptions()) {
       ...headers,
       'Content-Type': 'application/json; charset=utf-8',
       'Content-Length': unavailable.length,
-      'Retry-After': String(options.retrySeconds),
+      ...(numericRetry ? { 'Retry-After': numericRetry } : {}),
     });
     res.end(unavailable);
   });

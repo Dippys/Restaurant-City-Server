@@ -57,7 +57,8 @@ Every browser route shows the maintenance screen with HTTP `503`; `/health`
 returns HTTP `200` with `{"status":"maintenance"}` for uptime checks. It does
 not connect to the database, build the application, or start background jobs.
 Set `RC_MAINTENANCE_MESSAGE` to replace the displayed message and
-`RC_MAINTENANCE_RETRY_SECONDS` to change the default `300`-second retry hint.
+`RC_MAINTENANCE_RETRY_SECONDS` to set free-form retry text such as `tomorrow at
+6 PM`. Numeric values also produce the standard HTTP `Retry-After` header.
 
 | URL | Page |
 |---|---|
