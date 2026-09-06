@@ -55,14 +55,14 @@ function createMaintenanceServer(options = maintenanceOptions()) {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname;
     const headers = {
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
       'Referrer-Policy': 'no-referrer',
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
       'X-Robots-Tag': 'noindex, nofollow',
     };
 
-    if (pathname === '/health' || pathname === '/__health') {
+    if ((req.method === 'GET' || req.method === 'HEAD') && (pathname === '/health' || pathname === '/__health')) {
       const health = Buffer.from(JSON.stringify({ status: 'maintenance' }));
       res.writeHead(200, { ...headers, 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': health.length });
       res.end(req.method === 'HEAD' ? undefined : health);

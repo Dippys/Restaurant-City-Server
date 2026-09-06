@@ -17,9 +17,9 @@
   h1 { margin:0 0 14px; color:#305585; font-size:clamp(30px,7vw,47px); line-height:1.05; }
   p { max-width:44ch; margin:0 auto; color:#5c748a; font-size:clamp(16px,3vw,19px); }
   .small { margin-top:22px; color:#7b91a2; font-size:13px; }
-  button { margin-top:28px; padding:12px 22px; color:#fff; font:800 15px inherit; cursor:pointer; background:linear-gradient(var(--green),var(--green-dark)); border:2px solid #3e7d19; border-radius:12px; box-shadow:0 4px 0 #376c17; }
-  button:hover { filter:brightness(1.06); }
-  button:active { transform:translateY(2px); box-shadow:0 2px 0 #376c17; }
+  .retry { display:inline-block; margin-top:28px; padding:12px 22px; color:#fff; font-size:15px; font-weight:800; text-decoration:none; background:linear-gradient(var(--green),var(--green-dark)); border:2px solid #3e7d19; border-radius:12px; box-shadow:0 4px 0 #376c17; }
+  .retry:hover { color:#fff; filter:brightness(1.06); }
+  .retry:active { transform:translateY(2px); box-shadow:0 2px 0 #376c17; }
 </style>
 </head>
 <body>
@@ -28,7 +28,7 @@
   <div class="plate" aria-hidden="true">🍽️</div>
   <h1>We’ll be right back!</h1>
   <p>{{MAINTENANCE_MESSAGE}}</p>
-  <button type="button" onclick="location.reload()">Try again</button>
+  <a class="retry" href="">Try again</a>
   <div class="small">Restaurant City Reborn · Please retry in about {{RETRY_SECONDS}} seconds</div>
 </main>
 </body>
