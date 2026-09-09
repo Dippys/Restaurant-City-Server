@@ -8,6 +8,7 @@ import { configureAutomaticSnapshotInterval } from './moderation/service';
 import { gracefulShutdown } from './graceful-shutdown';
 import type { SchedulerHandle } from './job-runner';
 import { databaseProvider } from './db/client';
+import { performanceMetrics } from './performance';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -15,6 +16,15 @@ async function main(): Promise<void> {
   configureRpcActivityBuffer(config.activityFlushIntervalSeconds, config.activityFlushConcurrency);
   configureAutomaticSnapshotInterval(config.autoSaveSnapshotIntervalMinutes);
   const schedulers: SchedulerHandle[] = [backgroundScheduler];
+  const memoryMonitor = setInterval(() => {
+    const usage = process.memoryUsage();
+    if (usage.heapUsed < 256 * 1024 * 1024) return;
+    const status = performanceMetrics.snapshot();
+    const runningJobs = Object.entries(status.jobs).filter(([, job]) => job.running).map(([name]) => name);
+    console.warn(`Memory pressure: heap=${mib(usage.heapUsed)}MiB/${mib(usage.heapTotal)}MiB rss=${mib(usage.rss)}MiB external=${mib(usage.external)}MiB requests=${status.activeRequests}/${status.requestCount} rpcs=${status.rpcCount} db=${status.databasePool.total}/${status.databasePool.max} waiting=${status.databasePool.waiting} saves=${status.profileSaves.active}+${status.profileSaves.waiting} jobs=${runningJobs.join(',') || 'none'}`);
+  }, 1000);
+  memoryMonitor.unref();
+  schedulers.push({ stop: () => clearInterval(memoryMonitor) });
   let shuttingDown = false;
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     if (shuttingDown) return;
@@ -52,6 +62,10 @@ async function main(): Promise<void> {
       );
     }
   });
+}
+
+function mib(bytes: number): number {
+  return Math.round(bytes / 1024 / 1024);
 }
 
 main().catch((error) => {
