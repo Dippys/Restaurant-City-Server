@@ -46,7 +46,6 @@ export async function runModerationCycle(webhookUrl: string | undefined, retenti
 export function startModerationScheduler(webhookUrl: string | undefined, intervalMinutes = 60, retentionDays = 90, maxSnapshotsPerPlayer = 250): SchedulerHandle {
   const intervalMs = Math.max(5, intervalMinutes) * 60_000;
   const run = () => runModerationCycle(webhookUrl, retentionDays, maxSnapshotsPerPlayer).catch((error) => console.error('Moderation cycle failed:', error));
-  void run();
   const timer = setInterval(run, intervalMs);
   timer.unref();
   return { stop: () => clearInterval(timer) };

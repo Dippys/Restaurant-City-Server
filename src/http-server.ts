@@ -69,6 +69,7 @@ import { runModerationCycle } from './moderation/scheduler';
 import { startImpersonation, stopImpersonation } from './impersonation';
 import { clearImpersonationCookie, impersonationCookie } from './session';
 import { databaseReadiness } from './health';
+import { BoundedExpiringCounters } from './rate-limit';
 
 const CROSSDOMAIN = [
   '<?xml version="1.0"?>',
@@ -97,6 +98,8 @@ export interface RestaurantCityServer {
 export function createServer(config: ServerConfig): RestaurantCityServer {
   const requestLog = new RequestLog(config.maxLogEntries, config.requestLogStdout);
   const staticFiles = new StaticFileIndex(config);
+  let inFlightRequests = 0;
+  let inFlightRpcs = 0;
 
   const httpServer = http.createServer((req, res) => {
     const requestStartedAt = performanceMetrics.requestStarted();
@@ -111,6 +114,23 @@ export function createServer(config: ServerConfig): RestaurantCityServer {
     applySecurityHeaders(res);
     const requestId = requestLog.nextId();
     const pathname = requestPathname(req, config.port);
+    const rpcRequest = isRpcPath(pathname);
+    if (inFlightRequests >= config.maxInFlightRequests || (rpcRequest && inFlightRpcs >= config.maxInFlightRpcs)) {
+      res.writeHead(503, { 'Content-Type': rpcRequest ? 'application/octet-stream' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '1' });
+      res.end(rpcRequest ? Buffer.from([0, 0, 0]) : 'server busy');
+      return;
+    }
+    inFlightRequests += 1;
+    if (rpcRequest) inFlightRpcs += 1;
+    let admissionReleased = false;
+    const releaseAdmission = () => {
+      if (admissionReleased) return;
+      admissionReleased = true;
+      inFlightRequests = Math.max(0, inFlightRequests - 1);
+      if (rpcRequest) inFlightRpcs = Math.max(0, inFlightRpcs - 1);
+    };
+    res.once('finish', releaseAdmission);
+    res.once('close', releaseAdmission);
     const context = requestSkipsDatabaseAuth(pathname, staticFiles)
       ? Promise.resolve(new RequestContext(requestId, req, null))
       : resolveRequestContext(requestId, req);
@@ -124,6 +144,11 @@ export function createServer(config: ServerConfig): RestaurantCityServer {
         res.end(error instanceof RequestTooLargeError ? 'request too large' : 'internal server error');
       });
   });
+  // Node's default request-body deadline is five minutes. A shorter bound keeps
+  // slow/incomplete uploads from retaining buffers and request state for long
+  // enough to exhaust the V8 heap under a connection surge.
+  httpServer.requestTimeout = config.requestReceiveTimeoutMs;
+  httpServer.headersTimeout = Math.min(15_000, config.requestReceiveTimeoutMs);
 
   purgeExpiredSessions().catch((error) => console.error('Session cleanup failed:', error));
   purgeExpiredDiscordTickets().catch((error) => console.error('Discord ticket cleanup failed:', error));
@@ -161,7 +186,7 @@ async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const body = await readBody(req);
+  const body = await readBody(req, config.maxRequestBodyBytes);
   const url = new URL(req.url || '/', `http://localhost:${config.port}`);
   const pathname = decodeURIComponent(url.pathname);
 
@@ -1393,7 +1418,7 @@ function csvCell(value: unknown): string {
   return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
-const socialRateLimits = new Map<string, { count: number; resetAt: number }>();
+const socialRateLimits = new BoundedExpiringCounters(20_000);
 function enforceSocialRateLimit(bucket: string, identity: string, maximum: number, windowMs: number): void {
   const now = Date.now(); const key = `${bucket}:${identity}`; const prior = socialRateLimits.get(key);
   if (!prior || prior.resetAt <= now) { socialRateLimits.set(key, { count: 1, resetAt: now + windowMs }); return; }
@@ -1526,8 +1551,8 @@ function applySecurityHeaders(res: ServerResponse): void {
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; object-src 'self'; connect-src 'self' https://static.cloudflareinsights.com; worker-src 'self' blob:; img-src 'self' data:; frame-src 'self' https://discord.com https://*.discord.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self' https://discord.gg https://discord.com https://*.discord.com");
 }
 
-const authAttempts = new Map<string, { count: number; resetAt: number }>();
-const signupAttempts = new Map<string, { count: number; resetAt: number }>();
+const authAttempts = new BoundedExpiringCounters(20_000);
+const signupAttempts = new BoundedExpiringCounters(10_000);
 
 function authRateKey(req: IncomingMessage, username: string): string {
   return `${clientIp(req)}:${username.trim().toLocaleLowerCase('en-US')}`;
@@ -1644,13 +1669,13 @@ const CRC32_TABLE = Array.from({ length: 256 }, (_value, index) => {
   return crc >>> 0;
 });
 
-function readBody(req: IncomingMessage): Promise<Buffer> {
+function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
     req.on('data', (chunk: Buffer) => {
       size += chunk.length;
-      if (size > 10 * 1024 * 1024) {
+      if (size > maxBytes) {
         reject(new RequestTooLargeError());
         req.destroy();
         return;

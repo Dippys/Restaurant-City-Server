@@ -7,6 +7,8 @@ import { backgroundJobs, type SchedulerHandle } from './job-runner';
 const DISCORD_API = 'https://discord.com/api/v10';
 const NOTIFICATION_INTERVAL_MS = 60_000;
 const DEFAULT_ACCOUNT_BATCH_SIZE = 100;
+const DEFAULT_MAILS_PER_ACCOUNT_PER_CYCLE = 20;
+const DEFAULT_STARTUP_DELAY_MS = 10_000;
 const GARDEN_GROW_TIME_SECONDS = 48 * 60 * 60;
 const GIFT_COLOR = 0xf2b84b;
 const TRADE_COLOR = 0x5865f2;
@@ -34,17 +36,24 @@ interface DiscordMessage {
   readonly allowed_mentions: { readonly parse: readonly string[] };
 }
 
-type MailWithSender = Mail & { sender: Pick<UserProfile, 'firstName' | 'fullName' | 'restaurantName'> };
-type NotificationProfile = UserProfile & { employees: Employee[]; gardenPlots: GardenPlot[] };
+type MailWithSender = Pick<Mail, 'id' | 'globalItemIdsJson' | 'message' | 'type'> & { sender: Pick<UserProfile, 'firstName' | 'fullName' | 'restaurantName'> };
+type NotificationProfile = {
+  readonly employees: Array<Pick<Employee, 'happiness'>>;
+  readonly gardenPlots: Array<Pick<GardenPlot, 'plotId' | 'ingredientId' | 'plantWetTime' | 'timeToDry' | 'createdAt' | 'updatedAt'>>;
+};
 
 export function startDiscordNotificationScheduler(intervalMs = NOTIFICATION_INTERVAL_MS): SchedulerHandle {
   if (!process.env.RC_DISCORD_BOT_TOKEN) return { stop() {} };
-  void runDiscordNotificationCycle().catch((error) => console.error('Discord notification cycle failed:', error));
+  const startupDelayMs = nonNegativeInt(process.env.RC_DISCORD_NOTIFICATION_STARTUP_DELAY_MS, DEFAULT_STARTUP_DELAY_MS);
+  const initialTimer = setTimeout(() => {
+    void runDiscordNotificationCycle().catch((error) => console.error('Discord notification cycle failed:', error));
+  }, startupDelayMs);
+  initialTimer.unref();
   const timer = setInterval(() => {
     void runDiscordNotificationCycle().catch((error) => console.error('Discord notification cycle failed:', error));
   }, Math.max(10_000, intervalMs));
   timer.unref();
-  return { stop: () => clearInterval(timer) };
+  return { stop: () => { clearTimeout(initialTimer); clearInterval(timer); } };
 }
 
 /** Process new mail and false→true game-state transitions for every linked account. */
@@ -62,7 +71,11 @@ async function runDiscordNotificationCycleCore(now: Date): Promise<void> {
   while (true) {
     const identities = await prisma.discordIdentity.findMany({
       where: { account: { disabled: false } },
-      include: { account: { select: { id: true, networkUid: true } } },
+      select: {
+        discordUserId: true,
+        dmNotificationsEnabled: true,
+        account: { select: { id: true, networkUid: true } },
+      },
       orderBy: { discordUserId: 'asc' },
       take: batchSize,
       ...(cursor ? { cursor: { discordUserId: cursor }, skip: 1 } : {}),
@@ -72,7 +85,14 @@ async function runDiscordNotificationCycleCore(now: Date): Promise<void> {
     const accountIds = identities.map((identity) => identity.account.id);
     const networkUids = identities.map((identity) => identity.account.networkUid);
     const [profiles, states] = await Promise.all([
-      prisma.userProfile.findMany({ where: { networkUid: { in: networkUids } }, include: { employees: true, gardenPlots: true } }),
+      prisma.userProfile.findMany({
+        where: { networkUid: { in: networkUids } },
+        select: {
+          networkUid: true,
+          employees: { select: { happiness: true } },
+          gardenPlots: { select: { plotId: true, ingredientId: true, plantWetTime: true, timeToDry: true, createdAt: true, updatedAt: true } },
+        },
+      }),
       prisma.discordNotificationState.findMany({ where: { accountId: { in: accountIds } } }),
     ]);
     const profilesByUid = new Map(profiles.map((profile) => [profile.networkUid, profile]));
@@ -100,7 +120,10 @@ export async function initializeDiscordNotificationState(accountId: string, now 
   if (!account) return;
   const profile = await prisma.userProfile.findUnique({
     where: { networkUid: account.networkUid },
-    include: { employees: true, gardenPlots: true },
+    select: {
+      employees: { select: { happiness: true } },
+      gardenPlots: { select: { plotId: true, ingredientId: true, plantWetTime: true, timeToDry: true, createdAt: true, updatedAt: true } },
+    },
   });
   if (!profile) return;
   await initializeDiscordNotificationStateFromProfile(accountId, account.networkUid, profile, now);
@@ -231,10 +254,14 @@ async function processLinkedAccount(
     return;
   }
 
+  const mailLimit = Math.min(100, positiveInt(process.env.RC_DISCORD_NOTIFICATION_MAIL_LIMIT, DEFAULT_MAILS_PER_ACCOUNT_PER_CYCLE));
   const newMails = await prisma.mail.findMany({
     where: { recipientNetworkUid: networkUid, id: { gt: state.lastMailId }, deleted: false },
-    include: { sender: { select: { firstName: true, fullName: true, restaurantName: true } } },
-    orderBy: { id: 'asc' }, take: 100,
+    select: {
+      id: true, globalItemIdsJson: true, message: true, type: true,
+      sender: { select: { firstName: true, fullName: true, restaurantName: true } },
+    },
+    orderBy: { id: 'asc' }, take: mailLimit,
   });
   const stateUpdate: {
     lastMailId?: number;
@@ -290,13 +317,18 @@ async function trySendDiscordNotificationToUser(discordUserId: string, notificat
     const channelResponse = await fetch(`${DISCORD_API}/users/@me/channels`, {
       method: 'POST', headers, body: JSON.stringify({ recipient_id: discordUserId }), signal: AbortSignal.timeout(10_000),
     });
-    if (!channelResponse.ok) return false;
+    if (!channelResponse.ok) {
+      await discardResponse(channelResponse);
+      return false;
+    }
     const channel = await channelResponse.json() as { id?: string };
     if (!channel.id) return false;
     const response = await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
       method: 'POST', headers, body: JSON.stringify(buildDiscordMessage(notification)), signal: AbortSignal.timeout(10_000),
     });
-    return response.ok;
+    const ok = response.ok;
+    await discardResponse(response);
+    return ok;
   } catch {
     return false;
   }
@@ -437,6 +469,19 @@ function bounded(value: number, maximum: number): number {
 function positiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function nonNegativeInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+async function discardResponse(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The request outcome is already known; cleanup remains best-effort.
+  }
 }
 
 function plural(count: number, singular: string, multiple: string): string {

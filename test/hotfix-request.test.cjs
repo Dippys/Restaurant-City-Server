@@ -65,6 +65,10 @@ test('production capture defaults are lightweight and development keeps full deb
   assert.equal(production.maxLogEntries, 50);
   assert.equal(production.activityFlushIntervalSeconds, 60);
   assert.equal(production.activityFlushConcurrency, 4);
+  assert.equal(production.maxInFlightRequests, 256);
+  assert.equal(production.maxInFlightRpcs, 96);
+  assert.equal(production.maxRequestBodyBytes, 2 * 1024 * 1024);
+  assert.equal(production.requestReceiveTimeoutMs, 30_000);
   process.env.RC_DB_POOL_MAX = '3';
   process.env.RC_ACTIVITY_FLUSH_CONCURRENCY = '9';
   assert.equal(loadConfig().activityFlushConcurrency, 1, 'small pools must retain capacity outside activity flushes');

@@ -14,6 +14,10 @@ export interface ServerConfig {
   readonly maxLogEntries: number;
   readonly rpcCaptureMode: RpcCaptureMode;
   readonly requestLogStdout: boolean;
+  readonly maxInFlightRequests: number;
+  readonly maxInFlightRpcs: number;
+  readonly maxRequestBodyBytes: number;
+  readonly requestReceiveTimeoutMs: number;
   readonly discordDailyIngredientsWebhook?: string;
   readonly discordAnomalyWebhook?: string;
   readonly moderationScanIntervalMinutes: number;
@@ -49,6 +53,10 @@ export function loadConfig(): ServerConfig {
     maxLogEntries: positiveInt(process.env.MAX_LOG_ENTRIES, production ? 50 : 500),
     rpcCaptureMode: captureMode(process.env.RC_RPC_CAPTURE_MODE, production ? 'metadata' : 'full'),
     requestLogStdout: envBoolean(process.env.RC_REQUEST_LOG_STDOUT, !production),
+    maxInFlightRequests: positiveInt(process.env.RC_MAX_IN_FLIGHT_REQUESTS, 256),
+    maxInFlightRpcs: positiveInt(process.env.RC_MAX_IN_FLIGHT_RPCS, 96),
+    maxRequestBodyBytes: positiveInt(process.env.RC_MAX_REQUEST_BODY_BYTES, 2 * 1024 * 1024),
+    requestReceiveTimeoutMs: positiveInt(process.env.RC_REQUEST_RECEIVE_TIMEOUT_MS, 30_000),
     discordDailyIngredientsWebhook: process.env.RC_DISCORD_DAILY_INGREDIENTS_WEBHOOK || undefined,
     discordAnomalyWebhook: process.env.RC_DISCORD_ANOMALY_WEBHOOK || undefined,
     moderationScanIntervalMinutes: positiveInt(process.env.RC_MODERATION_SCAN_INTERVAL_MINUTES, 60),

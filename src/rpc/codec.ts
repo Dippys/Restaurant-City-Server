@@ -1,5 +1,7 @@
 import { callName } from './calls';
 
+export const MAX_BATCH_SUBREQUESTS = 64;
+
 export interface ParsedSubRequest {
   readonly msgType: number;
   readonly name: string;
@@ -207,14 +209,19 @@ export function parseRequest(buf: Buffer): ParsedRequest {
 
       let count = 0;
       [count, pos] = readVarint(buf, pos);
+      if (count > MAX_BATCH_SUBREQUESTS) {
+        throw new Error(`batch contains too many subrequests (${count}; maximum ${MAX_BATCH_SUBREQUESTS})`);
+      }
 
       const subs: ParsedSubRequest[] = [];
       for (let i = 0; i < count; i += 1) {
+        if (pos >= buf.length) throw new Error('unexpected EOF while reading batch subrequest');
         const subMsgType = buf[pos] ?? 0;
         pos += 1;
 
         let len = 0;
         [len, pos] = readVarint(buf, pos);
+        if (pos + len > buf.length) throw new Error('unexpected EOF while reading batch subrequest body');
 
         const body = buf.subarray(pos, pos + len);
         pos += len;
@@ -226,7 +233,6 @@ export function parseRequest(buf: Buffer): ParsedRequest {
           body,
         });
       }
-
       return { ...info, batchMode, subs };
     }
 
