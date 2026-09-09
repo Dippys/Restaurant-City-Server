@@ -1,7 +1,6 @@
 generator client {
-  provider        = "prisma-client-js"
-  output          = "../generated/postgresql"
-  previewFeatures = ["relationJoins"]
+  provider = "prisma-client-js"
+  output   = "../generated/postgresql"
 }
 
 datasource db {

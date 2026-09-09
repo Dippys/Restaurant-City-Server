@@ -15,7 +15,7 @@ test('PostgreSQL schema is a synchronized provider variant of the SQLite model',
   assert.equal(generated, renderPostgresqlSchema(source));
   assert.match(generated, /provider = "postgresql"/);
   assert.match(generated, /output\s+= "\.\.\/generated\/postgresql"/);
-  assert.match(generated, /previewFeatures\s+= \["relationJoins"\]/);
+  assert.doesNotMatch(generated, /relationJoins/);
   assert.match(generated, /@@index\(\[recipientNetworkUid, deleted, id\]\)/);
 });
 
