@@ -144,7 +144,10 @@ export function createServer(config: ServerConfig): RestaurantCityServer {
       ? Promise.resolve(new RequestContext(requestId, req, null))
       : resolveRequestContext(requestId, req);
     context
-      .then((context) => handleRequest(config, staticFiles, requestLog, context, req, res))
+      .then((context) => {
+        if (process.env.RC_TRACE_REQUEST_STARTS === 'true') console.warn(`Request auth resolved: id=${requestId} account=${context.account?.networkUid || 'anonymous'}`);
+        return handleRequest(config, staticFiles, requestLog, context, req, res);
+      })
       .catch((error) => {
         console.error(error);
         if (!res.headersSent) {
@@ -196,6 +199,7 @@ async function handleRequest(
   res: ServerResponse,
 ): Promise<void> {
   const body = await readBody(req, config.maxRequestBodyBytes);
+  if (process.env.RC_TRACE_REQUEST_STARTS === 'true') console.warn(`Request body received: id=${context.requestId} bytes=${body.length}`);
   const url = new URL(req.url || '/', `http://localhost:${config.port}`);
   const pathname = decodeURIComponent(url.pathname);
 
@@ -914,7 +918,9 @@ async function handleModerationApi(config: ServerConfig, context: RequestContext
 
 async function handleRpc(context: RequestContext, req: IncomingMessage, res: ServerResponse, body: Buffer, entry: CapturedRequest): Promise<void> {
   entry.kind = 'rpc';
+  if (process.env.RC_TRACE_REQUEST_STARTS === 'true') console.warn(`RPC authentication start: id=${context.requestId}`);
   const account = await context.gameAccount();
+  if (process.env.RC_TRACE_REQUEST_STARTS === 'true') console.warn(`RPC authentication resolved: id=${context.requestId} account=${account?.networkUid || 'anonymous'}`);
   if (!account) {
     entry.status = 401;
     res.writeHead(401, { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' });
