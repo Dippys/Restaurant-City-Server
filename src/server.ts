@@ -49,6 +49,7 @@ async function main(): Promise<void> {
     console.log(` Dashboard      : http://localhost:${config.port}/__dash`);
     console.log(` Static files   : ${staticFiles.size} indexed (self-contained: server/public)`);
     console.log(` Database       : ${databaseProvider}`);
+    console.log(` Traffic capture: ${config.rpcCaptureMode} (${config.maxLogEntries} entries, ${config.requestLogStdout ? 'stdout on' : 'stdout off'})`);
     console.log(` game.swf serves: ${staticFiles.servesRebuiltGameSwf() ? 'REBUILT (localhost-wired)' : 'original'}`);
     console.log('');
     console.log(' Launch the client so it loads FROM this server:');

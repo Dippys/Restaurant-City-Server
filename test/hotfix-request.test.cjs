@@ -16,7 +16,7 @@ process.env.RC_DB_PATH = testDbPath;
 
 const { prisma } = require('../dist/db/client.js');
 const { loadConfig } = require('../dist/config.js');
-const { createEntry, createServer, requestSkipsDatabaseAuth } = require('../dist/http-server.js');
+const { createEntry, createServer, requestSkipsDatabaseAuth, MAX_CAPTURE_BYTES } = require('../dist/http-server.js');
 const { resolveRequestContext } = require('../dist/request-context.js');
 const { hashSessionToken } = require('../dist/session.js');
 const { invalidateAllCachedSessions, sessionCacheSnapshot } = require('../dist/session-cache.js');
@@ -101,6 +101,17 @@ test('metadata capture omits expensive encodings and full capture redacts secret
   const login = createEntry(3, { method: 'POST', url: '/__api/login', headers: {} }, new URL('http://local/__api/login'), '/__api/login', Buffer.from('{"pin":"123456"}'), 'full');
   assert.equal(login.bodyText, undefined);
   assert.equal(login.bodyHex, undefined);
+});
+
+test('full capture retains only a bounded prefix of large request bodies', () => {
+  const req = { method: 'POST', url: '/debug', headers: {} };
+  const url = new URL('http://local/debug');
+  const body = Buffer.alloc(MAX_CAPTURE_BYTES * 4, 0x61);
+  const entry = createEntry(4, req, url, url.pathname, body, 'full');
+  assert.equal(entry.bodyLen, body.length);
+  assert.equal(entry.bodyHex.length, MAX_CAPTURE_BYTES * 2);
+  assert.equal(Buffer.from(entry.bodyBase64, 'base64').length, MAX_CAPTURE_BYTES);
+  assert.equal(entry.bodyText.length, MAX_CAPTURE_BYTES);
 });
 
 test('request context resolves normal authentication exactly once', async () => {

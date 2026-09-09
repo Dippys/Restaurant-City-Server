@@ -88,6 +88,12 @@ const PUBLIC_PAGE_PATHS = new Set([
   '/health', '/health/live', '/health/ready',
 ]);
 
+// Full dashboard capture is a debugging aid, not an archive. Encoding an
+// entire multi-megabyte RPC body three ways (and a large response as hex) can
+// retain hundreds of MiB across the ring buffer. It also made utf8Preview's
+// byte loop build an enormous V8 string before the memory monitor could run.
+export const MAX_CAPTURE_BYTES = 16 * 1024;
+
 export interface RestaurantCityServer {
   readonly httpServer: http.Server;
   readonly staticFiles: StaticFileIndex;
@@ -926,7 +932,7 @@ async function handleRpc(context: RequestContext, req: IncomingMessage, res: Ser
   }
 
   entry.respLen = response.length;
-  if (entry.bodyHex !== undefined) entry.respHex = response.toString('hex');
+  if (entry.bodyHex !== undefined) entry.respHex = response.subarray(0, MAX_CAPTURE_BYTES).toString('hex');
   entry.status = 200;
   performanceMetrics.recordRpc(entry.rpc?.call || 'unknown', performance.now() - context.startedAt);
 
@@ -1088,7 +1094,8 @@ export function createEntry(
   entry.query = redactedQuery(url);
   entry.headers = redactedHeaders(req.headers);
   if (body.length > 0 && !sensitiveBodyPath(pathname)) {
-    const capturedBody = isRpcPath(pathname) ? redactRpcSession(body) : body;
+    const prefix = body.subarray(0, MAX_CAPTURE_BYTES);
+    const capturedBody = isRpcPath(pathname) ? redactRpcSession(prefix) : prefix;
     entry.bodyHex = capturedBody.toString('hex');
     entry.bodyBase64 = capturedBody.toString('base64');
     entry.bodyText = utf8Preview(capturedBody);
