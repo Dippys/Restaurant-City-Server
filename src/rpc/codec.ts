@@ -41,6 +41,14 @@ export function readString(buf: Buffer, pos: number): [string, number] {
   let count = 0;
   [count, pos] = readVarint(buf, pos);
 
+  // The prefix counts decoded characters, and every character requires at
+  // least one byte. Reject impossible lengths before building a string; the
+  // old loop read missing bytes as zero and could append until V8 exhausted
+  // its heap from a tiny malformed request.
+  if (count > buf.length - pos) {
+    throw new Error('unexpected EOF while reading string');
+  }
+
   let value = '';
   for (let i = 0; i < count; i += 1) {
     let b = buf[pos] ?? 0;
@@ -49,10 +57,12 @@ export function readString(buf: Buffer, pos: number): [string, number] {
     if (b >> 4 <= 7) {
       value += String.fromCharCode(b);
     } else if (b >> 4 === 12 || b >> 4 === 13) {
+      if (pos >= buf.length) throw new Error('unexpected EOF while reading string');
       b = ((b & 0x1f) << 6) | ((buf[pos] ?? 0) & 0x3f);
       pos += 1;
       value += String.fromCharCode(b);
     } else if (b >> 4 === 14) {
+      if (pos + 1 >= buf.length) throw new Error('unexpected EOF while reading string');
       b = ((b & 0x0f) << 12) | (((buf[pos] ?? 0) & 0x3f) << 6) | ((buf[pos + 1] ?? 0) & 0x3f);
       pos += 2;
       value += String.fromCharCode(b);

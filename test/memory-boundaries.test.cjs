@@ -25,3 +25,9 @@ test('RPC batch parser rejects amplified and truncated batches before allocating
   assert.match(truncated.error, /batch subrequest body/);
   assert.equal(truncated.subs, undefined);
 });
+
+test('RPC parser rejects a tiny frame with an impossible session-string length', () => {
+  const malformed = Buffer.from([0, 254, 0xff, 0xff, 0xff, 0xff, 0x7f]);
+  const parsed = parseRequest(malformed);
+  assert.match(parsed.error, /unexpected EOF while reading string/);
+});
