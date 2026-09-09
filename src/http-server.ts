@@ -121,6 +121,9 @@ export function createServer(config: ServerConfig): RestaurantCityServer {
     const requestId = requestLog.nextId();
     const pathname = requestPathname(req, config.port);
     const rpcRequest = isRpcPath(pathname);
+    if (process.env.RC_TRACE_REQUEST_STARTS === 'true') {
+      console.warn(`Request start: id=${requestId} method=${req.method || 'UNKNOWN'} path=${pathname || '[invalid]'} active=${inFlightRequests + 1} rpc=${rpcRequest}`);
+    }
     if (inFlightRequests >= config.maxInFlightRequests || (rpcRequest && inFlightRpcs >= config.maxInFlightRpcs)) {
       res.writeHead(503, { 'Content-Type': rpcRequest ? 'application/octet-stream' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '1' });
       res.end(rpcRequest ? Buffer.from([0, 0, 0]) : 'server busy');

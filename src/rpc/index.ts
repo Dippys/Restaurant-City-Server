@@ -14,6 +14,8 @@ export interface RpcBuildResult {
 export async function buildResponse(buf: Buffer, account: ActiveAccount): Promise<RpcBuildResult> {
   const req = parseRequest(buf);
   const summary: RpcSummary = { call: req.name, subs: [] };
+  const traceStarts = process.env.RC_TRACE_REQUEST_STARTS === 'true';
+  if (traceStarts) console.warn(`RPC start: call=${req.name} bytes=${buf.length} user=${account.networkUid}`);
 
   if (req.error) {
     summary.error = req.error;
@@ -24,6 +26,7 @@ export async function buildResponse(buf: Buffer, account: ActiveAccount): Promis
     const parts: Buffer[] = [writeU8(0), writeU8(255), writeVarint(req.subs.length)];
 
     for (const sub of req.subs) {
+      if (traceStarts) console.warn(`RPC subrequest start: call=${sub.name} bytes=${sub.body.length} user=${account.networkUid}`);
       const responder = responders[sub.msgType];
       const body = responder ? await responder({ ...sub, session: req.session }, account) : null;
 
