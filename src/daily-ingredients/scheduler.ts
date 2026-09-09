@@ -173,8 +173,9 @@ export function startDailyIngredientScheduler(serverRoot: string, webhookUrl: st
     }, delay);
     timer.unref();
   };
-  void run().then((succeeded) => {
-    if (!stopped) schedule(succeeded ? millisecondsUntilNextNoonUtc(new Date()) : 5 * 60_000);
-  });
+  // Durable rotations survive restarts. Do not reconcile or announce in the
+  // startup burst; the next noon run (or the explicit admin sync) owns that
+  // work. This also prevents a crash/restart loop from replaying the same job.
+  schedule(millisecondsUntilNextNoonUtc(new Date()));
   return { stop: () => { stopped = true; if (timer) clearTimeout(timer); } };
 }
