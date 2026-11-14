@@ -373,11 +373,24 @@ Both responders therefore return only type-2 building placements; interior
 items arrive later through `getUsers` context `4` (ADR-0016).
 
 `swapIngredient` resolves only shipped ingredient hashes and applies both real
-players' stock changes transactionally. Direct trades enforce the client rarity
-and unlocked-target rules. Secure accepts must match a live type-6 mail; mail
-consumption, both stock changes, and the type-8 confirmation commit together.
-Invalid, stale, replayed, or understocked trades return existing status `4`
-without changing RPC 17's one-byte response body (ADR-0024).
+players' stock changes transactionally. Direct trades are **Friends-street
+only**: the target must be on the caller's roster (hired employee or explicit
+friendship), mirroring the client, which hides the trade button for street
+visits. Direct trades also enforce the client rarity and unlocked-target rules
+for real players **and** NPCs. Secure accepts must match a live type-6 mail
+sent by the target to the caller (the sender's proposal + the recipient's
+accept are the consent); the same rarity/stock/lock checks apply to the
+NPC auto-accept path so a crafted request cannot mint ingredients an NPC does
+not hold. Mail consumption, both stock changes, and the type-8 confirmation
+commit together. Invalid, stale, replayed, understocked, or unauthorized
+trades return existing status `4` without changing RPC 17's one-byte response
+body (ADR-0024, ADR-0042).
+
+Every ingredient a player **receives** — mail gift, daily bonus, quiz reward,
+harvest, market/cash purchase, first-visit gift, social-link escrow, and
+trade — is stored **locked** (`isLocked = true`) and must be manually unlocked
+(lock icon, saveProfile action 9) before it can be traded away. Starter
+ingredients for new profiles and NPC seeds stay unlocked (ADR-0042).
 
 `getAllFriends` includes the active player first, followed only by distinct,
 enabled account-backed profiles currently present in the owner's employee

@@ -54,6 +54,19 @@ import { enqueueGlobalLiveEvent, enqueueLiveEvent, listOnlineUsers, LIVE_EVENT_A
 import { actOnLink, adminLifecycle, adminLinkDetail, cancelPlayerLink, createAdminLink, createPlayerLink, listAdminLinks, publicLink, socialImageTarget, sweepExpiredEscrow } from './social-links/service';
 import { renderSocialLanding } from './social-links/landing';
 import { forceDailyIngredientSync } from './daily-ingredients/scheduler';
+import {
+  applyGameDataItemEdit,
+  getGameDataFileDetail,
+  hasGameDataRow,
+  isDataFilePath,
+  listGameDataFiles,
+  logicalNameFromRequest,
+  reindexGameData,
+  replaceGameDataXml,
+  restoreGameDataFile,
+  serveBinPayload,
+  serveXmlPayload,
+} from './db/game-data-store';
 import { recordRpcActivity } from './moderation/service';
 import { createManualSnapshot, moderationOverview, moderationPlayerDetail, resetAllFindings, resetProfileToStarter, resolveAllSignalProfiles, reviewFinding, rollbackProfile, scanAllProfiles, setPlayerBan, terminatePlayerSessions } from './moderation/service';
 import { runModerationCycle } from './moderation/scheduler';
@@ -453,6 +466,13 @@ async function handleRequest(
     return;
   }
 
+  if (pathname.startsWith('/__api/game-data')) {
+    const actor = await requireAdminMutationForMethod(req, res);
+    if (!actor) return;
+    await handleGameDataApi(req.method || 'GET', pathname, body, actor, res);
+    return;
+  }
+
   if (pathname === '/crossdomain.xml') {
     entry.status = 200;
     entry.matched = '(crossdomain policy)';
@@ -542,6 +562,28 @@ async function handleRequest(
 
   const match = staticFiles.find(pathname);
   if (match) {
+    // ADR-0041: data files under public/data/ are regenerated from the
+    // GameDataFile rows at serve time (admin edits included). .bin requests get
+    // zlib-compressed canonical xml (what the client loads); .xml requests get
+    // the canonical text. Files with no DB row fall through to the disk asset
+    // byte-identically.
+    if (isDataFilePath(match.fullPath)) {
+      const name = logicalNameFromRequest(match.fullPath);
+      if (hasGameDataRow(name)) {
+        const isBin = path.extname(match.fullPath).toLowerCase() === '.bin';
+        const payload = isBin ? serveBinPayload(name) : serveXmlPayload(name);
+        if (payload) {
+          const mime = isBin ? 'application/octet-stream' : 'application/xml; charset=utf-8';
+          entry.status = 200;
+          entry.matched = match.displayPath;
+          entry.respLen = payload.length;
+          res.writeHead(200, { 'Content-Type': mime, 'Content-Length': payload.length, 'Cache-Control': 'no-store' });
+          res.end(payload);
+          requestLog.record(entry);
+          return;
+        }
+      }
+    }
     sendStaticFile(res, match.fullPath, match.mimeType, entry, match.displayPath);
     requestLog.record(entry);
     return;
@@ -610,6 +652,50 @@ async function handleModerationApi(config: ServerConfig, method: string, pathnam
       }
       if (method === 'POST' && operation === 'terminate') {
         sendJson(res, { ok: true, result: await terminatePlayerSessions(networkUid, actor, String(input.reason || '')) }); return;
+      }
+    }
+    sendJson(res, { ok: false, error: 'not found' }, 404);
+  } catch (error) {
+    sendJson(res, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+}
+
+async function handleGameDataApi(method: string, pathname: string, body: Buffer, actor: ActiveAccount, res: ServerResponse): Promise<void> {
+  try {
+    if (method === 'GET' && pathname === '/__api/game-data') {
+      sendJson(res, { ok: true, files: await listGameDataFiles() });
+      return;
+    }
+    if (method === 'POST' && pathname === '/__api/game-data/reindex') {
+      const input = parseJsonBody<{ force?: boolean }>(body);
+      sendJson(res, { ok: true, result: await reindexGameData(Boolean(input?.force)) });
+      return;
+    }
+    const restoreMatch = pathname.match(/^\/__api\/game-data\/([A-Za-z0-9_.-]+)\/restore$/);
+    if (restoreMatch && method === 'POST') {
+      sendJson(res, { ok: true, file: await restoreGameDataFile(decodeURIComponent(restoreMatch[1]), actor.username) });
+      return;
+    }
+    const fileMatch = pathname.match(/^\/__api\/game-data\/([A-Za-z0-9_.-]+)$/);
+    if (fileMatch) {
+      const name = decodeURIComponent(fileMatch[1]);
+      if (method === 'GET') {
+        sendJson(res, { ok: true, file: await getGameDataFileDetail(name) });
+        return;
+      }
+      if (method === 'PUT') {
+        const input = parseJsonBody<{ xml?: string }>(body);
+        if (typeof input?.xml !== 'string') throw new Error('Body must include { xml }.');
+        sendJson(res, { ok: true, file: await replaceGameDataXml(name, input.xml, actor.username) });
+        return;
+      }
+      if (method === 'PATCH') {
+        const input = parseJsonBody<{ itemId?: number; attr?: string; value?: string | null; occurrence?: number }>(body);
+        if (!Number.isInteger(input?.itemId) || typeof input?.attr !== 'string') {
+          throw new Error('Body must include { itemId, attr, value?, occurrence? }.');
+        }
+        sendJson(res, { ok: true, file: await applyGameDataItemEdit(name, Number(input.itemId), input.attr, input.value ?? null, actor.username, Number(input.occurrence ?? 0)) });
+        return;
       }
     }
     sendJson(res, { ok: false, error: 'not found' }, 404);

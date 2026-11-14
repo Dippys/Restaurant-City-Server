@@ -28,9 +28,12 @@ import type {
   UserMutationResponse,
   UsersResponse,
   DailyIngredientSyncResponse,
+  GameDataDetailResponse,
+  GameDataListResponse,
   ModerationOverviewResponse,
   ModerationPlayerDetail,
   AnomalyFinding,
+  ReindexGameDataResponse,
 } from './types.js';
 
 export class ApiError extends Error {
@@ -175,6 +178,14 @@ export const api = {
   createSocialLink: (input: Record<string, unknown>) => request<{ ok: true; id: string; slug: string; url: string }>('POST', '/__api/admin/social-links', input),
   patchSocialLink: (id: string, input: Record<string, unknown>) => request<{ ok: true; link: SocialLinkAdmin }>('PATCH', `/__api/admin/social-links/${enc(id)}`, input),
   socialLifecycle: (id: string, operation: 'activate' | 'pause' | 'resume' | 'revoke' | 'expire' | 'duplicate') => request<{ ok: true; link: SocialLinkAdmin }>('POST', `/__api/admin/social-links/${enc(id)}/${operation}`),
+
+  // game data (ADR-0041: DB-backed game data editor)
+  gameDataFiles: () => request<GameDataListResponse>('GET', '/__api/game-data'),
+  gameDataFile: (name: string) => request<GameDataDetailResponse>('GET', `/__api/game-data/${enc(name)}`),
+  reindexGameData: (force = false) => request<ReindexGameDataResponse>('POST', '/__api/game-data/reindex', { force }),
+  saveGameDataRaw: (name: string, xml: string) => request<GameDataDetailResponse>('PUT', `/__api/game-data/${enc(name)}`, { xml }),
+  editGameDataItem: (name: string, input: { itemId: number; attr: string; value: string | null; occurrence?: number }) => request<GameDataDetailResponse>('PATCH', `/__api/game-data/${enc(name)}`, input),
+  restoreGameDataFile: (name: string) => request<GameDataDetailResponse>('POST', `/__api/game-data/${enc(name)}/restore`),
 };
 
 // Keep EmployeeInput available for the update path without importing types twice.

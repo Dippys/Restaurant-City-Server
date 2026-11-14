@@ -1,8 +1,8 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import { gameDataRevision, readDataXml } from '../db/game-data-store';
 
 const ITEM_TAG = /<item\b([^>]*)\/?>/g;
 let cachedPlantableIds: ReadonlySet<number> | null = null;
+let cachedRevision = -1;
 
 function attribute(tag: string, key: string): string {
   const match = tag.match(new RegExp(`\\b${key}="([^"]*)"`));
@@ -23,11 +23,11 @@ export function plantableIngredientIds(xml: string): ReadonlySet<number> {
 }
 
 function shippedPlantableIngredientIds(): ReadonlySet<number> {
-  if (cachedPlantableIds) return cachedPlantableIds;
-
-  const filename = path.resolve(__dirname, '..', '..', 'public', 'data', 'ingredient.xml');
+  const revision = gameDataRevision();
+  if (cachedPlantableIds && cachedRevision === revision) return cachedPlantableIds;
+  cachedRevision = revision;
   try {
-    cachedPlantableIds = plantableIngredientIds(fs.readFileSync(filename, 'utf8'));
+    cachedPlantableIds = plantableIngredientIds(readDataXml('ingredient'));
   } catch {
     cachedPlantableIds = new Set<number>();
   }

@@ -1,5 +1,4 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import { gameDataRevision, readDataXml } from '../db/game-data-store';
 
 export interface DailyIngredient {
   readonly id: number;
@@ -15,6 +14,7 @@ const PF_TO_COIN_PRICE = new Map<number, DailyIngredient['coinPrice']>([
 ]);
 const ITEM_TAG = /<item\b([^>]*)\/?>/g;
 let cachedCatalog: readonly DailyIngredient[] | null = null;
+let cachedRevision = -1;
 
 function attribute(tag: string, key: string): string {
   return tag.match(new RegExp(`\\b${key}="([^"]*)"`))?.[1] ?? '';
@@ -24,11 +24,12 @@ export function coinPriceForPfCash(pfCash: number): DailyIngredient['coinPrice']
   return PF_TO_COIN_PRICE.get(pfCash) ?? null;
 }
 
-/** Coin-market eligible ingredients, derived from the shipped ingredient.xml. */
+/** Coin-market eligible ingredients, derived from the shipped ingredient.xml (DB-backed, ADR-0041). */
 export function dailyIngredientCatalog(): readonly DailyIngredient[] {
-  if (cachedCatalog) return cachedCatalog;
-  const xmlPath = path.resolve(__dirname, '..', '..', 'public', 'data', 'ingredient.xml');
-  const xml = fs.readFileSync(xmlPath, 'utf8');
+  const revision = gameDataRevision();
+  if (cachedCatalog && cachedRevision === revision) return cachedCatalog;
+  cachedRevision = revision;
+  const xml = readDataXml('ingredient');
   const catalog: DailyIngredient[] = [];
 
   for (const match of xml.matchAll(ITEM_TAG)) {

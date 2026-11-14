@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+// ADR-0041: recipes/ingredients read through game-data-store so admin edits to
+// recipe.xml / ingredient.xml flow into cooking resolution immediately.
+import { gameDataRevision, readDataXml } from './game-data-store';
 
 export interface RecipeEntry {
   readonly id: number;
@@ -8,6 +9,7 @@ export interface RecipeEntry {
 }
 
 let cachedRecipes: Map<string, RecipeEntry> | null = null;
+let cachedRevision = -1;
 
 export function resolveRecipeEntry(token: string): RecipeEntry | undefined {
   const recipes = recipeMap();
@@ -15,13 +17,15 @@ export function resolveRecipeEntry(token: string): RecipeEntry | undefined {
 }
 
 function recipeMap(): Map<string, RecipeEntry> {
-  if (cachedRecipes) {
+  const revision = gameDataRevision();
+  if (cachedRecipes && cachedRevision === revision) {
     return cachedRecipes;
   }
+  cachedRevision = revision;
 
   const ingredientIdsByName = readIngredientIdsByName();
   const recipes = new Map<string, RecipeEntry>();
-  const recipeXml = readDataFile('public/data/recipe.xml');
+  const recipeXml = readDataXml('recipe');
 
   for (const attrs of readItemAttributes(recipeXml)) {
     const id = Number.parseInt(attrs.id ?? '', 10);
@@ -45,7 +49,7 @@ function recipeMap(): Map<string, RecipeEntry> {
 
 function readIngredientIdsByName(): Map<string, number> {
   const ingredients = new Map<string, number>();
-  const ingredientXml = readDataFile('public/data/ingredient.xml');
+  const ingredientXml = readDataXml('ingredient');
 
   for (const attrs of readItemAttributes(ingredientXml)) {
     const id = Number.parseInt(attrs.id ?? '', 10);
@@ -59,22 +63,7 @@ function readIngredientIdsByName(): Map<string, number> {
 }
 
 function readDataFile(relativePath: string): string {
-  for (const base of candidateRoots()) {
-    const path = join(base, relativePath);
-    if (existsSync(path)) {
-      return readFileSync(path, 'utf8');
-    }
-  }
-
-  throw new Error(`Cannot find client data file: ${relativePath}`);
-}
-
-function candidateRoots(): string[] {
-  return [
-    resolve(process.cwd(), '..'),
-    resolve(process.cwd()),
-    resolve(__dirname, '..', '..', '..'),
-  ];
+  return readDataXml(relativePath.replace(/^public\/data\//, '').replace(/\.xml$/, ''));
 }
 
 function readItemAttributes(xml: string): Array<Record<string, string>> {

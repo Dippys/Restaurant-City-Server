@@ -444,3 +444,30 @@ export interface ModerationAction {
 export interface ModerationPlayerDetail extends ModerationPlayerSummary {
   online: boolean; snapshots: ProfileSnapshotSummary[]; saves: ProfileSaveFact[]; actions: ModerationAction[];
 }
+
+// ---------- game data (ADR-0041) ----------
+export interface GameDataFileInfo {
+  name: string; kind: string; xmlBytes: number; sourceHash: string; edited: boolean;
+  createdAt: string | null; updatedAt: string | null; indexed: boolean; itemCount: number | null;
+}
+export interface GameDataItemRow {
+  id: number; occurrence: number; attributes: Record<string, string>;
+}
+export interface GameDataGroupRow {
+  name: string; attributes: Record<string, string>; items: GameDataItemRow[];
+}
+export interface GameDataEditEntry {
+  selector: string; before: string; after: string; actor: string; createdAt: string;
+}
+export interface GameDataFileDetail extends GameDataFileInfo {
+  xml: string; encoding: 'utf8' | 'latin1'; groups: GameDataGroupRow[]; edits: GameDataEditEntry[];
+}
+export interface GameDataListResponse {
+  ok: true; files: GameDataFileInfo[];
+}
+export interface GameDataDetailResponse {
+  ok: true; file: GameDataFileDetail;
+}
+export interface ReindexGameDataResponse {
+  ok: true; result: { files: number; created: number; resynced: number; keptEdited: number; unchanged: number };
+}

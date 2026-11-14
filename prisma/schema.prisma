@@ -453,6 +453,38 @@ model ModerationScan {
   discordError     String   @default("")
 }
 
+// ADR-0041: DB-backed game data. One row per shipped data file
+// (restaurant/ingredient/recipe/…), holding the canonical XML the server
+// regenerates .bin/.xml payloads from at serve time. The disk assets under
+// server/public/data/ stay pristine as the re-index source; sourceHash tracks
+// the original bytes so the admin panel can show drift, and edited=true once
+// any admin edit diverges from source.
+model GameDataFile {
+  name       String   @id // logical name: "restaurant", "ingredient", "quiz", "lang_en", ...
+  kind       String // "items" | "text" | "collada" | "newsletter" | "resconfig" | "challenge"
+  xml        String // canonical XML text (inflated content of the .bin / the .xml view)
+  encoding   String   @default("utf8") // "utf8" | "latin1" (quiz.xml is latin-1)
+  sourceHash String // sha256 of the original asset bytes (drift detection)
+  edited     Boolean  @default(false) // true once any admin edit diverges from source
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  edits      GameDataEdit[]
+}
+
+// Audit log for every admin edit to DB-backed game data (ADR-0041).
+model GameDataEdit {
+  id        Int      @id @default(autoincrement())
+  file      String // GameDataFile.name
+  selector  String // e.g. "items.item[3000001].cost", "items.item[3000001].invisible", "raw"
+  before    String // previous attribute value (or "" for added attrs / raw)
+  after     String // new attribute value (or "" for removed attrs / raw replace)
+  actor     String // admin username
+  createdAt DateTime @default(now())
+  fileRef   GameDataFile @relation(fields: [file], references: [name], onDelete: Cascade)
+
+  @@index([file])
+}
+
 // Idempotency marker for once-per-day server-generated content (daily quiz mail,
 // daily free-ingredient bonus, NPC gifts/ranks). One row per (player, kind, day).
 model SystemGrant {

@@ -1,6 +1,6 @@
 // Spec: decompiled/game/scripts/com/playfish/games/cooking/GameWorld.as
 // ADR-0034: explainable rules only; no rule performs punishment.
-import { fullCatalog, itemAttributes } from '../db/item-catalog';
+import { coinPriceForItemId, fullCatalog, itemAttributes } from '../db/item-catalog';
 
 export type FindingSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -202,10 +202,11 @@ function evaluateSaveFact(fact: SaveFactLike, findings: RuleFinding[]): void {
 }
 
 function coinCost(itemId: number): number {
+  // ADR-0041: wealth estimates use the DB-backed price (admin edits included).
   const attributes = itemAttributes(itemId);
   if (!attributes || attributes.cash) return 0;
-  const cost = Number(attributes.cost ?? 0);
-  return Number.isFinite(cost) && cost > 0 ? Math.trunc(cost) : 0;
+  const price = coinPriceForItemId(itemId);
+  return price === null ? 0 : price;
 }
 
 function finding(ruleId: string, severity: FindingSeverity, score: number, title: string, summary: string, evidence: Readonly<Record<string, unknown>>): RuleFinding {

@@ -14,7 +14,7 @@ import {
 } from './defaults';
 import { ensureEconomyCatalog } from './rpc-store';
 import { ensureStarterFriends } from './profile-store';
-import { fullCatalog, isCatalogItemId, isEmployeeSnackItem } from './item-catalog';
+import { fullCatalog, isCatalogItemId, isEmployeeSnackItem, itemAttributes } from './item-catalog';
 import { grantMailItem } from './system-mail';
 import { enqueueLiveMail } from '../live-events';
 

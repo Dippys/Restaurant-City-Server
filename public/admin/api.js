@@ -114,4 +114,11 @@ export const api = {
     createSocialLink: (input) => request('POST', '/__api/admin/social-links', input),
     patchSocialLink: (id, input) => request('PATCH', `/__api/admin/social-links/${enc(id)}`, input),
     socialLifecycle: (id, operation) => request('POST', `/__api/admin/social-links/${enc(id)}/${operation}`),
+    // game data (ADR-0041: DB-backed game data editor)
+    gameDataFiles: () => request('GET', '/__api/game-data'),
+    gameDataFile: (name) => request('GET', `/__api/game-data/${enc(name)}`),
+    reindexGameData: (force = false) => request('POST', '/__api/game-data/reindex', { force }),
+    saveGameDataRaw: (name, xml) => request('PUT', `/__api/game-data/${enc(name)}`, { xml }),
+    editGameDataItem: (name, input) => request('PATCH', `/__api/game-data/${enc(name)}`, input),
+    restoreGameDataFile: (name) => request('POST', `/__api/game-data/${enc(name)}/restore`),
 };

@@ -2,7 +2,7 @@ import type { Mail, Pricepoint, PurchasableItem } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { prisma } from './client';
 import { FACEBOOK_NETWORK, PLAYER_NETWORK_UID, SYSTEM_NETWORK_UID, isNpcUid } from './defaults';
-import { getPlayerProfile, getProfiles, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
+import { getAllFriends, getPlayerProfile, getProfiles, type NetworkUidData, type OwnedItemData, type StoredProfile } from './profile-store';
 import { ensureDailyContent, sendNpcGift, grantMailItem } from './system-mail';
 import { resolveIngredientId, ingredientRarity, firstVisitIngredientId } from './ingredient-catalog';
 import { coinBundleForToken, ingredientCashCost, ownedItemCashCost } from './cash-catalog';
@@ -235,13 +235,13 @@ export async function purchaseCashIngredients(account: ActiveAccount, tokens: re
       const ingredientId = itemIdFromToken(token, 4000000);
       await tx.ingredientInventory.upsert({
         where: { userProfileId_globalItemId: { userProfileId: profileKey(account.networkUid), globalItemId: ingredientId } },
-        update: { number: { increment: 1 } },
+        update: { number: { increment: 1 }, isLocked: true },
         create: {
           id: ingredientKey(account.networkUid, ingredientId),
           userProfileId: profileKey(account.networkUid),
           globalItemId: ingredientId,
           number: 1,
-          isLocked: false,
+          isLocked: true,
         },
       });
     }
@@ -271,7 +271,6 @@ export async function sendMail(account: ActiveAccount, mail: {
 }): Promise<number> {
   const sender = await ensureAccountProfile(account);
   const recipientUid = mail.recipient.networkUid || String(mail.recipient.playfishUid || PLAYER_NETWORK_UID);
-  await ensureProfileByUid(recipientUid);
 
   if (mail.type === MAIL_TYPE_SECURECHANGE) {
     const playerGives = mail.globalItemIds[0] ?? 0;
@@ -284,7 +283,15 @@ export async function sendMail(account: ActiveAccount, mail: {
     ) {
       return STATUS_INVALID_TOKEN;
     }
+    // The trade panel (and its secure request) is only reachable on the Friends
+    // street, so a secure trade proposal may only target a friend. NPC recipients
+    // are exempt: the server answers those trades on their behalf.
+    if (!isNpcUid(recipientUid) && !(await isFriendOf(account.networkUid, recipientUid))) {
+      return STATUS_INVALID_TOKEN;
+    }
   }
+
+  await ensureProfileByUid(recipientUid);
 
   // NPC recipients have no client to act, so the server responds on their behalf:
   // trade requests are auto-accepted and gifts are reciprocated.
@@ -340,6 +347,9 @@ async function persistMail(sender: StoredProfile, recipientUid: string, mail: {
 // A player mailed a trade request to an NPC. The offer carries both ingredient ids
 // (globalItemIds[0] = player gives, [1] = NPC gives). The NPC "accepts" instantly:
 // the player gives item 0 and receives item 1, then gets a confirmation mail.
+// The NPC may only give an ingredient it actually holds (its seeded starter
+// inventory), unlocked, and under the same rarity rule the client applies to
+// direct trades — otherwise a crafted request could mint any ingredient.
 async function autoAcceptNpcTrade(player: ActiveAccount, npcUid: string, globalItemIds: readonly number[]): Promise<number> {
   const playerGives = globalItemIds[0] ?? 0;
   const playerReceives = globalItemIds[1] ?? 0;
@@ -347,8 +357,18 @@ async function autoAcceptNpcTrade(player: ActiveAccount, npcUid: string, globalI
 
   const status = await prisma.$transaction(async (tx) => {
     if (!(await hasIngredientStock(player.networkUid, playerGives, tx))) return STATUS_INVALID_TOKEN;
+    const npcItem = await tx.ingredientInventory.findUnique({
+      where: { userProfileId_globalItemId: { userProfileId: profileKey(npcUid), globalItemId: playerReceives } },
+    });
+    const givesRarity = ingredientRarity(playerGives);
+    const receivesRarity = ingredientRarity(playerReceives);
+    if (!npcItem || npcItem.number < 1 || npcItem.isLocked || givesRarity === null || receivesRarity === null || givesRarity < receivesRarity) {
+      return STATUS_INVALID_TOKEN;
+    }
     await adjustIngredient(tx, player.networkUid, playerGives, -1);
     await adjustIngredient(tx, player.networkUid, playerReceives, 1, true);
+    await adjustIngredient(tx, npcUid, playerReceives, -1);
+    await adjustIngredient(tx, npcUid, playerGives, 1, true);
     await deliverNpcTradeConfirmation(player, npcProfile, playerGives, playerReceives, tx);
     return STATUS_OK;
   });
@@ -562,11 +582,20 @@ export async function swapIngredient(
 ): Promise<number> {
   await ensureAccountProfile(account);
   const targetUid = target.networkUid || String(target.playfishUid || PLAYER_NETWORK_UID);
-  const targetProfile = await ensureProfileByUid(targetUid);
   // The client sends each ingredient's opaque `hash`, not its numeric id.
   const offered = resolveIngredientId(offeredToken);
   const requested = resolveIngredientId(requestedToken);
   if (offered === null || requested === null) return STATUS_INVALID_TOKEN;
+
+  // Direct trades are only offered on the Friends street (WorldRestaurantPlay
+  // hides the trade button for street visits), so the target of a direct trade
+  // must be a real friend of the caller. Secure trades are authorized by the
+  // live trade mail instead. NPCs are exempt: the server answers for them.
+  if (!secure && !isNpcUid(targetUid) && !(await isFriendOf(account.networkUid, targetUid))) {
+    return STATUS_INVALID_TOKEN;
+  }
+
+  const targetProfile = await ensureProfileByUid(targetUid);
 
   const status = await prisma.$transaction(async (tx) => {
     if (!(await hasIngredientStock(account.networkUid, offered, tx))) return STATUS_INVALID_TOKEN;
@@ -587,7 +616,9 @@ export async function swapIngredient(
       if (mailItems.length !== 2 || mailItems[0] !== requested || mailItems[1] !== offered) {
         return STATUS_INVALID_TOKEN;
       }
-    } else if (!isNpcUid(targetUid)) {
+    } else {
+      // The target's ingredient — real player or NPC — must exist, be in stock,
+      // be unlocked, and satisfy the client rarity rule for a direct trade.
       const targetItem = await tx.ingredientInventory.findUnique({
         where: { userProfileId_globalItemId: { userProfileId: profileKey(targetUid), globalItemId: requested } },
       });
@@ -598,14 +629,12 @@ export async function swapIngredient(
       }
     }
 
-    if (!isNpcUid(targetUid) && !(await hasIngredientStock(targetUid, requested, tx))) return STATUS_INVALID_TOKEN;
+    if (!(await hasIngredientStock(targetUid, requested, tx))) return STATUS_INVALID_TOKEN;
 
     await adjustIngredient(tx, account.networkUid, offered, -1);
     await adjustIngredient(tx, account.networkUid, requested, 1, true);
-    if (!isNpcUid(targetUid)) {
-      await adjustIngredient(tx, targetUid, requested, -1);
-      await adjustIngredient(tx, targetUid, offered, 1, true);
-    }
+    await adjustIngredient(tx, targetUid, requested, -1);
+    await adjustIngredient(tx, targetUid, offered, 1, true);
     if (secure) {
       await tx.mail.update({ where: { id: mailId }, data: { deleted: true } });
     }
@@ -624,6 +653,13 @@ async function hasIngredientStock(networkUid: string, ingredientId: number, tx: 
     select: { number: true },
   });
   return (row?.number ?? 0) > 0;
+}
+
+// The client's Friends street (getAllFriends) is the only place trades are
+// offered, so the server mirrors that roster when authorizing a direct trade.
+async function isFriendOf(callerNetworkUid: string, targetNetworkUid: string): Promise<boolean> {
+  const roster = await getAllFriends(callerNetworkUid);
+  return roster.some((profile) => profile.networkUid === targetNetworkUid);
 }
 
 function readStoredNumberArray(value: string): number[] {

@@ -1,13 +1,16 @@
-// Full item catalogue for the admin dashboard, built at runtime from the
-// decompressed data XMLs the server serves (server/public/data/*.xml) plus the
-// hand-curated fallback in defaults.ts. Every <item id="…" name="…"/> becomes
-// { id, label, category } so admins can work with names instead of ids.
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+// Full item catalogue for the admin dashboard and server-side pricing, built at
+// runtime from the DB-backed game data (ADR-0041: reads through
+// game-data-store.readDataXml, which returns the canonical GameDataFile row or
+// falls back to the disk XML) plus the hand-curated fallback in defaults.ts.
+// Every <item id="…" name="…"/> becomes { id, label, category } so admins can
+// work with names instead of ids. Module-level caches are keyed on the store
+// revision so admin edits invalidate them.
 import { ITEM_CATALOG, type ItemCatalogEntry } from './defaults';
+import { gameDataRevision, readDataXml } from './game-data-store';
 
 // Data files that contain item definitions. quiz.xml / challenge.xml /
-// model.xml / resconfig.xml have no <item id name> rows and are skipped.
+// model.xml / resconfig.xml / newsletter.xml / lang_*.xml have no <item id name>
+// rows and are skipped.
 const CATALOG_FILES = [
   'front.xml',
   'restaurant.xml',
@@ -34,25 +37,32 @@ function decodeEntities(value: string): string {
     .replace(/&gt;/g, '>');
 }
 
+function catalogXml(name: string): string {
+  return readDataXml(name.replace(/\.xml$/, ''));
+}
+
 let cached: readonly ItemCatalogEntry[] | null = null;
+let cachedRevision = -1;
 let cachedAttributes: ReadonlyMap<number, Readonly<Record<string, string>>> | null = null;
+let cachedAttributesRevision = -1;
 let cachedOutdoorIds: ReadonlySet<number> | null = null;
+let cachedOutdoorRevision = -1;
 
 /** Full catalogue: curated entries first, then every id/name found in the data XMLs (XML names win). */
 export function fullCatalog(): readonly ItemCatalogEntry[] {
-  if (cached) return cached;
+  const revision = gameDataRevision();
+  if (cached && cachedRevision === revision) return cached;
+  cachedRevision = revision;
 
   const byId = new Map<number, ItemCatalogEntry>();
   for (const entry of ITEM_CATALOG) {
     byId.set(entry.id, entry);
   }
 
-  const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
   for (const file of CATALOG_FILES) {
-    const fullPath = path.join(dataDir, file);
     let xml: string;
     try {
-      xml = fs.readFileSync(fullPath, 'utf8');
+      xml = catalogXml(file);
     } catch {
       continue;
     }
@@ -75,6 +85,7 @@ export function isCatalogItemId(id: number): boolean {
 }
 
 let cachedHashIndex: ReadonlyMap<string, number> | null = null;
+let cachedHashRevision = -1;
 
 /**
  * Resolves an opaque item hash (the `hash="…"` attribute from the shipped
@@ -84,20 +95,20 @@ let cachedHashIndex: ReadonlyMap<string, number> | null = null;
  * authoritative mapping (ADR-0035).
  */
 export function itemIdForToken(token: string): number | undefined {
-  if (!cachedHashIndex) {
-    const byHash = new Map<string, number>();
-    const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
-    for (const file of CATALOG_FILES) {
-      let xml = '';
-      try { xml = fs.readFileSync(path.join(dataDir, file), 'utf8'); } catch { continue; }
-      for (const match of xml.matchAll(ITEM_TAG)) {
-        const hash = attribute(match[1], 'hash');
-        const id = Number(attribute(match[1], 'id'));
-        if (hash && Number.isInteger(id)) byHash.set(hash, id);
-      }
+  const revision = gameDataRevision();
+  if (cachedHashIndex && cachedHashRevision === revision) return cachedHashIndex.get(token);
+  cachedHashRevision = revision;
+  const byHash = new Map<string, number>();
+  for (const file of CATALOG_FILES) {
+    let xml = '';
+    try { xml = catalogXml(file); } catch { continue; }
+    for (const match of xml.matchAll(ITEM_TAG)) {
+      const hash = attribute(match[1], 'hash');
+      const id = Number(attribute(match[1], 'id'));
+      if (hash && Number.isInteger(id)) byHash.set(hash, id);
     }
-    cachedHashIndex = byHash;
   }
+  cachedHashIndex = byHash;
   return cachedHashIndex.get(token);
 }
 
@@ -128,23 +139,24 @@ export function catalogEntry(id: number): ItemCatalogEntry | undefined {
 }
 
 export function itemAttributes(id: number): Readonly<Record<string, string>> | undefined {
-  if (!cachedAttributes) {
-    const attributes = new Map<number, Readonly<Record<string, string>>>();
-    const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
-    for (const file of CATALOG_FILES) {
-      let xml = '';
-      try { xml = fs.readFileSync(path.join(dataDir, file), 'utf8'); } catch { continue; }
-      for (const match of xml.matchAll(ITEM_TAG)) {
-        const values: Record<string, string> = {};
-        for (const attr of match[1].matchAll(/([A-Za-z_:][\w:.-]*)="([^"]*)"/g)) {
-          values[attr[1]] = decodeEntities(attr[2]);
-        }
-        const itemId = Number(values.id);
-        if (Number.isInteger(itemId)) attributes.set(itemId, values);
+  const revision = gameDataRevision();
+  if (cachedAttributes && cachedAttributesRevision === revision) return cachedAttributes.get(id);
+  cachedAttributesRevision = revision;
+
+  const attributes = new Map<number, Readonly<Record<string, string>>>();
+  for (const file of CATALOG_FILES) {
+    let xml = '';
+    try { xml = catalogXml(file); } catch { continue; }
+    for (const match of xml.matchAll(ITEM_TAG)) {
+      const values: Record<string, string> = {};
+      for (const attr of match[1].matchAll(/([A-Za-z_:][\w:.-]*)="([^"]*)"/g)) {
+        values[attr[1]] = decodeEntities(attr[2]);
       }
+      const itemId = Number(values.id);
+      if (Number.isInteger(itemId)) attributes.set(itemId, values);
     }
-    cachedAttributes = attributes;
   }
+  cachedAttributes = attributes;
   return cachedAttributes.get(id);
 }
 
@@ -158,13 +170,20 @@ export function itemAttributes(id: number): Readonly<Record<string, string>> | u
 const GROUP_BLOCK = /<group\b([^>]*)>([\s\S]*?)<\/group>/g;
 
 export function outdoorItemIds(): ReadonlySet<number> {
-  if (cachedOutdoorIds) {
+  const revision = gameDataRevision();
+  if (cachedOutdoorIds && cachedOutdoorRevision === revision) {
     return cachedOutdoorIds;
   }
+  cachedOutdoorRevision = revision;
 
   const ids = new Set<number>();
-  const dataDir = path.resolve(__dirname, '..', '..', 'public', 'data');
-  const xml = fs.readFileSync(path.join(dataDir, 'restaurant.xml'), 'utf8');
+  let xml: string;
+  try {
+    xml = readDataXml('restaurant');
+  } catch {
+    cachedOutdoorIds = ids;
+    return ids;
+  }
   for (const match of xml.matchAll(GROUP_BLOCK)) {
     if (!/\btype="[^"]*\boutdoor\b[^"]*"/.test(match[1] ?? '')) {
       continue;
@@ -193,7 +212,7 @@ export function isEmployeeSnackItem(id: number): boolean {
   const entry = catalogEntry(id);
   if (entry?.category !== 'perk') return false;
   try {
-    const xml = fs.readFileSync(path.resolve(__dirname, '..', '..', 'public', 'data', 'perk.xml'), 'utf8');
+    const xml = readDataXml('perk');
     const group = xml.match(/<group\s+name="Employee">([\s\S]*?)<\/group>/)?.[1] ?? '';
     return new RegExp(`<item\\b[^>]*\\bid="${id}"`).test(group);
   } catch {

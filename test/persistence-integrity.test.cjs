@@ -19,6 +19,7 @@ process.env.RC_DB_PATH = testDbPath;
 const { prisma } = require('../dist/db/client.js');
 const { getPlayerProfile, savePlayerProfile } = require('../dist/db/profile-store.js');
 const { sendMail, swapIngredient } = require('../dist/db/rpc-store.js');
+const { grantMailItem } = require('../dist/db/system-mail.js');
 const { buildResponse } = require('../dist/rpc/index.js');
 const { writeBool, writeNetworkUid, writeString, writeU8, writeVarint } = require('../dist/rpc/codec.js');
 
@@ -61,6 +62,46 @@ async function setIngredient(account, globalItemId, number, isLocked = false) {
     where: { userProfileId_globalItemId: { userProfileId: `facebook:${account.networkUid}`, globalItemId } },
     update: { number, isLocked },
     create: { id: `facebook:${account.networkUid}:ingredient:${globalItemId}`, userProfileId: `facebook:${account.networkUid}`, globalItemId, number, isLocked },
+  });
+}
+
+// Direct trades require the target to be on the caller's "Your Street" roster
+// (the client only offers the trade button on the Friends street). These helpers
+// mirror a real hire: an enabled account + an Employee row on the owner.
+async function makeAccountBacked(account) {
+  await prisma.account.upsert({
+    where: { networkUid: account.networkUid },
+    update: {},
+    create: {
+      id: `account-${account.networkUid}`,
+      username: account.username,
+      usernameKey: `key-${account.networkUid}`,
+      firstName: account.username,
+      lastName: 'Chef',
+      pinHash: 'test',
+      pinSalt: 'test',
+      networkUid: account.networkUid,
+      playfishUid: account.playfishUid,
+    },
+  });
+}
+
+async function makeFriends(owner, friend) {
+  await makeAccountBacked(owner);
+  await makeAccountBacked(friend);
+  await prisma.employee.upsert({
+    where: { userProfileId_networkUid: { userProfileId: `facebook:${owner.networkUid}`, networkUid: friend.networkUid } },
+    update: {},
+    create: {
+      id: `facebook:${owner.networkUid}:employee:${friend.networkUid}`,
+      userProfileId: `facebook:${owner.networkUid}`,
+      network: 2,
+      networkUid: friend.networkUid,
+      playfishUid: friend.playfishUid,
+      happiness: 0,
+      task: 0,
+      notify: false,
+    },
   });
 }
 
@@ -338,6 +379,7 @@ test('profile delivery restores only facade and restaurant-door defaults with ex
 test('direct trades persist both players atomically and reject invalid hashes, locks, and missing stock', async () => {
   const player = await seedProfile('directplayer');
   const target = await seedProfile('directtarget');
+  await makeFriends(player, target);
   await setIngredient(player, 4000002, 1); // rarity 3
   await setIngredient(target, 4000004, 1); // rarity 1, unlocked
 
@@ -393,6 +435,7 @@ test('secure trade acceptance requires a matching live mail and cannot be replay
 test('RPC 17 keeps the shipped request and one-byte status response layout', async () => {
   const player = await seedProfile('wireplayer');
   const target = await seedProfile('wiretarget');
+  await makeFriends(player, target);
   await setIngredient(player, 4000002, 1);
   await setIngredient(target, 4000004, 1);
   const request = Buffer.concat([
@@ -409,4 +452,75 @@ test('RPC 17 keeps the shipped request and one-byte status response layout', asy
   const result = await buildResponse(request, player);
   assert.equal(result.response.toString('hex'), '001100');
   assert.equal(result.summary.call, 'swapIngredient');
+});
+
+test('direct trades are rejected when the target is not on the caller\'s Friends street', async () => {
+  const player = await seedProfile('nofriendplayer');
+  const target = await seedProfile('nofriendtarget');
+  await setIngredient(player, 4000002, 1); // rarity 3
+  await setIngredient(target, 4000004, 1); // rarity 1, unlocked
+  const targetRef = { network: 2, networkUid: target.networkUid, playfishUid: target.playfishUid };
+
+  assert.equal(await swapIngredient(player, targetRef, 'DiaUr54yPWANy48rDe5jwa', 'jn7oj0vkTbuJkKA5QjzGda', false, 0), 4);
+  // Nothing moved.
+  assert.equal(await ingredientCount(player, 4000002), 1);
+  assert.equal(await ingredientCount(target, 4000004), 1);
+  assert.equal(await ingredientCount(target, 4000002), 0);
+
+  // A secure trade mail to a non-friend is rejected the same way.
+  assert.equal(await sendMail(player, { recipient: targetRef, globalItemIds: [4000002, 4000004], itemId: 0, message: '', type: 6 }), 4);
+});
+
+test('NPC trades cannot mint ingredients the NPC does not hold', async () => {
+  const player = await seedProfile('npctrader');
+  const npcTarget = { network: 2, networkUid: '1001', playfishUid: 1001 };
+  await setIngredient(player, 4000002, 1); // rarity 3
+
+  // Direct swap requesting an ingredient the NPC does not hold is rejected,
+  // even when the offered rarity is higher.
+  assert.equal(await swapIngredient(player, npcTarget, 'DiaUr54yPWANy48rDe5jwa', '81wnx7e8HLTCwfpyXSucoq', false, 0), 4);
+  assert.equal(await ingredientCount(player, 4000022), 0);
+
+  // The mail path (auto-accept) is gated the same way.
+  assert.equal(await sendMail(player, { recipient: npcTarget, globalItemIds: [4000002, 4000022], itemId: 0, message: '', type: 6 }), 4);
+
+  // A held, unlocked starter with equal-or-higher offered rarity still works.
+  assert.equal(await swapIngredient(player, npcTarget, 'DiaUr54yPWANy48rDe5jwa', '5citJlTD__mpVTc2nE05UG', false, 0), 0);
+  assert.equal(await ingredientCount(player, 4000013), 1);
+  assert.equal(await ingredientLocked(player, 4000013), true);
+
+  // And through the mail path.
+  await setIngredient(player, 4000002, 1);
+  assert.equal(await sendMail(player, { recipient: npcTarget, globalItemIds: [4000002, 4000013], itemId: 0, message: '', type: 6 }), 0);
+  assert.equal(await ingredientCount(player, 4000013), 2);
+});
+
+test('ingredients received through grants and profile deltas start locked', async () => {
+  const player = await seedProfile('autolockplayer');
+
+  // Mail grants (gift / daily bonus) land locked, including on a stack that
+  // already exists.
+  await grantMailItem(player.networkUid, 4000001);
+  assert.equal(await ingredientLocked(player, 4000001), true);
+  assert.equal(await ingredientCount(player, 4000001), 1);
+  await grantMailItem(player.networkUid, 4000001);
+  assert.equal(await ingredientLocked(player, 4000001), true);
+  assert.equal(await ingredientCount(player, 4000001), 2);
+
+  // Client-reported receives (harvest, quiz, market purchase, first-visit gift)
+  // land locked too, while consuming leaves the lock alone.
+  const profile = await getPlayerProfile(player);
+  await savePlayerProfile(savedProfile(player, profile, { userLevel: 5, gourmetPoint: 1000 }), emptyAudit(1, 60, {
+    ingredientChanges: [{ globalItemId: 4000003, delta: 1 }, { globalItemId: 4000001, delta: -1 }],
+  }));
+  assert.equal(await ingredientLocked(player, 4000003), true);
+  assert.equal(await ingredientCount(player, 4000003), 1);
+  assert.equal(await ingredientLocked(player, 4000001), true);
+  assert.equal(await ingredientCount(player, 4000001), 1);
+
+  // The owner can still unlock explicitly (saveProfile action 9).
+  await savePlayerProfile(savedProfile(player, profile, { userLevel: 5, gourmetPoint: 1000 }), emptyAudit(2, 120, {
+    lockIngredientChanges: [{ globalItemId: 4000003, isLocked: false }],
+  }));
+  assert.equal(await ingredientLocked(player, 4000003), false);
 });

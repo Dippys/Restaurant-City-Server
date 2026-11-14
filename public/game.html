@@ -39,8 +39,8 @@
       linear-gradient(180deg, var(--sky) 0%, #8bd8f2 55%, var(--sky-pale) 100%);
   }
   .stage {
-    width: min(100%, 780px);
-    aspect-ratio: 760 / 600;
+    width: min(100%, 1067px);
+    aspect-ratio: 1067 / 600;
     background: #050607;
     border: 6px solid var(--steel);
     border-radius: 16px;
@@ -88,7 +88,7 @@
   }
   @media (max-height: 720px) {
     main { padding: 10px; }
-    .stage { width: min(100%, calc((100vh - 150px) * 1.2667)); }
+    .stage { width: min(100%, calc((100vh - 150px) * 1.7783)); }
   }
 </style>
 <script>
@@ -298,7 +298,9 @@ function showGame(account) {
   main.innerHTML = "";
 
   const swfUrl = `/game.swf?account=${encodeURIComponent(account.networkUid)}`;
-  const SWF_W = 760;
+  // RC Reborn widescreen test: the rebuilt SWF is 1067x600 (16:9); the page
+  // sizes the box to that aspect so the game fills widescreen monitors.
+  const SWF_W = 1067;
   const SWF_H = 600;
 
   const stage = document.createElement("div");
